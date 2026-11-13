@@ -96,7 +96,30 @@ public partial class HomeCliffs : Node3D
             Rock(pos, new Vector3(_rng.RandfRange(10, 24), h, _rng.RandfRange(10, 22)),
                 new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(0, 3), _rng.RandfRange(-0.12f, 0.12f)),
                 _rng.Randf() < 0.5f ? Obsidian : Slate, collide: false);
+            Crag(pos + new Vector3(0, h / 2f - 4f, 0), _rng.RandfRange(12, 20), _rng.RandfRange(14, 28));
         }
+        // Obsidian blades along the western cliff lip: the jagged silhouette left of the hero shot.
+        for (int i = 0; i < 9; i++)
+        {
+            var pos = new Vector3(_rng.RandfRange(-62, -26), -1.5f, _rng.RandfRange(-36, -28));
+            bool blade = _rng.Randf() < 0.45f;
+            Crag(pos, blade ? _rng.RandfRange(2.5f, 4.5f) : _rng.RandfRange(5, 9),
+                blade ? _rng.RandfRange(7, 14) : _rng.RandfRange(5, 10), blade, collide: true);
+        }
+    }
+
+    /// <summary>Volcanic crag or single blade standing on basePos (models have their origin at the base).</summary>
+    private Node3D Crag(Vector3 basePos, float width, float height, bool blade = false, bool collide = false)
+    {
+        var set = blade ? Models.Shards : Models.Crags;
+        var path = set[_rng.RandiRange(0, set.Length - 1)];
+        var size = new Vector3(width, height, width * _rng.RandfRange(0.8f, 1.1f));
+        Node3D node = collide ? Models.RockBody(path, size) : Models.Instance(path);
+        if (!collide) node.Scale = size;
+        node.Position = basePos;
+        node.Rotation = new Vector3(_rng.RandfRange(-0.08f, 0.08f), _rng.RandfRange(0, Mathf.Tau), _rng.RandfRange(-0.08f, 0.08f));
+        AddChild(node);
+        return node;
     }
 
     private void BuildSideWalls()
@@ -111,6 +134,8 @@ public partial class HomeCliffs : Node3D
                 var pos = new Vector3(side * (64 + _rng.RandfRange(0, 6)), h / 2f - 4, z + _rng.RandfRange(-2, 2));
                 Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
                     _rng.Randf() < 0.35f ? SlateLight : Slate);
+                if (_rng.Randf() < 0.6f)
+                    Crag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _rng.RandfRange(8, 18));
             }
         }
         // South wall with a gap for the road (x in -5..5).
@@ -340,6 +365,7 @@ void fragment() {
             spire.Position = pos + new Vector3(0, height / 2f - 6f, 0);
             spire.Rotation = new Vector3(0, _rng.RandfRange(0, Mathf.Tau), 0);
             AddChild(spire);
+            Crag(pos + new Vector3(0, height - 9f, 0), 15f, _rng.RandfRange(12, 20));
             Fall(pos + new Vector3(0, height - 8f, 7.5f), width, height - 4f, _rng.RandfRange(-0.2f, 0.2f));
         }
         _clouds?.ApplyLava();

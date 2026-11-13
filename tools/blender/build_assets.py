@@ -88,7 +88,18 @@ def mat(name):
 # ----------------------------------------------------------------------------- scene helpers
 
 def reset_scene():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    if bpy.app.background:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+    else:
+        # Live Blender (MCP): a factory reset would unload the MCP add-on and drop the
+        # connection, so just clear the scene's objects and data instead.
+        for ob in list(bpy.data.objects):
+            bpy.data.objects.remove(ob, do_unlink=True)
+        for coll in (bpy.data.meshes, bpy.data.curves, bpy.data.materials, bpy.data.cameras,
+                     bpy.data.lights, bpy.data.armatures):
+            for block in list(coll):
+                if block.users == 0:
+                    coll.remove(block)
     _materials.clear()
 
 
@@ -265,6 +276,74 @@ def build_rocks():
         export(name)
 
 
+def shard_bmesh(rng, height, base_r, lean, twist_sides=5):
+    """One obsidian blade: an irregular, tapered prism with a chiselled, off-centre tip."""
+    bm = bmesh.new()
+    sides = twist_sides + rng.randint(0, 2)
+    rings = [(0.0, 1.0), (0.35, rng.uniform(0.7, 0.85)), (0.7, rng.uniform(0.38, 0.55))]
+    radii = [base_r * rng.uniform(0.7, 1.25) for _ in range(sides)]
+    angles = sorted(rng.uniform(0, math.tau) for _ in range(sides))
+    for h, taper in rings:
+        for a, r in zip(angles, radii):
+            jitter = rng.uniform(0.9, 1.1)
+            bm.verts.new(Vector((math.cos(a) * r * taper * jitter + lean.x * h * height,
+                                 math.sin(a) * r * taper * jitter + lean.y * h * height,
+                                 h * height)))
+    # Tip: one or two sharp points, offset so the blade looks split / chipped.
+    tip = Vector((lean.x * height + rng.uniform(-0.2, 0.2) * base_r,
+                  lean.y * height + rng.uniform(-0.2, 0.2) * base_r, height))
+    bm.verts.new(tip)
+    if rng.random() < 0.5:
+        bm.verts.new(tip + Vector((rng.uniform(-0.5, 0.5) * base_r, rng.uniform(-0.5, 0.5) * base_r,
+                                   -height * rng.uniform(0.12, 0.22))))
+    bmesh.ops.convex_hull(bm, input=bm.verts)
+    loose = [v for v in bm.verts if not v.link_faces]
+    bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return bm
+
+
+def build_shards():
+    """Jagged volcanic crags: single obsidian blades and clustered crowns of blades, for
+    cliff silhouettes and the lava spires. Normalised to a 1 m footprint, ~1 m tall (scaled in-game)."""
+    variants = [
+        # name, blades, spread
+        ("rock_shard_01", 1, 0.0),
+        ("rock_shard_02", 1, 0.0),
+        ("rock_crag_01", 5, 0.45),
+        ("rock_crag_02", 7, 0.55),
+        ("rock_crag_03", 9, 0.7),
+    ]
+    for i, (name, blades, spread) in enumerate(variants):
+        reset_scene()
+        rng = random.Random(5000 + i * 31)
+        bm = bmesh.new()
+        for b in range(blades):
+            main = b == 0
+            ang = rng.uniform(0, math.tau)
+            dist = 0 if main else rng.uniform(0.35, 1.0) * spread
+            pos = Vector((math.cos(ang) * dist, math.sin(ang) * dist, 0))
+            height = 1.0 if main else rng.uniform(0.35, 0.8)
+            # Side blades lean outward, like the crown of a broken basalt column.
+            outward = Vector((math.cos(ang), math.sin(ang), 0)) * (0.0 if main else rng.uniform(0.1, 0.35))
+            lean = outward + Vector((rng.uniform(-0.08, 0.08), rng.uniform(-0.08, 0.08), 0))
+            tmp = shard_bmesh(rng, height, rng.uniform(0.14, 0.22) if main else rng.uniform(0.08, 0.16), lean)
+            bmesh.ops.transform(tmp, matrix=Matrix.Translation(pos + Vector((0, 0, -0.05))), verts=tmp.verts)
+            merge_into(bm, tmp, 0)
+        # Normalise: footprint 1 m wide, height 1 m, base at z=0, centred in xy.
+        cos = [v.co for v in bm.verts]
+        lo = Vector((min(c.x for c in cos), min(c.y for c in cos), min(c.z for c in cos)))
+        hi = Vector((max(c.x for c in cos), max(c.y for c in cos), max(c.z for c in cos)))
+        mid = (lo + hi) / 2
+        width = max(hi.x - lo.x, hi.y - lo.y)
+        for v in bm.verts:
+            c = v.co
+            v.co = Vector(((c.x - mid.x) / width, (c.y - mid.y) / width, (c.z - lo.z) / (hi.z - lo.z)))
+        ob = obj_from_bmesh(name, bm, "Rock", smooth=False)
+        multi_material(ob, ["Rock"])
+        export(name)
+
+
 # ============================================================================= CHERRY TREE
 
 def build_cherry_tree():
@@ -348,20 +427,36 @@ def build_cherry_tree():
     for p in trunk_ob.data.polygons:
         p.use_smooth = True
 
-    # Blossom clumps: lumpy icospheres clustered around every tip.
+    # Blossom clouds: many small, soft puffs per tip (a big flat-bottomed canopy built from
+    # little florets reads as blossom; a few big icospheres read as pink boulders), plus
+    # sprigs that droop below the branch line.
     bm = bmesh.new()
+
+    def puff(center, r, squash=0.8, subdiv=2):
+        tmp = bmesh.new()
+        bmesh.ops.create_icosphere(tmp, subdivisions=subdiv, radius=r)
+        for v in tmp.verts:
+            v.co *= 1 + rng.uniform(-0.08, 0.08)
+            v.co.z *= squash
+        bmesh.ops.transform(tmp, matrix=Matrix.Translation(center), verts=tmp.verts)
+        merge_into(bm, tmp, 0)
+
     for tip in tips:
-        for _ in range(rng.randint(4, 7)):
-            off = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-0.5, 0.8)))
-            off = off.normalized() * rng.uniform(0.1, 0.75)
-            r = rng.uniform(0.28, 0.55)
-            tmp = bmesh.new()
-            bmesh.ops.create_icosphere(tmp, subdivisions=1, radius=r)
-            for v in tmp.verts:
-                v.co *= 1 + rng.uniform(-0.18, 0.18)
-                v.co.z *= 0.75
-            bmesh.ops.transform(tmp, matrix=Matrix.Translation(tip + off), verts=tmp.verts)
-            merge_into(bm, tmp, 0)
+        # Core: a few medium puffs that give the clump its mass.
+        for _ in range(rng.randint(2, 3)):
+            off = Vector((rng.gauss(0, 0.25), rng.gauss(0, 0.25), rng.gauss(0.05, 0.12)))
+            puff(tip + off, rng.uniform(0.22, 0.32), 0.72)
+        # Florets: lots of small puffs scattered over a flattened dome around the core.
+        for _ in range(rng.randint(9, 14)):
+            d = Vector((rng.gauss(0, 1), rng.gauss(0, 1), abs(rng.gauss(0, 0.6)) - 0.15)).normalized()
+            off = Vector((d.x * 0.62, d.y * 0.62, d.z * 0.38)) * rng.uniform(0.55, 1.0)
+            puff(tip + off, rng.uniform(0.08, 0.16), 0.85, subdiv=1)
+        # Drooping sprigs.
+        for _ in range(rng.choice((0, 1, 1, 2))):
+            base = tip + Vector((rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4), -0.25))
+            for k in range(rng.randint(2, 4)):
+                puff(base + Vector((rng.uniform(-0.05, 0.05), rng.uniform(-0.05, 0.05), -0.16 * k)),
+                     0.1 - 0.015 * k, 1.0, subdiv=1)
     blossoms = obj_from_bmesh("Blossoms", bm, "Blossom", smooth=True)
     multi_material(blossoms, ["Blossom"])
     print(f"[assets] cherry tree: {len(tips)} blossom tips")
@@ -559,6 +654,7 @@ def build_hero():
 
 BUILDERS = {
     "rocks": build_rocks,
+    "shards": build_shards,
     "tree": build_cherry_tree,
     "pine": build_pine,
     "shack": build_shack,

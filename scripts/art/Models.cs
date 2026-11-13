@@ -18,6 +18,9 @@ public static class Models
         { Dir + "rock_boulder_01.glb", Dir + "rock_boulder_02.glb", Dir + "rock_boulder_03.glb", Dir + "rock_chunk_01.glb" };
     public static readonly string[] Slabs = { Dir + "rock_slab_01.glb", Dir + "rock_slab_02.glb" };
     public static readonly string[] Columns = { Dir + "rock_column_01.glb", Dir + "rock_column_02.glb", Dir + "rock_column_03.glb" };
+    /// <summary>Jagged obsidian blades / crowns. Origin at the base, 1 m footprint, 1 m tall.</summary>
+    public static readonly string[] Shards = { Dir + "rock_shard_01.glb", Dir + "rock_shard_02.glb" };
+    public static readonly string[] Crags = { Dir + "rock_crag_01.glb", Dir + "rock_crag_02.glb", Dir + "rock_crag_03.glb" };
     public static readonly string[] AllRocks = Boulders.Concat(Slabs).Concat(Columns).ToArray();
 
     private static readonly Dictionary<string, PackedScene> Scenes = new();
