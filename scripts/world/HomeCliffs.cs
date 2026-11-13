@@ -53,7 +53,9 @@ public partial class HomeCliffs : Node3D
         BuildWaterfalls();
         BuildRoadAndSign();
         BuildVolcano();
+        BuildLava();
         ScatterProps();
+        ScatterFoliage();
     }
 
     // ================================================================== terrain
@@ -61,9 +63,11 @@ public partial class HomeCliffs : Node3D
     private void BuildGround()
     {
         // Main plateau: x -60..60, z -30..90, top at y = 0.
-        Block(new Vector3(0, -6, 30), new Vector3(120, 12, 120), Vector3.Zero, Grass);
+        var ground = Block(new Vector3(0, -6, 30), new Vector3(120, 12, 120), Vector3.Zero, Grass);
+        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride =
+            StyleMaterials.Rock(new Color(0.11f, 0.1f, 0.14f), new Color(0.27f, 0.36f, 0.28f), 0.7f, 0.25f);
         // Dirt yard around the shack.
-        Visual(new BoxMesh { Size = new Vector3(14, 0.05f, 12) }, Mat(Dirt), ShackPos + new Vector3(0, 0.02f, 4), Vector3.Zero);
+        Visual(new BoxMesh { Size = new Vector3(14, 0.05f, 12) }, StyleMaterials.Toon(Dirt.Darkened(0.25f), 0), ShackPos + new Vector3(0, 0.02f, 4), Vector3.Zero);
     }
 
     private void BuildCliffFace()
@@ -74,14 +78,14 @@ public partial class HomeCliffs : Node3D
             float h = _rng.RandfRange(30, 55);
             var size = new Vector3(_rng.RandfRange(8, 12), h, _rng.RandfRange(5, 9));
             var pos = new Vector3(x + _rng.RandfRange(-2, 2), -h / 2f - _rng.RandfRange(0, 6), -31 - _rng.RandfRange(0, 3));
-            Block(pos, size, new Vector3(_rng.RandfRange(-0.15f, 0.25f), _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)),
+            Rock(pos, size, new Vector3(_rng.RandfRange(-0.15f, 0.25f), _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)),
                 _rng.Randf() < 0.5f ? Obsidian : Slate);
         }
         // Overhang ledges just below the lip.
         for (int i = 0; i < 6; i++)
         {
             var pos = new Vector3(_rng.RandfRange(-50, 50), _rng.RandfRange(-14, -5), -35 - _rng.RandfRange(0, 4));
-            Block(pos, new Vector3(_rng.RandfRange(6, 12), 2.5f, _rng.RandfRange(4, 7)),
+            Rock(pos, new Vector3(_rng.RandfRange(6, 12), 2.5f, _rng.RandfRange(4, 7)),
                 new Vector3(_rng.RandfRange(-0.2f, 0.2f), _rng.RandfRange(0, 3), _rng.RandfRange(-0.15f, 0.15f)), Slate);
         }
         // Spires rising out of the cloud sea.
@@ -89,7 +93,7 @@ public partial class HomeCliffs : Node3D
         {
             float h = _rng.RandfRange(50, 110);
             var pos = new Vector3(_rng.RandfRange(-160, 160), -70 + h / 2f, _rng.RandfRange(-70, -260));
-            Block(pos, new Vector3(_rng.RandfRange(10, 24), h, _rng.RandfRange(10, 22)),
+            Rock(pos, new Vector3(_rng.RandfRange(10, 24), h, _rng.RandfRange(10, 22)),
                 new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(0, 3), _rng.RandfRange(-0.12f, 0.12f)),
                 _rng.Randf() < 0.5f ? Obsidian : Slate, collide: false);
         }
@@ -105,7 +109,7 @@ public partial class HomeCliffs : Node3D
                 float h = _rng.RandfRange(18, 42) + (z < 0 ? 12 : 0);
                 var size = new Vector3(_rng.RandfRange(12, 18), h, _rng.RandfRange(10, 14));
                 var pos = new Vector3(side * (64 + _rng.RandfRange(0, 6)), h / 2f - 4, z + _rng.RandfRange(-2, 2));
-                Block(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
+                Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
                     _rng.Randf() < 0.35f ? SlateLight : Slate);
             }
         }
@@ -114,28 +118,25 @@ public partial class HomeCliffs : Node3D
         {
             if (Mathf.Abs(x) < 8) continue;
             float h = _rng.RandfRange(10, 22);
-            Block(new Vector3(x, h / 2f - 2, 94 + _rng.RandfRange(0, 4)), new Vector3(12, h, 10),
+            Rock(new Vector3(x, h / 2f - 2, 94 + _rng.RandfRange(0, 4)), new Vector3(12, h, 10),
                 new Vector3(0, _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)), Slate);
         }
     }
 
+    private CloudSea _clouds;
+
     private void BuildCloudSea()
     {
-        var layer1 = new StandardMaterial3D
+        // Deep base under the puffs so no gaps show through to the void.
+        var basePlane = new StandardMaterial3D
         {
-            AlbedoColor = new Color(0.92f, 0.8f, 0.88f, 0.95f),
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            Roughness = 1f,
-            RimEnabled = true, Rim = 0.6f,
-        };
-        Visual(new PlaneMesh { Size = new Vector2(4000, 4000) }, layer1, new Vector3(0, -62, 0), Vector3.Zero);
-        var layer2 = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(1f, 0.85f, 0.9f, 0.35f),
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            AlbedoColor = new Color(0.3f, 0.24f, 0.42f),
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         };
-        Visual(new PlaneMesh { Size = new Vector2(4000, 4000) }, layer2, new Vector3(0, -52, 0), Vector3.Zero);
+        Visual(new PlaneMesh { Size = new Vector2(4000, 4000) }, basePlane, new Vector3(0, -45, 0), Vector3.Zero);
+        _clouds = new CloudSea { Name = "CloudSea" };
+        AddChild(_clouds);
+        _clouds.Build(_rng);
 
         // Slow drifting mist puffs just below the lip.
         var mist = Particles(140, 14f, new Vector3(90, 4, 40), new Vector3(0, -48, -90),
@@ -149,26 +150,22 @@ public partial class HomeCliffs : Node3D
     {
         var root = new Node3D { Name = "Shack", Position = ShackPos };
         AddChild(root);
-        var wood = Mat(Wood);
-        var dark = Mat(WoodDark);
-        // Floor, walls (door gap on the south side facing the plateau), roof.
-        Block(new Vector3(0, 0.1f, 0), new Vector3(4.4f, 0.2f, 4.4f), Vector3.Zero, WoodDark, root);
-        Block(new Vector3(0, 1.4f, -2.1f), new Vector3(4.4f, 2.8f, 0.2f), Vector3.Zero, Wood, root);      // back
-        Block(new Vector3(-2.1f, 1.4f, 0), new Vector3(0.2f, 2.8f, 4.4f), Vector3.Zero, Wood, root);      // west
-        Block(new Vector3(2.1f, 1.4f, 0), new Vector3(0.2f, 2.8f, 4.4f), Vector3.Zero, Wood, root);       // east
-        Block(new Vector3(-1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root);   // front-left
-        Block(new Vector3(1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root);    // front-right
-        Block(new Vector3(0, 2.55f, 2.1f), new Vector3(1.2f, 0.5f, 0.2f), Vector3.Zero, Wood, root);      // lintel
-        var roof = new MeshInstance3D
-        {
-            Mesh = new PrismMesh { Size = new Vector3(5.2f, 1.8f, 5.2f) },
-            MaterialOverride = dark,
-            Position = new Vector3(0, 3.7f, 0),
-        };
-        root.AddChild(roof);
-        // Window glow (warm, cozy).
-        var glow = new StandardMaterial3D { AlbedoColor = new Color(1f, 0.7f, 0.4f), EmissionEnabled = true, Emission = new Color(1f, 0.6f, 0.3f), EmissionEnergyMultiplier = 2.5f };
-        Visual(new BoxMesh { Size = new Vector3(0.05f, 0.6f, 0.8f) }, glow, new Vector3(-2.22f, 1.6f, 0), Vector3.Zero, root);
+        var wood = StyleMaterials.Toon(Wood);
+        // Model (Blender) + invisible box colliders (door gap on the south side facing the plateau).
+        root.AddChild(Models.Instance(Models.Shack));
+        Block(new Vector3(0, 0.1f, 0), new Vector3(4.4f, 0.2f, 4.4f), Vector3.Zero, WoodDark, root, visible: false);
+        Block(new Vector3(0, 1.4f, -2.1f), new Vector3(4.4f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);      // back
+        Block(new Vector3(-2.1f, 1.4f, 0), new Vector3(0.2f, 2.8f, 4.4f), Vector3.Zero, Wood, root, visible: false);      // west
+        Block(new Vector3(2.1f, 1.4f, 0), new Vector3(0.2f, 2.8f, 4.4f), Vector3.Zero, Wood, root, visible: false);       // east
+        Block(new Vector3(-1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);   // front-left
+        Block(new Vector3(1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);    // front-right
+        Block(new Vector3(0, 2.6f, 2.1f), new Vector3(1.2f, 0.4f, 0.2f), Vector3.Zero, Wood, root, visible: false);      // lintel
+        // Yard props from the Medieval Village kit.
+        Prop(Models.Village("Prop_Crate"), ShackPos + new Vector3(3.2f, 0, 1.2f), 0.4f, 0.9f);
+        Prop(Models.Village("Prop_Crate"), ShackPos + new Vector3(3.3f, 0, 2.4f), 1.2f, 0.75f);
+        Prop(Models.Village("Prop_Wagon"), ShackPos + new Vector3(6.5f, 0, -1f), 1.9f, 1f);
+        for (int f = 0; f < 4; f++)
+            Prop(Models.Village("Prop_WoodenFence_Single"), ShackPos + new Vector3(-7f + f * 2f, 0, 9.5f), 0f, 1f);
         root.AddChild(new OmniLight3D { Position = new Vector3(0, 2.2f, 0), LightColor = new Color(1f, 0.7f, 0.45f), LightEnergy = 1.2f, OmniRange = 6f });
 
         // Bed inside.
@@ -198,50 +195,22 @@ public partial class HomeCliffs : Node3D
         shrine.Rotation = new Vector3(0, Mathf.DegToRad(200), 0); // local +Z leans out over the cliff.
         shrine.AddChild(new CollisionShape3D { Shape = new CylinderShape3D { Radius = 0.6f, Height = 4f }, Position = new Vector3(0, 2, 0) });
 
-        // Gnarled, wind-swept trunk: tilted segments leaning out over the cliff.
-        var bark = Mat(new Color(0.16f, 0.1f, 0.12f));
-        var segs = new (Vector3 pos, Vector3 rot, float r0, float r1, float h)[]
-        {
-            (new Vector3(0, 1.2f, 0), new Vector3(-0.25f, 0, 0.1f), 0.32f, 0.5f, 2.6f),
-            (new Vector3(0.2f, 3.0f, 0.55f), new Vector3(-0.7f, 0, 0.35f), 0.22f, 0.32f, 2.2f),
-            (new Vector3(-0.4f, 3.4f, 0.9f), new Vector3(-0.4f, 0, -0.8f), 0.12f, 0.2f, 2.4f),
-            (new Vector3(0.9f, 4.2f, 1.6f), new Vector3(-1.1f, 0, 0.5f), 0.1f, 0.18f, 2.6f),
-        };
-        foreach (var s in segs)
-            Visual(new CylinderMesh { TopRadius = s.r0, BottomRadius = s.r1, Height = s.h, RadialSegments = 6 }, bark, s.pos, s.rot, shrine);
+        // Gnarled cherry tree modelled in Blender (leans toward local +Z, out over the drop).
+        var tree = Models.Instance(Models.CherryTree);
+        tree.Scale = Vector3.One * 1.3f;
+        shrine.AddChild(tree);
 
-        // Glowing backlit canopy (StandardMaterial3D backlight ≈ cheap subsurface scattering).
-        var canopy = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(0.95f, 0.5f, 0.68f),
-            EmissionEnabled = true,
-            Emission = new Color(0.9f, 0.3f, 0.55f),
-            EmissionEnergyMultiplier = 0.45f,
-            BacklightEnabled = true,
-            Backlight = new Color(1f, 0.55f, 0.7f),
-            RimEnabled = true, Rim = 0.8f, RimTint = 0.6f,
-            Roughness = 1f,
-        };
-        var blobs = new (Vector3 p, float r)[]
-        {
-            (new Vector3(0.5f, 4.8f, 1.8f), 2.0f), (new Vector3(-1.4f, 4.6f, 1.2f), 1.6f),
-            (new Vector3(1.8f, 4.4f, 2.6f), 1.5f), (new Vector3(0.2f, 5.6f, 0.6f), 1.5f),
-            (new Vector3(-0.6f, 4.2f, 2.8f), 1.3f), (new Vector3(2.6f, 5.0f, 1.2f), 1.2f),
-        };
-        foreach (var b in blobs)
-            Visual(new SphereMesh { Radius = b.r, Height = b.r * 1.6f, RadialSegments = 10, Rings = 5 }, canopy, b.p, Vector3.Zero, shrine);
-
-        shrine.AddChild(new OmniLight3D { Position = new Vector3(0.5f, 4.5f, 1.8f), LightColor = Blush, LightEnergy = 1.4f, OmniRange = 12f });
+        shrine.AddChild(new OmniLight3D { Position = new Vector3(0.4f, 5.8f, 2.4f), LightColor = Blush, LightEnergy = 2.2f, OmniRange = 14f });
 
         // Drifting petals blown off the cliff edge.
-        var petals = Particles(160, 9f, new Vector3(3, 1.2f, 2.5f), BlossomPos + new Vector3(0, 4.8f, -1.5f),
+        var petals = Particles(160, 9f, new Vector3(3, 1.2f, 2.5f), BlossomPos + new Vector3(0, 6f, -2.5f),
             new Color(1f, 0.6f, 0.75f), 0.08f, 0.16f, new Vector3(0.35f, -0.25f, -0.5f));
         petals.Name = "Petals";
 
         var label = new Label3D
         {
             Text = "Sacred Blossom",
-            Position = new Vector3(0, 7.2f, 1.2f),
+            Position = new Vector3(0, 9.5f, 2f),
             Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             FontSize = 64, PixelSize = 0.01f, OutlineSize = 12,
             Modulate = Blush,
@@ -311,6 +280,74 @@ void fragment() {
         var basePos = center - new Vector3(0, size.Y / 2f, 0);
         Particles(60, 4f, new Vector3(size.X * 0.6f, 1, 2), basePos + Vector3.Up,
             new Color(0.95f, 0.97f, 1f, 0.35f), 1.5f, 3.5f, new Vector3(0, 0.6f, 0));
+    }
+
+    private const string LavaShader = @"shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never;
+uniform vec3 hot : source_color = vec3(1.0, 0.86, 0.4);
+uniform vec3 cool : source_color = vec3(0.95, 0.24, 0.04);
+uniform float speed = 0.45;
+uniform float columns = 7.0;
+uniform float intensity = 3.2;
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+void fragment() {
+    float col = floor(UV.x * columns);
+    float flow = fract(UV.y * (1.5 + hash(col) * 1.5) - TIME * speed * (0.7 + hash(col + 5.0) * 0.6) + hash(col + 2.0) * 10.0);
+    float streak = smoothstep(0.35, 1.0, flow);
+    float center = 1.0 - abs(UV.x * 2.0 - 1.0);
+    vec3 c = mix(cool, hot, clamp(streak * 0.6 + center * 0.55 - UV.y * 0.25, 0.0, 1.0));
+    ALBEDO = c * intensity;
+    ALPHA = smoothstep(0.0, 0.45, center) * (1.0 - smoothstep(0.8, 1.0, UV.y));
+}";
+
+    private void BuildLava()
+    {
+        var lavaMat = new ShaderMaterial { Shader = new Shader { Code = LavaShader } };
+        var magmaLight = new Color(1f, 0.45f, 0.15f);
+
+        void Fall(Vector3 top, float width, float length, float rotY = 0f)
+        {
+            var quad = new MeshInstance3D
+            {
+                Mesh = new QuadMesh { Size = new Vector2(width, length) },
+                MaterialOverride = lavaMat,
+                Position = top - new Vector3(0, length / 2f, 0),
+                Rotation = new Vector3(0, rotY, 0),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            AddChild(quad);
+            // Glowing lip where it spills out of the rock.
+            AddChild(new OmniLight3D { Position = top + new Vector3(0, -1, 1.5f), LightColor = magmaLight, LightEnergy = 3f, OmniRange = 14f });
+            AddChild(new OmniLight3D { Position = top + new Vector3(0, -length * 0.6f, 2f), LightColor = magmaLight, LightEnergy = 4f, OmniRange = 30f });
+            _clouds?.LavaPoints.Add(new Vector4(top.X, top.Y - length, top.Z, 26f));
+        }
+
+        // Under the blossom tree: two falls pouring out of the cliff face into the clouds.
+        Fall(new Vector3(-12f, -5f, -38.5f), 2.6f, 42f, 0.1f);
+        Fall(new Vector3(-21f, -9f, -38f), 1.6f, 36f, -0.15f);
+        Fall(new Vector3(-3.5f, -14f, -39f), 1.2f, 30f, 0.05f);
+
+        // Lava spires out in the cloud sea (right side of the classic view, like the concept art).
+        foreach (var (pos, height, width) in new[]
+                 {
+                     (new Vector3(14f, -36f, -80f), 50f, 3.6f),
+                     (new Vector3(40f, -38f, -115f), 64f, 4.5f),
+                     (new Vector3(-48f, -40f, -150f), 58f, 4f),
+                 })
+        {
+            var spire = Models.Instance(Models.Columns[_rng.RandiRange(0, Models.Columns.Length - 1)]);
+            spire.Scale = new Vector3(16f, height, 14f);
+            spire.Position = pos + new Vector3(0, height / 2f - 6f, 0);
+            spire.Rotation = new Vector3(0, _rng.RandfRange(0, Mathf.Tau), 0);
+            AddChild(spire);
+            Fall(pos + new Vector3(0, height - 8f, 7.5f), width, height - 4f, _rng.RandfRange(-0.2f, 0.2f));
+        }
+        _clouds?.ApplyLava();
+
+        // Embers drifting up past the cliff lip.
+        var embers = Particles(220, 9f, new Vector3(45, 14, 10), new Vector3(-10, -8, -40),
+            new Color(1f, 0.42f, 0.08f), 0.05f, 0.12f, new Vector3(0.4f, 1.6f, 0.2f), emissive: 1.6f);
+        embers.Name = "Embers";
     }
 
     private void BuildRoadAndSign()
@@ -417,6 +454,36 @@ void fragment() {
         }
     }
 
+    private void ScatterFoliage()
+    {
+        string[] small =
+        {
+            "Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Short", "Grass_Wispy_Tall", "Grass_Common_Short",
+            "Flower_3_Group", "Flower_4_Group", "Flower_3_Single", "Clover_1", "Clover_2", "Fern_1",
+            "Mushroom_Common", "Pebble_Round_1", "Pebble_Square_2", "Plant_1", "Plant_7",
+        };
+        int placedCount = 0, guard = 0;
+        while (placedCount < 260 && guard++ < 4000)
+        {
+            var p = new Vector3(_rng.RandfRange(-56, 56), 0, _rng.RandfRange(-28, 88));
+            if (Mathf.Abs(p.X - 2) < 2.5f && p.Z > 0) continue;                       // road
+            if (p.DistanceTo(PoolPos) < 9 || p.DistanceTo(ShackPos) < 4) continue;     // pool, shack
+            Prop(Models.Nature(small[_rng.RandiRange(0, small.Length - 1)]), p, _rng.RandfRange(0, Mathf.Tau), _rng.RandfRange(0.8f, 1.4f));
+            placedCount++;
+        }
+        for (int i = 0; i < 14; i++)
+        {
+            var p = new Vector3(_rng.RandfRange(-55, 55), 0, _rng.RandfRange(-20, 85));
+            if (p.DistanceTo(ShackPos) < 7 || (Mathf.Abs(p.X - 2) < 4 && p.Z > 0)) continue;
+            Prop(Models.Nature(_rng.Randf() < 0.6f ? "Bush_Common" : "Bush_Common_Flowers"), p, _rng.RandfRange(0, Mathf.Tau), _rng.RandfRange(0.9f, 1.4f));
+        }
+        // Wind-bent twisted trees along the cliff lip, and a few dead ones toward the volcano side.
+        foreach (var x in new[] { -46f, -30f, 22f, 36f, 50f })
+            Prop(Models.Nature("TwistedTree_" + _rng.RandiRange(1, 5)), new Vector3(x, 0, -27.5f), _rng.RandfRange(0, Mathf.Tau), _rng.RandfRange(0.9f, 1.3f));
+        foreach (var p in new[] { new Vector3(-52, 0, 30), new Vector3(-50, 0, 60), new Vector3(48, 0, 70) })
+            Prop(Models.Nature("DeadTree_" + _rng.RandiRange(1, 5)), p, _rng.RandfRange(0, Mathf.Tau), 1.1f);
+    }
+
     private void Spawn(PackedScene scene, Vector3 pos, List<Vector3> placed)
     {
         var n = scene.Instantiate<Node3D>();
@@ -440,10 +507,10 @@ void fragment() {
 
     /// <summary>Box with collision (StaticBody3D). Pass collide:false for distant scenery.</summary>
     private Node3D Block(Vector3 pos, Vector3 size, Vector3 rot, Color color, Node3D parent = null,
-        bool collide = true, uint layer = GameState.LayerWorld)
+        bool collide = true, uint layer = GameState.LayerWorld, bool visible = true)
     {
         parent ??= this;
-        var mesh = new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = Mat(color) };
+        var mesh = new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = Mat(color), Visible = visible };
         if (!collide)
         {
             mesh.Position = pos;
@@ -458,12 +525,54 @@ void fragment() {
         return body;
     }
 
+    /// <summary>Faceted rock model (Blender kit) scaled to roughly fill the given box.</summary>
+    private Node3D Rock(Vector3 pos, Vector3 size, Vector3 rot, Color unused, Node3D parent = null, bool collide = true)
+    {
+        parent ??= this;
+        var path = Models.AllRocks[_rng.RandiRange(0, Models.AllRocks.Length - 1)];
+        size *= 1.15f;
+        Node3D node = collide ? Models.RockBody(path, size) : Models.Instance(path);
+        if (!collide) node.Scale = size;
+        node.Position = pos;
+        node.Rotation = rot;
+        parent.AddChild(node);
+        return node;
+    }
+
+    /// <summary>Decorative model without collision.</summary>
+    private Node3D Prop(string path, Vector3 pos, float rotY, float scale, Node3D parent = null)
+    {
+        var node = Models.Instance(path);
+        node.Position = pos;
+        node.Rotation = new Vector3(0, rotY, 0);
+        node.Scale = Vector3.One * scale;
+        (parent ?? this).AddChild(node);
+        return node;
+    }
+
     private MeshInstance3D Visual(Mesh mesh, Material mat, Vector3 pos, Vector3 rot, Node3D parent = null)
     {
         var mi = new MeshInstance3D { Mesh = mesh, MaterialOverride = mat, Position = pos, Rotation = rot };
         (parent ?? this).AddChild(mi);
         return mi;
     }
+
+    private static GradientTexture2D _softDot;
+
+    /// <summary>Round, soft-edged sprite so particles read as motes, not squares.</summary>
+    private static GradientTexture2D SoftDot => _softDot ??= new GradientTexture2D
+    {
+        Width = 64,
+        Height = 64,
+        Fill = GradientTexture2D.FillEnum.Radial,
+        FillFrom = new Vector2(0.5f, 0.5f),
+        FillTo = new Vector2(1f, 0.5f),
+        Gradient = new Gradient
+        {
+            Offsets = new[] { 0f, 0.35f, 1f },
+            Colors = new[] { Colors.White, new Color(1, 1, 1, 0.75f), new Color(1, 1, 1, 0) },
+        },
+    };
 
     private GpuParticles3D Particles(int amount, float lifetime, Vector3 extents, Vector3 position, Color color,
         float sizeMin, float sizeMax, Vector3 drift, float emissive = 0f)
@@ -475,6 +584,7 @@ void fragment() {
             BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
             VertexColorUseAsAlbedo = true,
             AlbedoColor = emissive > 0 ? new Color(emissive, emissive, emissive) : Colors.White,
+            AlbedoTexture = SoftDot,
         };
         var process = new ParticleProcessMaterial
         {

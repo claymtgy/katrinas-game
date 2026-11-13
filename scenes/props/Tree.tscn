@@ -48,6 +48,8 @@ DamagePerDrop = 15.0
 BonusOnBreak = 3
 RespawnSeconds = 90.0
 BreakStyle = "fall"
+ModelPaths = "res://assets/thirdparty/quaternius/nature/glTF/Pine_1.gltf;res://assets/thirdparty/quaternius/nature/glTF/Pine_2.gltf;res://assets/thirdparty/quaternius/nature/glTF/Pine_3.gltf;res://assets/thirdparty/quaternius/nature/glTF/Pine_4.gltf;res://assets/thirdparty/quaternius/nature/glTF/Pine_5.gltf;res://assets/thirdparty/quaternius/nature/glTF/CommonTree_1.gltf;res://assets/thirdparty/quaternius/nature/glTF/CommonTree_2.gltf;res://assets/thirdparty/quaternius/nature/glTF/CommonTree_3.gltf"
+TargetHeight = 7.0
 
 [node name="Visual" type="Node3D" parent="."]
 

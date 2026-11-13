@@ -29,6 +29,8 @@ DamagePerDrop = 18.0
 BonusOnBreak = 3
 RespawnSeconds = 120.0
 BreakStyle = "crumble"
+ModelPaths = "res://assets/models/rock_boulder_01.glb;res://assets/models/rock_boulder_02.glb;res://assets/models/rock_boulder_03.glb;res://assets/models/rock_chunk_01.glb"
+ModelScale = 1.7
 
 [node name="Visual" type="Node3D" parent="."]
 

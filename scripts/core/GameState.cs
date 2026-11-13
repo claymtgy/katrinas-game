@@ -18,7 +18,7 @@ public partial class GameState : Node
     public Inventory Inventory { get; } = new();
 
     /// <summary>0..1, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.</summary>
-    public float TimeOfDay { get; set; } = 0.68f;
+    public float TimeOfDay { get; set; } = 0.735f;
     public int Day { get; set; } = 1;
 
     /// <summary>Equipped weapon item id; "" = bare fists.</summary>

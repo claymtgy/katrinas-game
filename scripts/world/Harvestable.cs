@@ -13,6 +13,13 @@ public partial class Harvestable : StaticBody3D
     /// <summary>"fall" topples like a tree, "crumble" shrinks like a rock.</summary>
     [Export] public string BreakStyle { get; set; } = "fall";
 
+    [ExportGroup("Model")]
+    /// <summary>Semicolon-separated model paths; one is picked at random to replace the Visual's placeholder meshes.</summary>
+    [Export] public string ModelPaths { get; set; } = "";
+    /// <summary>If > 0 the model is scaled so its height matches this (meters); otherwise ModelScale is used.</summary>
+    [Export] public float TargetHeight { get; set; } = 0f;
+    [Export] public float ModelScale { get; set; } = 1f;
+
     private Health _health;
     private Node3D _visual;
     private float _accumulated;
@@ -24,8 +31,24 @@ public partial class Harvestable : StaticBody3D
         _health = GetNode<Health>("Health");
         _visual = GetNode<Node3D>("Visual");
         _layer = CollisionLayer;
+        SwapInModel();
         _health.Damaged += OnDamaged;
         _health.Died += OnBroken;
+    }
+
+    private void SwapInModel()
+    {
+        var paths = ModelPaths.Split(';', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries);
+        if (paths.Length == 0) return;
+        foreach (var child in _visual.GetChildren())
+        {
+            _visual.RemoveChild(child);
+            child.QueueFree();
+        }
+        var model = Models.Instance(paths[GD.RandRange(0, paths.Length - 1)]);
+        _visual.AddChild(model);
+        if (TargetHeight > 0) Models.FitHeight(model, TargetHeight);
+        else model.Scale = Vector3.One * ModelScale;
     }
 
     private void OnDamaged(float amount, Node source)

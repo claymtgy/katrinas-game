@@ -30,3 +30,18 @@ project/assembly_name="KatrinasGame"
 [rendering]
 
 anti_aliasing/quality/msaa_3d=2
+
+[shader_globals]
+
+sun_dir={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
+sun_color={
+"type": "color",
+"value": Color(1, 0.8, 0.6, 1)
+}
+night={
+"type": "float",
+"value": 0.0
+}

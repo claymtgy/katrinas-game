@@ -158,6 +158,19 @@ public partial class DevAutotest : Node
         await Wait(0.6);
         await Shot("07_noon_waterfall");
 
+        // Hero shot framed like the concept art: hero on the lip, blossom tree to the right, sunset beyond.
+        Hud.Instance.Visible = false;
+        gs.TimeOfDay = 0.748f;
+        p.Teleport(new Vector3(-16, 0.1f, -27.5f));
+        p.Rig.SetLook(-0.55f, 0.02f);
+        await Wait(1.0);
+        await Shot("08_hero_shot");
+        p.Rig.SetLook(2.6f, -0.1f); // turn around: hero's face, shack and yard
+        gs.TimeOfDay = 0.62f;
+        await Wait(0.8);
+        await Shot("09_hero_front_yard");
+        Hud.Instance.Visible = true;
+
         GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
         GetTree().Quit(_fails == 0 ? 0 : 1);
     }
