@@ -1,0 +1,76 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/Harvestable.cs" id="1_harv"]
+[ext_resource type="Script" path="res://scripts/combat/Health.cs" id="2_health"]
+
+[sub_resource type="CylinderMesh" id="Mesh_trunk"]
+top_radius = 0.16
+bottom_radius = 0.3
+height = 3.0
+radial_segments = 6
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="Mat_trunk"]
+albedo_color = Color(0.3, 0.19, 0.15, 1)
+roughness = 1.0
+
+[sub_resource type="CylinderMesh" id="Mesh_canopy_low"]
+top_radius = 0.0
+bottom_radius = 1.7
+height = 3.2
+radial_segments = 6
+rings = 1
+
+[sub_resource type="CylinderMesh" id="Mesh_canopy_high"]
+top_radius = 0.0
+bottom_radius = 1.15
+height = 2.4
+radial_segments = 6
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="Mat_canopy"]
+albedo_color = Color(0.17, 0.36, 0.33, 1)
+roughness = 1.0
+rim_enabled = true
+rim = 0.4
+rim_tint = 0.8
+
+[sub_resource type="CylinderShape3D" id="Shape_trunk"]
+height = 3.0
+radius = 0.35
+
+[node name="Tree" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_harv")
+DropItemId = "wood"
+DamagePerDrop = 15.0
+BonusOnBreak = 3
+RespawnSeconds = 90.0
+BreakStyle = "fall"
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Trunk" type="MeshInstance3D" parent="Visual"]
+position = Vector3(0, 1.5, 0)
+mesh = SubResource("Mesh_trunk")
+surface_material_override/0 = SubResource("Mat_trunk")
+
+[node name="CanopyLow" type="MeshInstance3D" parent="Visual"]
+position = Vector3(0, 3.6, 0)
+mesh = SubResource("Mesh_canopy_low")
+surface_material_override/0 = SubResource("Mat_canopy")
+
+[node name="CanopyHigh" type="MeshInstance3D" parent="Visual"]
+position = Vector3(0, 5.1, 0)
+rotation = Vector3(0, 0.5, 0)
+mesh = SubResource("Mesh_canopy_high")
+surface_material_override/0 = SubResource("Mat_canopy")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.5, 0)
+shape = SubResource("Shape_trunk")
+
+[node name="Health" type="Node" parent="."]
+script = ExtResource("2_health")
+Max = 60.0

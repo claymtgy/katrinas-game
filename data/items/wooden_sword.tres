@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "wooden_sword"
+DisplayName = "Wooden Sword"
+Category = "weapon"
+IconColor = Color(0.7, 0.5, 0.3, 1)
+Damage = 15.0
+Reach = 2.0
+AttackCooldown = 0.45
+WeaponSize = Vector3(0.07, 0.1, 1.0)

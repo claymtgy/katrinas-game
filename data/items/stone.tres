@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "stone"
+DisplayName = "Stone"
+Category = "resource"
+IconColor = Color(0.5, 0.52, 0.58, 1)
+
+
+
+

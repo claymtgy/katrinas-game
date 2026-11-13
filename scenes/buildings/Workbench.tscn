@@ -1,0 +1,78 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/crafting/CraftingStation.cs" id="1_station"]
+
+[sub_resource type="BoxMesh" id="Mesh_top"]
+size = Vector3(1.8, 0.12, 0.9)
+
+[sub_resource type="BoxMesh" id="Mesh_leg"]
+size = Vector3(0.12, 0.85, 0.12)
+
+[sub_resource type="BoxMesh" id="Mesh_tool"]
+size = Vector3(0.5, 0.06, 0.12)
+
+[sub_resource type="BoxMesh" id="Mesh_block"]
+size = Vector3(0.3, 0.22, 0.3)
+
+[sub_resource type="StandardMaterial3D" id="Mat_plank"]
+albedo_color = Color(0.58, 0.4, 0.26, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_dark"]
+albedo_color = Color(0.3, 0.2, 0.15, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_iron"]
+albedo_color = Color(0.4, 0.42, 0.48, 1)
+metallic = 0.6
+roughness = 0.5
+
+[sub_resource type="BoxShape3D" id="Shape_bench"]
+size = Vector3(1.8, 0.95, 0.9)
+
+[node name="Workbench" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_station")
+StationId = "workbench"
+StationName = "Workbench"
+
+[node name="Top" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.9, 0)
+mesh = SubResource("Mesh_top")
+surface_material_override/0 = SubResource("Mat_plank")
+
+[node name="Leg1" type="MeshInstance3D" parent="."]
+position = Vector3(-0.78, 0.425, -0.33)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_dark")
+
+[node name="Leg2" type="MeshInstance3D" parent="."]
+position = Vector3(0.78, 0.425, -0.33)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_dark")
+
+[node name="Leg3" type="MeshInstance3D" parent="."]
+position = Vector3(-0.78, 0.425, 0.33)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_dark")
+
+[node name="Leg4" type="MeshInstance3D" parent="."]
+position = Vector3(0.78, 0.425, 0.33)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_dark")
+
+[node name="Saw" type="MeshInstance3D" parent="."]
+position = Vector3(-0.35, 0.99, 0.1)
+rotation = Vector3(0, 0.4, 0)
+mesh = SubResource("Mesh_tool")
+surface_material_override/0 = SubResource("Mat_iron")
+
+[node name="Block" type="MeshInstance3D" parent="."]
+position = Vector3(0.5, 1.07, -0.1)
+mesh = SubResource("Mesh_block")
+surface_material_override/0 = SubResource("Mat_dark")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.475, 0)
+shape = SubResource("Shape_bench")

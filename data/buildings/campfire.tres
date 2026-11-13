@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Campfire.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "campfire"
+DisplayName = "Campfire"
+Description = "Light and warmth. Rest here to recover."
+Scene = ExtResource("2_scene")
+Cost = {"wood": 3, "stone": 2}
+Footprint = Vector3(1.3, 0.6, 1.3)
+SortOrder = 1

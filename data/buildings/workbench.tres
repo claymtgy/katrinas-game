@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Workbench.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "workbench"
+DisplayName = "Workbench"
+Description = "Craft basic weapons and tools."
+Scene = ExtResource("2_scene")
+Cost = {"wood": 6}
+Footprint = Vector3(1.8, 1.0, 0.9)
+SortOrder = 0

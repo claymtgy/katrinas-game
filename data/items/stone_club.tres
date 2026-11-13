@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "stone_club"
+DisplayName = "Stone Club"
+Category = "weapon"
+IconColor = Color(0.45, 0.45, 0.5, 1)
+Damage = 24.0
+Reach = 1.9
+AttackCooldown = 0.7
+WeaponSize = Vector3(0.16, 0.16, 0.85)
