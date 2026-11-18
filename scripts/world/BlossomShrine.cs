@@ -20,6 +20,7 @@ public partial class BlossomShrine : StaticBody3D, IInteractable, IServerInterac
     {
         player.SpawnPoint = GlobalPosition - GlobalBasis.Z * 3f + Vector3.Up * 0.2f;
         Net.Instance.ServerRestore(player);
+        Journal.Fact($"prayed:{Name}");
         Net.Instance.ToastTo(player.PeerId, $"The {ShrineName} glows warmly. Respawn point set, wounds healed.");
     }
 }

@@ -54,8 +54,8 @@ public partial class BuildSystem : Node
         if (e.IsActionPressed("next_build")) Cycle(1);
         else if (e.IsActionPressed("prev_build")) Cycle(-1);
         else if (e.IsActionPressed("rotate_build")) _rotationY += Mathf.DegToRad(RotationStepDegrees);
-        else if (e.IsActionPressed("attack")) TryPlace();
-        else if (e.IsActionPressed("block")) SetActive(false);
+        else if (Gamepad.Pressed(e, "attack")) TryPlace();
+        else if (Gamepad.Pressed(e, "block")) SetActive(false);
         else return;
         GetViewport().SetInputAsHandled();
     }

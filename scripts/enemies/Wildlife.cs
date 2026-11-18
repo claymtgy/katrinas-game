@@ -292,6 +292,7 @@ public partial class Wildlife : Node3D
         _camps[camp].Cleared = true;
         _camps[camp].RespawnDay = GameState.Instance.Day + CampRespawnDays;
         Net.Instance.ToastAll("The bandit camp is cleared! The Ashby road is safe… for now.");
+        Journal.Fact("camp_cleared");
     }
 
     // ================================================================== server: harpy roosts
@@ -334,6 +335,7 @@ public partial class Wildlife : Node3D
         _roosts[roost].Cleared = true;
         _roosts[roost].RespawnDay = GameState.Instance.Day + RoostRespawnDays;
         Net.Instance.ToastAll("The harpy roost is quiet. For now.");
+        Journal.Fact("roost_cleared");
     }
 
     // ================================================================== server: raids

@@ -58,7 +58,8 @@ public partial class CameraRig : Node3D
             r.X = Mathf.Clamp(r.X - motion.Relative.Y * MouseSensitivity, -1.45f, 1.3f);
             _pivot.Rotation = r;
         }
-        else if (e is InputEventMouseButton { Pressed: true } && Input.MouseMode != Input.MouseModeEnum.Captured && !gs.UiOpen)
+        else if (e is InputEventMouseButton { Pressed: true } or InputEventJoypadButton { Pressed: true }
+                 && Input.MouseMode != Input.MouseModeEnum.Captured && !gs.UiOpen)
         {
             // Clicking back into the game recaptures the mouse (and doesn't swing).
             Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -69,6 +70,20 @@ public partial class CameraRig : Node3D
             SetView(!FirstPerson, false);
             GetViewport().SetInputAsHandled();
         }
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!_local) return;
+        var gs = GameState.Instance;
+        if (gs.UiOpen || Input.MouseMode != Input.MouseModeEnum.Captured) return;
+        // Right stick look.
+        var look = Gamepad.LookDelta((float)delta);
+        if (look == Vector2.Zero) return;
+        RotateY(-look.X);
+        var r = _pivot.Rotation;
+        r.X = Mathf.Clamp(r.X - look.Y, -1.45f, 1.3f);
+        _pivot.Rotation = r;
     }
 
     /// <summary>(yaw, pitch) in radians: sent over the network as the player's aim.</summary>

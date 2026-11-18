@@ -88,6 +88,7 @@ public partial class PlayerAbility : Node
                 break;
             case PlayerClasses.ArcherId:
                 model?.PlayOneShot("1H_Ranged_Shoot", 1.8f);
+                _player.Combat.PlayBowShot();
                 Sfx.At("bow", at + Vector3.Up * 1.3f, 0f);
                 break;
         }

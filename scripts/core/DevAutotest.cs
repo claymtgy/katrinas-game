@@ -178,12 +178,33 @@ public partial class DevAutotest : Node
         int before = Projectile.Spawned;
         Check(p.Ability.TryUse(), "Archer shoots");
         await Wait(0.12);
+        Check(p.Combat.Bow != null && p.Combat.Bow.GetParent() == p.Rig.Camera, "first person: the archer holds a bow");
+        Check(p.Combat.Bow != null && !p.Combat.Bow.Nocked, "...and the arrow has left the string");
         await Shot("26_arrow");
         Check(Projectile.Spawned > before, "an arrow flies");
         Check(await Until(() => far.Health.Current < far.Health.Max, 3), $"the arrow hits a wolf 18 m away");
         Check(Mathf.IsEqualApprox(far.Health.Max - far.Health.Current, Projectile.ArrowDamage * Projectile.ArrowLongBonus),
             $"...for the long-shot damage ({far.Health.Max - far.Health.Current:0.#})");
         Kill(far);
+        await Wait(0.6);
+        Check(p.Combat.Bow != null && p.Combat.Bow.Nocked, "...and another is nocked");
+        await Shot("26b_bow_ready");
+        p.Rig.SetView(false, true);
+        await Wait(0.2);
+        Check(p.Combat.Bow != null && p.Combat.Bow.GetParent() is BoneAttachment3D, "third person: the bow is in the archer's left hand");
+        p.Ability.ResetCooldown();
+        p.Ability.TryUse();
+        await Wait(0.15);
+        await Shot("26c_bow_third_person");
+        var look = p.Rig.Look;
+        p.Rig.SetLook(look.Yaw - Mathf.Pi * 0.5f, -0.15f);
+        p.Ability.ResetCooldown();
+        p.Ability.TryUse();
+        await Wait(0.12);
+        await Shot("26d_bow_side");
+        p.Rig.SetLook(look.Yaw, look.Pitch);
+        p.Rig.SetView(true, true);
+        await Wait(0.2);
 
         // Wizard: a firebolt bursts on its target and scorches the one beside it.
         await Become(PlayerClasses.WizardId);
@@ -565,7 +586,7 @@ public partial class DevAutotest : Node
         int coins = Supplies.Count(p, "coin");
         net.RequestEnchant("leather_jerkin", Gear.Ward, altar);
         Check(await Until(() => p.Worn.GetValueOrDefault(Gear.Body) == "leather_jerkin@ward", 3), "enchanting a worn piece swaps it for the enchanted one");
-        Check(Mathf.IsEqualApprox(Gear.Armor(p), 16f), $"Warding adds 4 armour ({Gear.Armor(p)})");
+        Check(Mathf.IsEqualApprox(Gear.Armor(p), 13f), $"Warding adds 4 armour (jerkin, cloak, boots: 9 + 4) ({Gear.Armor(p)})");
         Check(Supplies.Count(p, "coin") == coins - Gear.CoinCost, "enchanting costs coins (and shards)");
         float max = p.Health.Max;
         net.RequestEnchant("leather_cap", Gear.Vigor, altar);
@@ -620,6 +641,180 @@ public partial class DevAutotest : Node
     /// <summary>Raids (GDD §6, §9): bandits march on the base at dusk; a watchtower shoots them;
     /// they wreck buildings and loot the stockpile; killing them gets the loot back; the base is
     /// patched up at dawn.</summary>
+    private static void Pad(JoyButton button, bool pressed) =>
+        Input.ParseInputEvent(new InputEventJoypadButton { ButtonIndex = button, Pressed = pressed, Device = 0 });
+
+    private async Task Tap(JoyButton button)
+    {
+        Pad(button, true);
+        await Wait(0.08);
+        Pad(button, false);
+        await Wait(0.12);
+    }
+
+    private static void Stick(JoyAxis axis, float value) =>
+        Input.ParseInputEvent(new InputEventJoypadMotion { Axis = axis, AxisValue = value, Device = 0 });
+
+    /// <summary>Goals, the journal, errands, tips, the marker; then the same game on a controller:
+    /// stick move and look, a trigger swing (one per pull), menus with the d-pad, button prompts.</summary>
+    private async Task ControllerAndGuidance(GameState gs, PlayerController p)
+    {
+        var hud = Hud.Instance;
+        var journal = Journal.Instance;
+        hud.CloseMenus();
+        gs.TimeOfDay = 0.4f;
+        await Wait(1.0);
+
+        // By now the run has gathered, stored, built, crafted, slept, been to Ashby, traded,
+        // farmed, cleared the camp, worn and enchanted armour and built the cottage.
+        string[] expect = { "gather", "stash", "workbench", "weapon", "ashby", "camp", "farm", "armour", "falls", "enchant", "cottage" };
+        var missing = expect.Where(id => !journal.Completed.Contains(id)).ToList();
+        Check(missing.Count == 0, $"goals ticked off by playing ({journal.Completed.Count} done{(missing.Count > 0 ? ", missing " + string.Join(", ", missing) : "")})");
+
+        // Save and load keep the journal.
+        var saved = journal.ToDict();
+        journal.Reset();
+        Check(journal.Current?.Id == "gather", "a new world starts on the first goal");
+        journal.Apply(saved);
+        Check(journal.Completed.Count == ((Godot.Collections.Array)saved["done"]).Count, "the journal saves and loads");
+
+        // The tracker and the marker, with the journal rewound to "Follow the road south to Ashby".
+        journal.Apply(new Godot.Collections.Dictionary
+        {
+            ["done"] = new Godot.Collections.Array { "gather", "stash", "workbench", "weapon", "sleep" },
+            ["facts"] = new Godot.Collections.Array(), ["errands"] = 0,
+        });
+        Check(journal.Current?.Id == "ashby", "the tracker moves on to the next goal");
+        p.Teleport(new Vector3(6, 0.1f, -4));
+        p.Rig.SetView(false, true);
+        p.Rig.SetLook(Mathf.Pi, -0.15f); // face south, down the road
+        await Wait(0.6);
+        Check(hud.MarkerShown, "a marker points to Ashby");
+        await Shot("41_goal_tracker");
+        p.Rig.SetLook(0, -0.15f); // face away: the marker goes to the edge
+        await Wait(0.3);
+        Check(hud.MarkerShown, "...and stays on the edge when it's behind you");
+        hud.OpenCharacter(journal: true);
+        await Wait(0.5);
+        Check(hud.CharacterOpen && hud.JournalTabOpen, "the journal tab opens (J)");
+        await Shot("42_journal");
+        hud.CloseMenus();
+        journal.Apply(saved);
+
+        // A goal done while you watch: the banner.
+        int done = journal.Completed.Count;
+        journal.Completed.Remove("cottage");
+        journal.Apply(journal.ToDict());
+        Check(journal.Current?.Id == "cottage", "an unfinished goal is current");
+        Check(await Until(() => journal.Completed.Contains("cottage"), 3), "the server notices the goal is done");
+        await Wait(0.3);
+        await Shot("43_goal_complete");
+
+        // An errand for Marta.
+        var trader = GetTree().CurrentScene.FindChild("Trader", true, false) as Trader;
+        Check(trader != null, "Marta is in Ashby");
+        if (trader != null)
+        {
+            p.Teleport(trader.GlobalPosition + trader.GlobalBasis.Z * 1.6f + Vector3.Up * 0.1f);
+            await Wait(0.3);
+            var errand = journal.CurrentErrand;
+            int coins = p.Pack.Count("coin");
+            Supplies.Give(p, errand.Item, errand.Count);
+            hud.OpenTrade(trader);
+            await Wait(0.4);
+            await Shot("44_errand");
+            Net.Instance.RequestErrand(trader);
+            Check(await Until(() => journal.ErrandsDone == 1, 3), "an errand is handed in");
+            Check(p.Pack.Count("coin") == coins + errand.Reward && journal.CurrentErrand != errand, $"...pays {errand.Reward} coins and Marta asks for something else");
+            hud.CloseMenus();
+        }
+
+        // Tips: once each, when they matter.
+        Hud.TipsEnabled = true;
+        hud.ResetTips();
+        p.Health.TakeDamage(p.Health.Max * 0.75f, null);
+        Check(await Until(() => hud.TipShowing == "hurt", 2), "a tip when you're badly hurt");
+        await Wait(0.4);
+        await Shot("45_tip");
+        p.Health.Heal(p.Health.Max);
+        Hud.TipsEnabled = false;
+        hud.ResetTips();
+
+        // ---- Controller.
+        p.Teleport(new Vector3(6, 0.1f, -4));
+        p.Rig.SetView(true, true);
+        p.Rig.SetLook(0, -0.1f);
+        await Wait(0.3);
+        Input.MouseMode = Input.MouseModeEnum.Captured;
+        await Tap(JoyButton.Y); // any button: the controller is in use now (and it's the ability)
+        Check(Gamepad.UsingPad && Gamepad.ButtonName("interact") == "X", "pressing a pad button switches the prompts to the controller (X to use)");
+        Gamepad.SetDevice(true, 0, Gamepad.Style.PlayStation);
+        Check(Gamepad.ButtonName("interact") == "□" && Gamepad.Format("{jump} jump") == "✕ jump", "a DualSense shows its own symbols");
+        p.Ability.ResetCooldown();
+
+        // Right stick turns; left stick walks.
+        float yaw = p.Rig.Look.Yaw;
+        Stick(JoyAxis.RightX, 1f);
+        await Wait(0.4);
+        Stick(JoyAxis.RightX, 0f);
+        Check(Mathf.Abs(Mathf.AngleDifference(yaw, p.Rig.Look.Yaw)) > 0.5f, $"the right stick turns the camera ({Mathf.RadToDeg(Mathf.AngleDifference(yaw, p.Rig.Look.Yaw)):0}°)");
+        var from = p.GlobalPosition;
+        Stick(JoyAxis.LeftY, -1f);
+        await Wait(0.7);
+        Stick(JoyAxis.LeftY, 0f);
+        Check(p.GlobalPosition.DistanceTo(from) > 1.5f, $"the left stick walks ({p.GlobalPosition.DistanceTo(from):0.0} m)");
+
+        // A trigger pull is one swing, however many motion events it sends.
+        p.RestoreStamina();
+        await Wait(0.6);
+        float st = p.Stamina;
+        Stick(JoyAxis.TriggerRight, 0.6f);
+        Stick(JoyAxis.TriggerRight, 0.8f);
+        Stick(JoyAxis.TriggerRight, 1f);
+        await Wait(0.05);
+        float spent = st - p.Stamina;
+        Stick(JoyAxis.TriggerRight, 0f);
+        Check(spent >= p.Combat.LightStamina - 1f && spent < p.Combat.LightStamina * 1.5f, $"RT swings once per pull (spent {spent:0.#} stamina)");
+        await Wait(0.6);
+
+        // Menus: Options opens, the d-pad moves, B goes back, and B doesn't also roll.
+        await Tap(JoyButton.Start);
+        Check(gs.UiOpen && hud.MenuOpen, "Options / Menu opens the menu");
+        await Wait(0.1);
+        var first = GetViewport().GuiGetFocusOwner();
+        Check(first is Button { Text: "Resume" }, $"the first button has the focus ({(first as Button)?.Text ?? "none"})");
+        await Tap(JoyButton.DpadDown);
+        var second = GetViewport().GuiGetFocusOwner();
+        Check(second != null && second != first, $"the d-pad moves the focus ({(second as Button)?.Text ?? "none"})");
+        await Shot("46_pad_menu");
+        await Tap(JoyButton.B);
+        Check(!gs.UiOpen, "○ / B closes the menu");
+        Check(!p.Dodging, "...without rolling");
+
+        // D-pad down: the character sheet; R1 flips to the journal.
+        await Tap(JoyButton.DpadDown);
+        Check(hud.CharacterOpen, "d-pad ▼ opens the character sheet");
+        await Tap(JoyButton.RightShoulder);
+        Check(hud.JournalTabOpen, "R1 / RB switches to the journal");
+        await Wait(0.3);
+        await Shot("47_pad_journal");
+        await Tap(JoyButton.B);
+        Check(!gs.UiOpen, "...and B closes it");
+
+        // Prompts on the HUD follow the pad.
+        hud.OpenHelp();
+        await Wait(0.4);
+        await Shot("48_pad_help");
+        hud.CloseMenus();
+        Gamepad.Rumble(0.2f, 0.2f, 0.05f);
+
+        // Back to the keyboard.
+        Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Shift, Pressed = true });
+        Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Shift, Pressed = false });
+        await Wait(0.1);
+        Check(!Gamepad.UsingPad && Gamepad.ButtonName("interact") == "E", "a key press switches the prompts back (E)");
+    }
+
     private async Task Raids(GameState gs, PlayerController p)
     {
         var wild = Wildlife.Instance;
@@ -1383,6 +1578,7 @@ public partial class DevAutotest : Node
         await FallsValley(gs, p);
         await Raids(gs, p);
         await GearAndUi(gs, p);
+        await ControllerAndGuidance(gs, p);
 
         // Night look.
         gs.TimeOfDay = 0.745f;

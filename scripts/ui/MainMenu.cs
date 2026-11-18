@@ -32,8 +32,18 @@ public partial class MainMenu : Control
         if (HandleCommandLine()) return;
         BuildUi();
         LoadSettings();
+        Gamepad.Changed += OnDeviceChanged;
+        if (Gamepad.UsingPad) Callable.From(OnDeviceChanged).CallDeferred();
         var err = Net.Instance.LastError;
         if (err != "") SetStatus(err, error: true);
+    }
+
+    public override void _ExitTree() => Gamepad.Changed -= OnDeviceChanged;
+
+    /// <summary>A controller: put the focus on the first button so the d-pad works.</summary>
+    private void OnDeviceChanged()
+    {
+        if (Gamepad.UsingPad && IsInsideTree() && GetViewport().GuiGetFocusOwner() == null) Hud.FocusFirst(this);
     }
 
     // ------------------------------------------------------------------ command line

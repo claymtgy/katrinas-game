@@ -144,6 +144,7 @@ public partial class FarmPlot : StaticBody3D, IInteractable, IServerInteractable
         {
             // Plots are at home: the harvest goes straight to the stockpile.
             gs.Inventory.Add(YieldItem, YieldCount);
+            Journal.Fact("harvested");
             if (SeedsBack > 0) gs.Inventory.Add(SeedItem, SeedsBack);
             Planted = false;
             _banked = 0;

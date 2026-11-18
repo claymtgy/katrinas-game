@@ -46,6 +46,11 @@ public partial class GameState : Node
     /// <summary>True while a menu is open: frees the mouse and blocks movement/attacks.</summary>
     public bool UiOpen { get; private set; }
 
+    /// <summary>A menu just closed: for a moment, jump and dodge ignore the button that closed it
+    /// (on a controller, A chooses and B goes back, and they also jump and dodge).</summary>
+    public bool InputQuiet => Time.GetTicksMsec() < _quietUntil;
+    private ulong _quietUntil;
+
     /// <summary>This machine's player (null on a dedicated server or before spawning).</summary>
     public PlayerController LocalPlayer { get; set; }
     /// <summary>Every player in the world, by network peer id (1 = host / single player).</summary>
@@ -144,7 +149,10 @@ public partial class GameState : Node
         Instance = this;
         ProcessMode = ProcessModeEnum.Always;
         RegisterInputActions();
+        Gamepad.RegisterBindings();
         ItemDb.Load();
+        AddChild(new Gamepad { Name = "Gamepad" });
+        AddChild(new Journal { Name = "Journal" });
     }
 
     public PlayerController GetPlayer(int peerId) =>
@@ -152,8 +160,10 @@ public partial class GameState : Node
 
     public void SetUiOpen(bool open)
     {
+        if (UiOpen && !open) _quietUntil = Time.GetTicksMsec() + 250;
         UiOpen = open;
         Input.MouseMode = open ? Input.MouseModeEnum.Visible : Input.MouseModeEnum.Captured;
+        if (!open) GetViewport()?.GuiReleaseFocus();
     }
 
     /// <summary>Forget everything from the last session (back at the main menu).</summary>
@@ -177,6 +187,7 @@ public partial class GameState : Node
         _nextBuildingId = 1;
         UiOpen = false;
         Input.MouseMode = Input.MouseModeEnum.Visible;
+        Journal.Instance?.Reset();
     }
 
     public override void _UnhandledInput(InputEvent e)
@@ -195,8 +206,9 @@ public partial class GameState : Node
             else Hud.Toast("Only the host can load the world.");
             GetViewport().SetInputAsHandled();
         }
-        else if (e.IsActionPressed("ui_cancel"))
+        else if (e.IsActionPressed("menu") || (UiOpen && e.IsActionPressed("ui_cancel")))
         {
+            // Esc / Start opens the menu; Esc, Start or B (○) closes whatever is open.
             if (UiOpen) Hud.Instance?.CloseMenus();
             else Hud.Instance?.OpenGameMenu();
             GetViewport().SetInputAsHandled();
@@ -326,6 +338,7 @@ public partial class GameState : Node
             ["camps"] = Wildlife.Instance?.SaveCamps() ?? new GArray(),
             ["roosts"] = Wildlife.Instance?.SaveRoosts() ?? new GArray(),
             ["raids"] = Wildlife.Instance?.SaveRaids() ?? new GDict(),
+            ["journal"] = Journal.Instance?.ToDict() ?? new GDict(),
         };
 
         DirAccess.MakeDirRecursiveAbsolute(SavePath.GetBaseDir());
@@ -372,6 +385,7 @@ public partial class GameState : Node
         Wildlife.Instance?.LoadCamps(data.TryGetValue("camps", out var camps) ? camps.AsGodotArray() : null);
         Wildlife.Instance?.LoadRoosts(data.TryGetValue("roosts", out var roosts) ? roosts.AsGodotArray() : null);
         Wildlife.Instance?.LoadRaids(data.TryGetValue("raids", out var raids) ? raids.AsGodotDictionary() : null);
+        Journal.Instance?.Apply(data.TryGetValue("journal", out var journal) ? journal.AsGodotDictionary() : null);
 
         PlayerRecords.Clear();
         if (data.TryGetValue("players", out var pv))
@@ -428,6 +442,8 @@ public partial class GameState : Node
         AddKey("load_game", Key.F9);
         AddKey("player_list", Key.Tab);
         AddKey("inventory", Key.I);
+        AddKey("journal", Key.J);
+        AddKey("menu", Key.Escape);
         AddMouse("attack", MouseButton.Left);
         AddKey("heavy_attack", Key.Q);
         AddMouse("heavy_attack", MouseButton.Middle);
@@ -442,6 +458,8 @@ public partial class GameState : Node
         AddKey("next_build", Key.Period);
         AddKey("prev_build", Key.Comma);
         for (int i = 1; i <= 5; i++) AddKey($"slot_{i}", Key.Key0 + i);
+        EnsureAction("next_weapon");
+        EnsureAction("prev_weapon");
     }
 
     private static void EnsureAction(string action)

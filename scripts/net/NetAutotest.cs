@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -171,6 +172,10 @@ public partial class NetAutotest : Node
         gs.TimeOfDay = 0.72f; // dusk: raiders run off in the morning
         var raid = wildlife.StartRaid(new Vector3(2, 0, 60));
         Check(raid.Count == Difficulty.PackSize(Wildlife.SoloRaidSize), $"2 players: a bigger raid ({raid.Count} raiders)");
+
+        // The journal is shared: a goal done here is done for the client too.
+        Journal.Fact("deposited");
+        Check(await Until(() => Journal.Instance.Completed.Contains("stash"), 5), "the host's journal ticks off a goal");
 
         // Armour in co-op: the host puts on a helm (the client must see it); the client is handed
         // a jerkin and wears it (the host must see that, and it must protect the client).
@@ -410,9 +415,11 @@ public partial class NetAutotest : Node
             await Wait(1.0);
             Check(flyer != null && flyer.GlobalPosition.Y > 5f, $"client's harpies fly ({flyer?.GlobalPosition.Y:0.0} m up)");
 
+            Check(await Until(() => Journal.Instance.Completed.Contains("stash"), 30), "client's journal shows the goal the host finished");
+
             // Armour: the host's helm shows here; we wear the jerkin the host handed us.
-            var host = gs.GetPlayer(1);
-            Check(await Until(() => host?.Worn.GetValueOrDefault(Gear.Head) == "iron_helm", 20), "client sees the host's iron helm");
+            var hostP = gs.GetPlayer(1);
+            Check(await Until(() => hostP?.Worn.GetValueOrDefault(Gear.Head) == "iron_helm", 20), "client sees the host's iron helm");
             Check(await Until(() => me.Pack.Count("leather_jerkin@ward") == 1, 20), "client got an enchanted jerkin (pack mirrored)");
             Net.Instance.RequestWear("leather_jerkin@ward");
             Check(await Until(() => me.Worn.GetValueOrDefault(Gear.Body) == "leather_jerkin@ward" && me.Pack.Count("leather_jerkin@ward") == 0, 10), "client wears it");

@@ -42,6 +42,10 @@ public partial class Hud : CanvasLayer
     private VBoxContainer _sheetStats;
     private Label _sheetName;
     private int _sheetVersion = -1;
+    private Button _tabCharacter, _tabJournal;
+    private Control _sheetCharacter, _sheetJournal;
+    private Label _sheetHint;
+    private bool _journalTab;
 
     public override void _Ready()
     {
@@ -61,6 +65,8 @@ public partial class Hud : CanvasLayer
         BuildCraftPanel();
         BuildGameMenu();
         BuildSheet();
+        BuildGuidance();
+        OnDeviceChanged();
 
         GameState.Instance.Inventory.Changed += OnInventoryChanged;
     }
@@ -68,6 +74,7 @@ public partial class Hud : CanvasLayer
     public override void _ExitTree()
     {
         GameState.Instance.Inventory.Changed -= OnInventoryChanged;
+        UnhookGuidance();
         if (Instance == this) Instance = null;
     }
 
@@ -87,9 +94,9 @@ public partial class Hud : CanvasLayer
         _ability = UiTheme.Label("", "Heading");
         _ability.AddThemeFontSizeOverride("font_size", 18);
         box.AddChild(_ability);
-        _health = new FramedBar("bar_health", new Vector2(340, 30));
+        _health = new FramedBar("bar_health", new Vector2(340, 30)) { SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
         box.AddChild(_health);
-        _stamina = new FramedBar("bar_stamina", new Vector2(300, 22)) { ShowNumbers = false };
+        _stamina = new FramedBar("bar_stamina", new Vector2(290, 22)) { ShowNumbers = false, SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
         box.AddChild(_stamina);
     }
 
@@ -139,7 +146,7 @@ public partial class Hud : CanvasLayer
         Place(_root, row, 0.5f, 1, 0.5f, 1, -200, -82, 200, -14);
         for (int i = 0; i < 5; i++)
         {
-            var slot = new ItemSlot(62, (i + 1).ToString()) { MouseFilter = Control.MouseFilterEnum.Ignore };
+            var slot = new ItemSlot(62, (i + 1).ToString()) { MouseFilter = Control.MouseFilterEnum.Ignore, FocusMode = Control.FocusModeEnum.None };
             row.AddChild(slot);
             _hotbar.Add(slot);
         }
@@ -156,7 +163,7 @@ public partial class Hud : CanvasLayer
         var promptCenter = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         Place(_root, promptCenter, 0.5f, 0.5f, 0.5f, 0.5f, -400, 44, 400, 84);
         var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        row.AddChild(UiTheme.KeyCap("E"));
+        row.AddChild(UiTheme.ActionCap("interact"));
         _prompt = UiTheme.Label("", "Heading");
         _prompt.AddThemeColorOverride("font_color", UiTheme.Ink);
         _prompt.AddThemeFontSizeOverride("font_size", 20);
@@ -195,53 +202,66 @@ public partial class Hud : CanvasLayer
         Place(_root, hintCenter, 1, 1, 1, 1, -330, -70, -20, -20);
         var hint = new PanelContainer { ThemeTypeVariation = "Plate", MouseFilter = Control.MouseFilterEnum.Ignore };
         var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        row.AddChild(UiTheme.KeyCap("F1"));
+        row.AddChild(UiTheme.ActionCap("help"));
         row.AddChild(UiTheme.Label("Controls & help", "Heading"));
         hint.AddChild(row);
         hintCenter.AddChild(hint);
         _helpHint = hintCenter;
         GetTree().CreateTimer(30).Timeout += () => { if (IsInstanceValid(_helpHint)) _helpHint.Visible = false; };
 
-        _help = Board(860, 600, "Controls & Help", out var body, out _);
+        _help = Board(900, 620, "Controls & Help", out var body, out _);
         _help.MouseFilter = Control.MouseFilterEnum.Ignore;
-        var cols = new HBoxContainer();
-        cols.AddThemeConstantOverride("separation", 36);
-        body.AddChild(cols);
-        (string Key, string What)[] left =
-        {
-            ("WASD", "Move · Shift sprint · Space jump"), ("Ctrl / C", "Dodge roll"), ("Mouse", "Look · V first / third person"),
-            ("LMB", "Light attack"), ("Q / MMB", "Heavy attack"), ("RMB", "Block (just in time = parry)"), ("R", "Class ability"),
-            ("1–5", "Weapons"), ("E", "Use: stations, beds, chests, plots, traders, signs"), ("F", "Eat"),
-        };
-        (string Key, string What)[] right =
-        {
-            ("I", "Character: armour and pack"), ("B", "Build mode (wheel cycles, R rotates)"), ("Space", "In the air: open the glider"),
-            ("W", "Into pale rock: climb (Space leaps off)"), ("Tab", "Players"), ("F5 / F9", "Save / load (host)"), ("Esc", "Menu"),
-        };
-        cols.AddChild(KeyList(left));
-        cols.AddChild(KeyList(right));
-        body.AddChild(UiTheme.Divider(500));
-        var goals = UiTheme.Label(
-            "What you gather rides in your pack: empty it into the chest by the shack. Crops need water.\n" +
-            "Chop and mine → Workbench → a sword → the road south to Ashby → clear the bandit camp → farm and trade for nails → a cottage.\n" +
-            "East through the pass lies Falls Valley. From day 3, raiders come at dusk: walls and watchtowers.\n" +
-            "Make armour at the workbench from pelts, feathers and nails; enchant it at a Rune Altar with rune shards.", "Small");
-        goals.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        goals.CustomMinimumSize = new Vector2(760, 0);
-        body.AddChild(goals);
+        _helpBody = body;
+        FillHelp();
+        Gamepad.Changed += OnDeviceChanged;
     }
 
-    private static Control KeyList((string Key, string What)[] rows)
+    private VBoxContainer _helpBody;
+
+    /// <summary>The help board's key list, for the keyboard or the controller in use.</summary>
+    private void FillHelp()
+    {
+        foreach (var c in _helpBody.GetChildren()) c.QueueFree();
+        var cols = new HBoxContainer();
+        cols.AddThemeConstantOverride("separation", 36);
+        _helpBody.AddChild(cols);
+        (string Action, string What)[] left =
+        {
+            ("move", "Move · {sprint} sprint · {jump} jump"), ("dodge", "Dodge roll"), ("look", "Look · {toggle_view} first / third person"),
+            ("attack", "Light attack"), ("heavy_attack", "Heavy attack"), ("block", "Block (just in time = parry)"), ("ability", "Class ability"),
+            ("weapons", "Weapons"), ("interact", "Use: stations, beds, chests, plots, traders, signs"), ("eat", "Eat"),
+        };
+        (string Action, string What)[] right =
+        {
+            ("inventory", Gamepad.UsingPad ? "Character sheet & journal ({tabs} switch)" : "Character: armour and pack"),
+            ("journal", "Journal: goals and errands"),
+            ("build_mode", "Build mode ({next_build} change, {rotate_build} rotate)"), ("jump", "In the air: open the glider"),
+            ("move", "Into pale rock: climb ({jump} leaps off)"), ("player_list", "Players"), ("save", "Save / load (host)"), ("menu", "Menu"),
+        };
+        cols.AddChild(KeyList(left));
+        cols.AddChild(KeyList(right.Where(r => !(Gamepad.UsingPad && r.Action == "journal")).ToArray()));
+        _helpBody.AddChild(UiTheme.Divider(500));
+        var goals = UiTheme.Label(Gamepad.Format(
+            "Your journal ({journal}) says what to do next; the goal you're on shows under the clock, and a gold marker points the way.\n" +
+            "What you gather rides in your pack: empty it into the chest by the shack. Crops need water. From day 3, raiders come at dusk.\n" +
+            "Make armour at the workbench from pelts, feathers and nails; enchant it at a Rune Altar with rune shards."), "Small");
+        goals.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        goals.CustomMinimumSize = new Vector2(800, 0);
+        _helpBody.AddChild(goals);
+    }
+
+    private static Control KeyList((string Action, string What)[] rows)
     {
         var grid = new GridContainer { Columns = 2 };
         grid.AddThemeConstantOverride("h_separation", 12);
         grid.AddThemeConstantOverride("v_separation", 6);
-        foreach (var (key, what) in rows)
+        foreach (var (action, what) in rows)
         {
-            var c = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, CustomMinimumSize = new Vector2(96, 0) };
-            c.AddChild(UiTheme.KeyCap(key));
+            if (Gamepad.ButtonName(action) == "") continue; // nothing on this device (Tab, F5)
+            var c = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, CustomMinimumSize = new Vector2(120, 0) };
+            c.AddChild(UiTheme.ActionCap(action));
             grid.AddChild(c);
-            grid.AddChild(UiTheme.Label(what, "Small"));
+            grid.AddChild(UiTheme.Label(Gamepad.Format(what), "Small"));
         }
         return grid;
     }
@@ -286,7 +306,9 @@ public partial class Hud : CanvasLayer
         label.CustomMinimumSize = new Vector2(Mathf.Min(480, 40 + message.Length * 8.2f), 0);
         note.AddChild(label);
         Instance._toasts.AddChild(note);
-        if (Instance._toasts.GetChildCount() > 5) Instance._toasts.GetChild(0).QueueFree();
+        // At most five at once: the oldest go first.
+        var live = Instance._toasts.GetChildren().Where(c => !c.IsQueuedForDeletion()).ToList();
+        for (int i = 0; i < live.Count - 5; i++) live[i].QueueFree();
         note.Modulate = new Color(1, 1, 1, 0);
         var tween = note.CreateTween();
         tween.TweenProperty(note, "modulate:a", 1f, 0.18);
@@ -295,7 +317,11 @@ public partial class Hud : CanvasLayer
         tween.TweenCallback(Callable.From(note.QueueFree));
     }
 
-    public void FlashHitMarker() => _hitFlash = 0.15f;
+    public void FlashHitMarker()
+    {
+        _hitFlash = 0.15f;
+        Gamepad.Rumble(0.5f, 0f, 0.08f);
+    }
 
     public void OpenCrafting(CraftingStation station)
     {
@@ -317,10 +343,13 @@ public partial class Hud : CanvasLayer
         RefreshCrafting();
     }
 
-    /// <summary>The character sheet: worn armour, stats and the pack (I).</summary>
-    public void OpenCharacter()
+    /// <summary>The character sheet: worn armour, stats and the pack (I), or its Journal tab (J).</summary>
+    public void OpenCharacter() => OpenCharacter(false);
+
+    public void OpenCharacter(bool journal)
     {
         _sheetVersion = -1;
+        ShowSheetTab(journal, focus: false);
         ShowBoard(_sheet);
         RefreshSheet();
     }
@@ -350,6 +379,7 @@ public partial class Hud : CanvasLayer
         board.Visible = true;
         UiTheme.PopIn(board);
         GameState.Instance.SetUiOpen(true);
+        if (Gamepad.UsingPad) Callable.From(() => FocusFirst(board)).CallDeferred();
     }
 
     public override void _UnhandledInput(InputEvent e)
@@ -364,8 +394,21 @@ public partial class Hud : CanvasLayer
         }
         else if (e.IsActionPressed("inventory"))
         {
-            if (_sheet.Visible) CloseMenus();
+            // (On a controller that's the d-pad, which also moves the focus: B closes instead.)
+            if (_sheet.Visible) { if (e is not InputEventJoypadButton) CloseMenus(); }
             else if (!GameState.Instance.UiOpen) OpenCharacter();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsActionPressed("journal"))
+        {
+            if (_sheet.Visible && _journalTab) CloseMenus();
+            else if (_sheet.Visible) ShowSheetTab(true);
+            else if (!GameState.Instance.UiOpen) OpenCharacter(journal: true);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (_sheet.Visible && (e.IsActionPressed("tab_prev") || e.IsActionPressed("tab_next")))
+        {
+            ShowSheetTab(!_journalTab);
             GetViewport().SetInputAsHandled();
         }
         else if (e.IsAction("player_list"))
@@ -404,6 +447,7 @@ public partial class Hud : CanvasLayer
         UpdateBuffs(player);
         UpdateHotbar(gs, player);
         if (_sheet.Visible && _sheetVersion != player.Pack.Version * 1000 + player.WornVersion) RefreshSheet();
+        UpdateGuidance(gs, player);
 
         var target = player.Interactor.Target;
         _prompt.Text = target != null && !gs.UiOpen ? target.InteractPrompt : "";
@@ -413,8 +457,9 @@ public partial class Hud : CanvasLayer
         if (build.Active && build.Current != null)
         {
             var def = build.Current;
-            string status = build.InvalidReason == "" ? "LMB to place" : build.InvalidReason;
-            _buildInfo.Text = $"{def.DisplayName}  ·  {ItemDb.FormatCost(def.GetCost())}\n{status}   ·   wheel: change · R: rotate · RMB: exit";
+            string status = build.InvalidReason == "" ? Gamepad.Format("{place} to place") : build.InvalidReason;
+            _buildInfo.Text = $"{def.DisplayName}  ·  {ItemDb.FormatCost(def.GetCost())}\n{status}   ·   " +
+                              Gamepad.Format("{next_build}: change · {rotate_build}: rotate · {exit_build}: exit");
             _buildInfo.AddThemeColorOverride("font_color", build.InvalidReason == "" ? UiTheme.Ink : UiTheme.Bad);
         }
         else _buildInfo.Text = "";
@@ -427,7 +472,7 @@ public partial class Hud : CanvasLayer
 
         if (player.Sleeping)
             _sleep.Text = net.SleepTotal > 1
-                ? $"Sleeping… {net.SleepingCount}/{net.SleepTotal} asleep. The night passes when everyone is in bed.\nE or move to get up"
+                ? $"Sleeping… {net.SleepingCount}/{net.SleepTotal} asleep. The night passes when everyone is in bed.\n" + Gamepad.Format("{interact} or move to get up")
                 : "Sleeping…";
         else if (net.SleepingCount > 0)
             _sleep.Text = $"{net.SleepingCount}/{net.SleepTotal} asleep. Go to bed to skip the night.";
@@ -507,7 +552,11 @@ public partial class Hud : CanvasLayer
         int shown = Mathf.Min(list.Count, GridMax);
         while (grid.GetChildCount() < shown)
         {
-            var slot = new ItemSlot(size) { MouseFilter = onPress == null ? Control.MouseFilterEnum.Pass : Control.MouseFilterEnum.Stop };
+            var slot = new ItemSlot(size)
+            {
+                MouseFilter = onPress == null ? Control.MouseFilterEnum.Pass : Control.MouseFilterEnum.Stop,
+                FocusMode = onPress == null ? Control.FocusModeEnum.None : Control.FocusModeEnum.All,
+            };
             if (onPress != null) slot.Pressed += () => onPress(slot);
             grid.AddChild(slot);
         }
@@ -528,7 +577,7 @@ public partial class Hud : CanvasLayer
         var cls = player.Class;
         float left = player.Ability.CooldownLeft;
         string state = player.Vanished ? "hidden" : left > 0 ? $"{left:0.0}s" : player.Stamina < cls.AbilityStamina ? "tired" : "ready";
-        _ability.Text = $"{cls.Name}   ·   R  {cls.AbilityName}: {state}";
+        _ability.Text = $"{cls.Name}   ·   {Gamepad.ButtonName("ability")}  {cls.AbilityName}: {state}";
         _ability.AddThemeColorOverride("font_color", state == "ready" ? cls.Tint.Lerp(UiTheme.GoldBright, 0.35f) : UiTheme.Muted);
 
         bool home = Supplies.AtHome(player);
@@ -562,8 +611,11 @@ public partial class Hud : CanvasLayer
 
     private void RefreshCrafting()
     {
+        // Rebuilt rows lose the focus: put it back on the same button (controller).
+        int focus = Gamepad.UsingPad ? FocusIndex(_craftPanel) : -1;
+        if (focus >= 0) Callable.From(() => RestoreFocus(_craftPanel, focus)).CallDeferred();
         foreach (var child in _craftList.GetChildren()) child.QueueFree();
-        _craftFooter.Text = "E or Esc to close";
+        _craftFooter.Text = Gamepad.Format("{back} to close");
         if (_trader != null) { RefreshTrade(); return; }
         if (_station == null) return;
         if (_station.StationId == Gear.AltarStation) { RefreshEnchanting(); return; }
@@ -599,7 +651,7 @@ public partial class Hud : CanvasLayer
         var h = new HBoxContainer();
         h.AddThemeConstantOverride("separation", 12);
         row.AddChild(h);
-        var slot = new ItemSlot(56);
+        var slot = new ItemSlot(56) { FocusMode = Control.FocusModeEnum.None };
         slot.SetItem(itemId);
         h.AddChild(slot);
         var mid = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Alignment = BoxContainer.AlignmentMode.Center };
@@ -651,6 +703,7 @@ public partial class Hud : CanvasLayer
         var inv = me?.Pack ?? new Inventory();
         int coins = inv.Count("coin");
         _craftFooter.Text = $"Coins in your pack: {coins}";
+        AddErrandRow(me);
         _craftList.AddChild(Section("Buy"));
         foreach (var item in ItemDb.Items.Values.Where(i => i.BuyPrice > 0).OrderBy(i => i.BuyPrice))
         {
@@ -718,7 +771,7 @@ public partial class Hud : CanvasLayer
             var ench = e;
             bool same = picked?.Enchant == e.Id;
             string note = e.Text + (same ? "   (it has this one)" : picked != null && picked.Enchant != "" ? "   (replaces its enchantment)" : "");
-            var row = RecipeRow(Gear.ShardId, $"{e.Name}", note, cost, me, "Enchant", afford && picked != null && !same,
+            var row = RecipeRow(picked != null ? Gear.Enchanted(_enchantPick, e.Id) : Gear.ShardId, $"{e.Name}", note, cost, me, "Enchant", afford && picked != null && !same,
                 () => { Sfx.Ui("craft", -4f); Net.Instance.RequestEnchant(_enchantPick, ench.Id, altar); });
             _craftList.AddChild(row);
         }
@@ -729,10 +782,27 @@ public partial class Hud : CanvasLayer
 
     private void BuildSheet()
     {
-        _sheet = Board(1020, 640, "Character", out var body, out var footer);
+        _sheet = Board(1020, 660, "Character", out var body, out var footer);
+        // Tabs: Character | Journal (I / J, or LB / RB on a controller).
+        var tabs = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        tabs.AddThemeConstantOverride("separation", 10);
+        body.AddChild(tabs);
+        _tabCharacter = new Button { Text = "Character", ToggleMode = true, CustomMinimumSize = new Vector2(170, 40) };
+        _tabJournal = new Button { Text = "Journal", ToggleMode = true, CustomMinimumSize = new Vector2(170, 40) };
+        var group = new ButtonGroup();
+        _tabCharacter.ButtonGroup = group;
+        _tabJournal.ButtonGroup = group;
+        _tabCharacter.Pressed += () => ShowSheetTab(false, focus: false);
+        _tabJournal.Pressed += () => ShowSheetTab(true, focus: false);
+        tabs.AddChild(_tabCharacter);
+        tabs.AddChild(_tabJournal);
+
         var row = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         row.AddThemeConstantOverride("separation", 24);
         body.AddChild(row);
+        _sheetCharacter = row;
+        _sheetJournal = BuildJournal();
+        body.AddChild(_sheetJournal);
 
         // Paper doll: 3 × 3 with the slots placed like a body.
         var doll = new VBoxContainer();
@@ -775,9 +845,9 @@ public partial class Hud : CanvasLayer
         packCol.AddChild(scroll);
         row.AddChild(packCol);
 
-        var hint = UiTheme.Label("Click armour in your pack to wear it · click a worn piece to take it off · I or Esc to close", "Dim");
-        hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        footer.AddChild(hint);
+        _sheetHint = UiTheme.Label("", "Dim");
+        _sheetHint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        footer.AddChild(_sheetHint);
         var close = new Button { Text = "Close" };
         close.Pressed += CloseMenus;
         footer.AddChild(close);
@@ -809,7 +879,7 @@ public partial class Hud : CanvasLayer
         Stat("Armour", true);
         foreach (var line in Gear.Summary(me)) Stat(line);
         Stat("Class", true);
-        Stat($"{me.Class.Name}: {me.Class.AbilityName} on R");
+        Stat($"{me.Class.Name}: {me.Class.AbilityName} on {Gamepad.ButtonName("ability")}");
 
         // Pack: everything you carry; armour is clickable to wear.
         var items = me.Pack.Items.OrderBy(kv => (ItemDb.Get(kv.Key)?.IsWearable ?? false) ? 0 : 1).ThenBy(kv => ItemDb.NameOf(kv.Key)).ToList();
@@ -838,17 +908,20 @@ public partial class Hud : CanvasLayer
 
     private void BuildGameMenu()
     {
-        _gameMenu = Board(400, 400, "Menu", out var body, out _);
+        _gameMenu = Board(400, 450, "Menu", out var body, out _);
         var resume = new Button { Text = "Resume" };
         resume.Pressed += CloseMenus;
         body.AddChild(resume);
-        var sheet = new Button { Text = "Character & armour  (I)" };
+        var sheet = new Button { Text = "Character & armour" };
         sheet.Pressed += OpenCharacter;
         body.AddChild(sheet);
         var looks = new Button { Text = "Appearance & class…" };
         looks.Pressed += () => OpenCreator();
         body.AddChild(looks);
-        var help = new Button { Text = "Controls & help  (F1)" };
+        var journal = new Button { Text = "Journal" };
+        journal.Pressed += () => OpenCharacter(journal: true);
+        body.AddChild(journal);
+        var help = new Button { Text = "Controls & help" };
         help.Pressed += () => ShowBoard(_help);
         body.AddChild(help);
         body.AddChild(UiTheme.Divider(300));

@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 6;
+    public const int ProtocolVersion = 7;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -356,6 +356,7 @@ public partial class Net : Node
             ["enemies"] = Wildlife.Instance?.Snapshot() ?? new GArray(),
             ["home_tier"] = Gs.HomeTier,
             ["rain"] = Gs.Raining,
+            ["journal"] = Journal.Instance?.ToDict() ?? new GDict(),
         };
     }
 
@@ -399,6 +400,7 @@ public partial class Net : Node
 
         Gs.SetHomeTier(s["home_tier"].AsInt32());
         Gs.SetRaining(s.TryGetValue("rain", out var rain) && rain.AsBool());
+        Journal.Instance?.Apply(s.TryGetValue("journal", out var journal) ? journal.AsGodotDictionary() : null);
         // Enemies before health, so their Health nodes exist when health is applied.
         if (s.TryGetValue("enemies", out var enemies)) Wildlife.Instance?.ApplySnapshot(enemies.AsGodotArray());
 
@@ -689,6 +691,7 @@ public partial class Net : Node
             if (p.Pack.Load >= Supplies.PackCapacity) { ToastTo(p.PeerId, "Your pack is full"); return; }
             if (!p.Pack.Remove("coin", item.BuyPrice)) { ToastTo(p.PeerId, $"Not enough coins in your pack ({item.BuyPrice} needed)"); return; }
             p.Pack.Add(itemId, 1);
+            Journal.Fact("traded");
             ToastTo(p.PeerId, $"Bought {item.DisplayName} for {item.BuyPrice} coins");
         }
         else
@@ -696,6 +699,7 @@ public partial class Net : Node
             if (item.SellPrice <= 0) return;
             if (!p.Pack.Remove(itemId, 1)) { ToastTo(p.PeerId, $"No {item.DisplayName} in your pack"); return; }
             p.Pack.Add("coin", item.SellPrice);
+            Journal.Fact("traded");
             ToastTo(p.PeerId, $"Sold {item.DisplayName} for {item.SellPrice} coins");
         }
     }
@@ -825,6 +829,8 @@ public partial class Net : Node
 
         var item = ItemDb.Get(recipe.OutputItem);
         int count = recipe.OutputCount;
+        Journal.Fact($"crafted:{recipe.OutputItem}");
+        if (item is { IsWeapon: true }) Journal.Fact("crafted_weapon");
         if (item != null && item.IsWeapon)
         {
             // A fresh weapon goes straight into the crafter's hand.
@@ -836,7 +842,7 @@ public partial class Net : Node
         {
             // Gear (the glider, armour) is personal: it goes into the crafter's pack.
             Supplies.Give(p, item.Id, count);
-            ToastTo(p.PeerId, $"Crafted a {recipe.DisplayName}. It's in your pack.");
+            ToastTo(p.PeerId, $"Crafted: {recipe.DisplayName}. It's in your pack.");
             return;
         }
         if (count > 0) Gs.Inventory.Add(recipe.OutputItem, count);
@@ -895,6 +901,7 @@ public partial class Net : Node
             p.Pack.Add(made, 1);
         }
         ToastTo(p.PeerId, $"Enchanted: {ItemDb.NameOf(made)}");
+        Journal.Fact("enchanted");
         EnchantFx(altar.GlobalPosition);
     }
 
@@ -1084,6 +1091,7 @@ public partial class Net : Node
             asleep = 0;
             SyncTime();
             ToastAll(total > 1 ? $"Everyone slept soundly. Day {Gs.Day} begins." : $"You slept soundly. Day {Gs.Day} begins.");
+            Journal.Fact("slept");
             Gs.SaveGame(silent: true);
         }
         SleepingCount = asleep;
@@ -1157,6 +1165,32 @@ public partial class Net : Node
 
     [Rpc(MultiplayerApi.RpcMode.Authority)]
     private void C_Toast(string message) => Hud.Toast(message);
+
+    // ---------------------------------------------------------------- journal (goals, errands)
+
+    /// <summary>Server: send everyone the journal; completed = the goal just finished ("" if none).</summary>
+    public void BroadcastJournal(string completed)
+    {
+        var state = Journal.Instance.ToDict();
+        if (!IsDedicated) Journal.Instance.Apply(state, completed);
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_Journal, state, completed);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void C_Journal(GDict state, string completed) => Journal.Instance?.Apply(state, completed);
+
+    /// <summary>Local player: hand the trader what the errand asks for.</summary>
+    public void RequestErrand(Trader trader) => ToServer(MethodName.S_Errand, trader.GetPath());
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Errand(NodePath traderPath)
+    {
+        var p = SenderPlayer();
+        var trader = GetNodeOrNull<Trader>(traderPath);
+        if (p == null || trader == null) return;
+        if (!InReach(p, trader)) { ToastTo(p.PeerId, "Get closer to the trader"); return; }
+        Journal.Instance.ServerHandIn(p);
+    }
 
     public void HitMarkerTo(int peer) => ToPeer(peer, MethodName.C_HitMarker);
 

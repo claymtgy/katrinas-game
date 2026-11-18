@@ -68,7 +68,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   | **Rogue** | 10% faster; light attacks ×1.2; dodge costs 40% less and its i-frames last 35% longer | **Vanish** (25 stamina, 14 s): unseen for 4 s. Enemies lose you, and your next strike does double damage and ends it |
   | **Wizard** | −20 max health; stamina comes back 25% faster | **Firebolt** (16 stamina, 0.9 s): a fireball that does 22 damage and 10 splash within 2.5 m |
   | **Healer** | food heals 50% more; slowly regenerates health (1.5/s after a few seconds out of harm) | **Mend** (30 stamina, 10 s): heals you and every player within 9 m by 30 |
-  | **Archer** | 4% faster | **Shoot** (8 stamina, 0.7 s): an arrow (46 m/s, slight drop) that does 16 damage, ×1.5 beyond 15 m |
+  | **Archer** | 4% faster | **Shoot** (8 stamina, 0.7 s): an arrow (46 m/s, slight drop) that does 16 damage, ×1.5 beyond 15 m. Carries a recurve bow (built in code, `BowView`): held up on the left in first person with an arrow nocked, in the left hand in third; each shot draws, snaps and re-nocks |
 
   - **How it works:** classes are data (`PlayerClasses`). `PlayerAbility` checks cooldown and stamina on your own machine and plays the animation at once; the server (`Net.S_Ability`) re-checks the cooldown and does the real thing. Arrows and firebolts are simulated on the server (`Projectile`) and every screen flies a cosmetic copy. Projectiles skip trees and rocks, and follow the PVP rules for other players.
 - **Enemies:**
@@ -169,7 +169,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Without a glider, a long fall shows a hint once.
 - **Waterfall updrafts (built):** mist columns at waterfall bases (the Great Falls in Falls Valley, and the pool below the home west falls) lift a glider at 8 m/s up to their top (36 m and 26 m). Inside a column you hang and turn instead of racing through it.
 - **River currents (built):** wading in the Falls Valley river slows you and carries you downstream at 3.2 m/s, toward the cliff edge.
-- **Co-op:** everyone sees climbing and gliding. The movement state carries a mode (normal, climb or glide), (protocol 5). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot).
+- **Co-op:** everyone sees climbing and gliding. The movement state carries a mode (normal, climb or glide), (protocol 5). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot). Protocol 7 added the shared journal (`C_Journal`, `S_Errand`; `"journal"` in the snapshot).
 - **Planned:**
   - **Swimming** in pools. Waterfalls can't be climbed without the late-game Grapple Hook.
   - **Fast travel** between attuned blossom sanctuaries.
@@ -293,27 +293,43 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Key-cap prompts ("E" Sleep), parchment toasts that fade in and out, and a build-mode plate.
 - **Boards:** crafting, trading and enchanting share one framed board. Each row shows the item's icon, a note, its cost as icons (red when you're short) and a button. The **character sheet (I)** has a paper doll of the six armour slots, a parchment stat card and the pack. There are also the Esc menu and the help board (F1; a small "F1 Controls & help" plate shows at the start instead of the old wall of text). Boards pop in with a quick scale and fade.
 
-## 13. Controls (current greybox)
-| Action | Key |
-|---|---|
-| Move / Sprint / Jump | WASD / Shift / Space |
-| Dodge roll | Ctrl or C |
-| Look | Mouse |
-| Toggle 1st / 3rd person | V |
-| Light / Heavy attack | LMB / Q or middle mouse |
-| Block (time it to parry) | RMB (hold) |
-| Class ability | R or mouse button 4 |
-| Climb (walk into pale rock) / leap off | W into the rock / Space |
-| Open / fold the glider (in the air) | Space |
-| Interact (stations, beds, plots, wells, chests, trader, signs) | E |
-| Eat | F |
-| Weapon slots | 1–5 |
-| Build mode (cycle / rotate / place / exit) | B (wheel / R / LMB / RMB or B) |
-| Save / Load (host only) | F5 / F9 |
-| Player list | Tab (hold) |
-| Help | F1 |
-| Character sheet (armour, stats, pack) | I |
-| Release mouse / close menu | Esc |
+### Guidance (built: goals, journal, marker, tips, errands)
+- **Goals** walk a new player through the game, in order: gather wood and stone → empty the pack into the chest → build a workbench → craft a weapon → sleep through a night → follow the road to Ashby → trade with Marta → clear the bandit camp → grow a crop → craft and wear armour → build a watchtower → cross into Falls Valley → climb the mesa to the Falls Blossom → enchant armour → build the cottage. Side goals: a glider, the harpy roost, a full set of armour, three errands.
+- A goal ticks off however it happens, even out of order. The server checks what it can see (buildings, players, the stockpile, packs, worn gear) and facts that other systems report (`Journal.Fact("deposited")`, `"slept"`, `"traded"`, `"crafted:glider"`, `"prayed:FallsShrine"`, and so on).
+- The world owns the journal: co-op players share it, and it's saved with the world (`"journal"`). It goes out in the join snapshot and in `C_Journal` (protocol 7).
+- **On screen:**
+  - The goal you're on sits on a parchment note under the clock, with progress such as "Wood 3/8 · Stone 1/4". Its how-to line shows for 30 s after the goal changes.
+  - A gold diamond marks where the goal is, with its distance. When it's off screen, an arrow on the edge points the way.
+  - A "Goal complete" banner shows when one is done.
+  - The **Journal** tab of the character sheet (J; on a controller, D-pad ▼ then RB) lists the goal now, what comes after, what's done, the side goals and Marta's errand.
+- **Errands:** Marta in Ashby always has one going, such as "Bring 15 Wood for 12 coins". You hand it over from your pack on her trade board, and then she asks for something else.
+- **Tips:** one-time notes, shown once each and remembered in `settings.cfg` (`[tips]`): when you're badly hurt, the first enemy close by, a full pack, a failing grip, dusk, raid season, rain, armour or a glider in your pack, and rune shards.
+
+## 13. Controls
+Keyboard and mouse, or a controller (Xbox, PlayStation / DualSense, or anything SDL knows). Prompts, the help board and the HUD show the keys or buttons of whichever you used last ("E", "X" or "□").
+
+| Action | Keyboard / mouse | Xbox | PlayStation |
+|---|---|---|---|
+| Move / Sprint / Jump | WASD / Shift / Space | L-stick / click L-stick (stays on until you stop) / A | L-stick / L3 / ✕ |
+| Dodge roll | Ctrl or C | B | ○ |
+| Look | Mouse | R-stick | R-stick |
+| Toggle 1st / 3rd person | V | click R-stick | R3 |
+| Light / Heavy attack | LMB / Q or middle mouse | RT / RB | R2 / R1 |
+| Block (time it to parry) | RMB (hold) | LT (hold) | L2 (hold) |
+| Class ability | R or mouse button 4 | Y | △ |
+| Climb (walk into pale rock) / leap off | W into the rock / Space | stick into the rock / A | stick into the rock / ✕ |
+| Open / fold the glider (in the air) | Space | A | ✕ |
+| Interact (stations, beds, plots, wells, chests, trader, signs) | E | X | □ |
+| Eat | F | LB | L1 |
+| Weapons | 1–5 | D-pad ◀ ▶ | D-pad ◀ ▶ |
+| Build mode (cycle / rotate / place / exit) | B (wheel / R / LMB / RMB or B) | D-pad ▲ (D-pad ◀ ▶ / RB / RT / LT) | D-pad ▲ (D-pad ◀ ▶ / R1 / R2 / L2) |
+| Character sheet / journal | I / J | D-pad ▼, then LB / RB for the tabs | D-pad ▼, then L1 / R1 |
+| Help | F1 | View | Create or touchpad |
+| Menu / close a menu | Esc | Menu / B | Options / ○ |
+| Save / Load (host only) | F5 / F9 | — | — |
+| Player list | Tab (hold) | — | — |
+
+On a controller, menus get the focus: move with the D-pad or the left stick, choose with A / ✕, go back with B / ○. The right stick scrolls the journal. The pad rumbles when you're hit, when you land a blow, on a parry and when a goal is done. A held trigger counts as one press (`Gamepad.Pressed`), so holding RT is one swing. For a moment after a menu closes, the button that closed it doesn't also jump or roll.
 
 ## 14. Roadmap
 1. **Greybox v0 (done):** movement, 1P/3P, gathering, build mode, workbench crafting, training dummy, day/night, save/load.

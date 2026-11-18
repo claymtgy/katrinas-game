@@ -82,14 +82,16 @@ public partial class HomeCliffs
         return node;
     }
 
-    private Node3D VCrag(Vector3 basePos, float width, float height)
+    private Node3D VCrag(Vector3 basePos, float width, float height, Node3D on = null)
     {
         var path = Models.Crags[_vrng.RandiRange(0, Models.Crags.Length - 1)];
         var node = Models.Instance(path);
-        node.Scale = new Vector3(width, height, width * _vrng.RandfRange(0.8f, 1.1f));
+        float depth = _vrng.RandfRange(0.8f, 1.1f);
+        node.Scale = new Vector3(width, height, width * depth);
         node.Position = basePos;
         node.Rotation = new Vector3(_vrng.RandfRange(-0.08f, 0.08f), _vrng.RandfRange(0, Mathf.Tau), _vrng.RandfRange(-0.08f, 0.08f));
         AddChild(node);
+        if (on != null) SeatCrown(node, on, depth);
         return node;
     }
 
@@ -103,8 +105,8 @@ public partial class HomeCliffs
             float h = _vrng.RandfRange(44, 62);
             var size = new Vector3(_vrng.RandfRange(12, 18), h, _vrng.RandfRange(10, 14));
             var pos = new Vector3(ValleyEastX + 6 + _vrng.RandfRange(0, 5), h / 2f - 4, z + _vrng.RandfRange(-2, 2));
-            VRock(pos, size, new Vector3(_vrng.RandfRange(-0.1f, 0.1f), _vrng.RandfRange(-0.4f, 0.4f), _vrng.RandfRange(0.05f, 0.18f)));
-            if (_vrng.Randf() < 0.6f) VCrag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _vrng.RandfRange(10, 20));
+            var wall = VRock(pos, size, new Vector3(_vrng.RandfRange(-0.1f, 0.1f), _vrng.RandfRange(-0.4f, 0.4f), _vrng.RandfRange(0.05f, 0.18f)));
+            if (_vrng.Randf() < 0.6f) VCrag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _vrng.RandfRange(10, 20), on: wall);
         }
         // South.
         for (float x = 76; x <= ValleyEastX + 6; x += 10)

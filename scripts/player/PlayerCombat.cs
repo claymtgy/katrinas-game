@@ -28,6 +28,15 @@ public partial class PlayerCombat : Node
     private Node3D _hand;
     private Node3D _weapon;
     private string _shownWeapon = null;
+    private string _shownClass = null;
+    private BowView _bow;
+    private Tween _bowTween;
+
+    // First person: the archer's bow, held up on the left, canted, arrow towards the crosshair.
+    private static readonly Vector3 BowPos = new(-0.3f, -0.13f, -0.66f);
+    private static readonly Vector3 BowRot = new(Mathf.DegToRad(2), Mathf.DegToRad(-9), Mathf.DegToRad(-9));
+    private const float BowScaleFirstPerson = 0.5f;
+    private const float BowLength = 1.0f; // metres, held by a full-height character in third person
     private float _cooldown;
     private Tween _swingTween;
     private float _guardLock;
@@ -78,7 +87,7 @@ public partial class PlayerCombat : Node
         float dt = (float)delta;
         if (_cooldown > 0) _cooldown -= dt;
         if (_guardLock > 0) _guardLock -= dt;
-        if (_shownWeapon != _player.Equipped) RebuildWeapon(_player.Equipped);
+        if (_shownWeapon != _player.Equipped || _shownClass != _player.Class.Id) RebuildWeapon(_player.Equipped);
         if (_player.IsLocal) UpdateGuard();
     }
 
@@ -119,6 +128,7 @@ public partial class PlayerCombat : Node
             _player.DrainStamina(-20f); // a clean parry gives breath back
             Hud.Instance?.FlashHitMarker();
             Hud.Toast("Parried!");
+            Gamepad.Rumble(0.8f, 0.3f, 0.12f);
             return;
         }
         _player.DrainStamina(staminaCost);
@@ -151,16 +161,66 @@ public partial class PlayerCombat : Node
         Hud.Toast("Your attack was parried!");
     }
 
+    /// <summary>The archer's bow on this machine (tests); null for other classes.</summary>
+    public BowView Bow => _bow;
+
+    private bool IsArcher => _player.Class.Id == PlayerClasses.ArcherId;
+
+    /// <summary>The archer carries a bow in the left hand: in front of the camera in first person,
+    /// in the model's left hand in third.</summary>
+    private void RebuildBow()
+    {
+        _bowTween?.Kill();
+        _bow?.QueueFree();
+        _bow = null;
+        if (!IsArcher || Net.Instance.IsDedicated) return;
+        Node3D parent = FirstPerson ? _player.Rig.Camera : _model?.LeftHandSlot;
+        if (parent == null) return;
+        _bow = new BowView { Name = "Bow", RestNocked = FirstPerson };
+        parent.AddChild(_bow);
+        if (FirstPerson)
+        {
+            _bow.Position = BowPos;
+            _bow.Rotation = BowRot;
+            _bow.Scale = Vector3.One * BowScaleFirstPerson;
+        }
+        else
+        {
+            // The stave runs through the fist like a sword's grip. The bone slot carries the rig's
+            // own scale, so size the bow against the slot's real size in the world.
+            float slot = Mathf.Max(parent.GlobalBasis.Scale.X, 0.0001f);
+            // The slot's +Y points out of the fist (forward, for a sword); stand the stave up across it,
+            // with the string towards the archer.
+            // Bow +Y -> slot +X (up in the fist), string (+Z) -> slot -Y (back towards the archer).
+            _bow.Basis = new Basis(new Vector3(0, 0, -1), new Vector3(1, 0, 0), new Vector3(0, -1, 0));
+            _bow.Scale = Vector3.One * (BowLength * (_model.TargetHeight * _model.Look.Height / 1.8f) / BowView.Height / slot);
+        }
+    }
+
+    /// <summary>Everyone: the archer looses an arrow (draw, snap, re-nock; a small kick in first person).</summary>
+    public void PlayBowShot()
+    {
+        if (_bow == null || !IsInstanceValid(_bow)) return;
+        _bow.Loose(_player.Class.AbilityCooldown * 0.7f);
+        if (!FirstPerson || !_player.IsLocal) return;
+        _bowTween?.Kill();
+        _bowTween = CreateTween();
+        _bowTween.TweenProperty(_bow, "position", BowPos + new Vector3(0.01f, 0.01f, 0.05f), 0.06).SetDelay(0.07);
+        _bowTween.TweenProperty(_bow, "position", BowPos, 0.22).SetTrans(Tween.TransitionType.Sine);
+    }
+
     private void RebuildWeapon(string itemId)
     {
         _shownWeapon = itemId;
+        _shownClass = _player.Class.Id;
         _weapon?.QueueFree();
         _weapon = null;
+        RebuildBow();
         var def = ItemDb.Get(itemId);
 
         if (def == null)
         {
-            if (!FirstPerson) return; // the character model already has hands
+            if (!FirstPerson || IsArcher) return; // the model already has hands; the archer's are on the bow
             _weapon = new MeshInstance3D
             {
                 Mesh = new BoxMesh { Size = new Vector3(0.14f, 0.16f, 0.14f) },
@@ -206,8 +266,19 @@ public partial class PlayerCombat : Node
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (_player.Build.Active || GuardUp) return;
-        if (e.IsActionPressed("attack")) TryAttack(heavy: false);
+        if (_player.Build.Active) return;
+        if (e.IsActionPressed("next_weapon") || e.IsActionPressed("prev_weapon"))
+        {
+            // Controller: step through the hotbar.
+            var slots = gs.WeaponSlots(_player);
+            int at = Mathf.Max(0, slots.IndexOf(_player.Equipped));
+            int step = e.IsActionPressed("next_weapon") ? 1 : -1;
+            if (slots.Count > 1) Net.Instance.RequestEquip(slots[(at + step + slots.Count) % slots.Count]);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (GuardUp) return;
+        if (Gamepad.Pressed(e, "attack")) TryAttack(heavy: false);
         else if (e.IsActionPressed("heavy_attack")) TryAttack(heavy: true);
     }
 

@@ -125,12 +125,13 @@ public static class UiTheme
             t.SetStylebox("pressed", type, Box("button_pressed", 14, 18, 9));
             t.SetStylebox("hover_pressed", type, Box("button_pressed", 14, 18, 9));
             t.SetStylebox("disabled", type, Box("button_disabled", 14, 18, 8));
-            t.SetStylebox("focus", type, new StyleBoxEmpty());
+            // Focus (controller): lit like hover. Godot hides focus that came from a mouse click.
+            t.SetStylebox("focus", type, FocusRing());
             t.SetColor("font_color", type, Ink);
             t.SetColor("font_hover_color", type, GoldBright);
             t.SetColor("font_pressed_color", type, Gold);
             t.SetColor("font_hover_pressed_color", type, Gold);
-            t.SetColor("font_focus_color", type, Ink);
+            t.SetColor("font_focus_color", type, GoldBright);
             t.SetColor("font_disabled_color", type, new Color(0.62f, 0.57f, 0.5f));
             t.SetColor("font_outline_color", type, Shadow);
             t.SetConstant("outline_size", type, 4);
@@ -144,7 +145,7 @@ public static class UiTheme
         t.SetStylebox("pressed", "Slot", Box("slot_active", 14, 4, 4));
         t.SetStylebox("hover_pressed", "Slot", Box("slot_active", 14, 4, 4));
         t.SetStylebox("disabled", "Slot", Box("slot", 14, 4, 4));
-        t.SetStylebox("focus", "Slot", new StyleBoxEmpty());
+        t.SetStylebox("focus", "Slot", FocusRing());
 
         // Check boxes and toggles: plain text, gold when on.
         foreach (var type in new[] { "CheckBox", "CheckButton" })
@@ -262,6 +263,24 @@ public static class UiTheme
         cap.AddChild(l);
         return cap;
     }
+
+    /// <summary>The controller focus: a bright gold ring drawn over the button.</summary>
+    private static StyleBoxFlat FocusRing()
+    {
+        var ring = new StyleBoxFlat
+        {
+            DrawCenter = false, BorderColor = new Color(1f, 0.86f, 0.4f),
+            ShadowColor = new Color(1f, 0.75f, 0.25f, 0.45f), ShadowSize = 6,
+        };
+        ring.SetBorderWidthAll(3);
+        ring.SetCornerRadiusAll(6);
+        ring.SetExpandMarginAll(2);
+        return ring;
+    }
+
+    /// <summary>A key cap for an action that shows the right key or button for the device in use
+    /// ("E" on the keyboard, "X" on an Xbox pad, "□" on a DualSense).</summary>
+    public static Control ActionCap(string action) => new ActionCap(action);
 
     /// <summary>Fade and scale a panel in when it opens.</summary>
     public static void PopIn(Control c)

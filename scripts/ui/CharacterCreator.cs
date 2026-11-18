@@ -96,6 +96,15 @@ public partial class CharacterCreator : Control
         hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         hint.CustomMinimumSize = new Vector2(500, 0);
         right.AddChild(hint);
+        if (Gamepad.UsingPad) Callable.From(OnDeviceChanged).CallDeferred();
+    }
+
+    public override void _EnterTree() => Gamepad.Changed += OnDeviceChanged;
+    public override void _ExitTree() => Gamepad.Changed -= OnDeviceChanged;
+
+    private void OnDeviceChanged()
+    {
+        if (Gamepad.UsingPad && IsInsideTree() && GetViewport().GuiGetFocusOwner() == null) Hud.FocusFirst(this);
     }
 
     public void Done()

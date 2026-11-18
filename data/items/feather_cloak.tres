@@ -13,5 +13,5 @@ Armor = 1.0
 Perk = "feather"
 PerkAmount = 0.6
 PerkText = "Fall damage −60%"
-WornColor = Color(0.55, 0.6, 0.75, 1)
+WornColor = Color(0.36, 0.42, 0.6, 1)
 SellPrice = 12

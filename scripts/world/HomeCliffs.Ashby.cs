@@ -33,9 +33,9 @@ public partial class HomeCliffs
                 float h = _rng.RandfRange(16, 34);
                 var size = new Vector3(_rng.RandfRange(12, 18), h, _rng.RandfRange(10, 14));
                 var pos = new Vector3(side * (64 + _rng.RandfRange(0, 6)), h / 2f - 4, z + _rng.RandfRange(-2, 2));
-                Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
+                var wall = Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
                     _rng.Randf() < 0.35f ? SlateLight : Slate);
-                if (_rng.Randf() < 0.5f) Crag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _rng.RandfRange(8, 16));
+                if (_rng.Randf() < 0.5f) Crag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _rng.RandfRange(8, 16), on: wall);
             }
         for (float x = -64; x <= 64; x += 10)
         {

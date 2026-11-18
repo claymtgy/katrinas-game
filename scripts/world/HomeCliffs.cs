@@ -137,10 +137,10 @@ public partial class HomeCliffs : Node3D
         {
             float h = _rng.RandfRange(50, 110);
             var pos = new Vector3(_rng.RandfRange(-160, 160), -70 + h / 2f, _rng.RandfRange(-70, -260));
-            Rock(pos, new Vector3(_rng.RandfRange(10, 24), h, _rng.RandfRange(10, 22)),
+            var body = Rock(pos, new Vector3(_rng.RandfRange(10, 24), h, _rng.RandfRange(10, 22)),
                 new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(0, 3), _rng.RandfRange(-0.12f, 0.12f)),
                 _rng.Randf() < 0.5f ? Obsidian : Slate, collide: false);
-            Crag(pos + new Vector3(0, h / 2f - 4f, 0), _rng.RandfRange(12, 20), _rng.RandfRange(14, 28));
+            Crag(pos + new Vector3(0, h / 2f - 4f, 0), _rng.RandfRange(12, 20), _rng.RandfRange(14, 28), on: body);
         }
         // Obsidian blades along the western cliff lip: the jagged silhouette left of the hero shot.
         for (int i = 0; i < 9; i++)
@@ -152,8 +152,9 @@ public partial class HomeCliffs : Node3D
         }
     }
 
-    /// <summary>Volcanic crag or single blade standing on basePos (models have their origin at the base).</summary>
-    private Node3D Crag(Vector3 basePos, float width, float height, bool blade = false, bool collide = false)
+    /// <summary>Volcanic crag or single blade standing on basePos (models have their origin at the base).
+    /// Given <paramref name="on"/>, it's a crown for that rock instead: see <see cref="SeatCrown"/>.</summary>
+    private Node3D Crag(Vector3 basePos, float width, float height, bool blade = false, bool collide = false, Node3D on = null)
     {
         var set = blade ? Models.Shards : Models.Crags;
         var path = set[_rng.RandiRange(0, set.Length - 1)];
@@ -163,7 +164,57 @@ public partial class HomeCliffs : Node3D
         node.Position = basePos;
         node.Rotation = new Vector3(_rng.RandfRange(-0.08f, 0.08f), _rng.RandfRange(0, Mathf.Tau), _rng.RandfRange(-0.08f, 0.08f));
         AddChild(node);
+        if (on != null && !collide) SeatCrown(node, on, size.Z / Mathf.Max(size.X, 0.01f));
         return node;
+    }
+
+    /// <summary>Make a crag a crown that grows out of a rock rather than sitting on it like a hat:
+    /// find the rock's real top from its mesh, sink the crown's base well into it, tilt it with the
+    /// rock, and make its base a little narrower than the rock is at that depth (a wider crown
+    /// overhangs and reads as a separate piece). Keeps the crown's height and spin.</summary>
+    private void SeatCrown(Node3D crown, Node3D rock, float depthRatio)
+    {
+        var mi = Models.FindMesh(rock);
+        if (mi?.Mesh == null) return;
+        var toHere = RelativeTo(mi, this);
+        var verts = mi.Mesh.GetFaces();
+        if (verts.Length == 0) return;
+        float top = float.MinValue;
+        foreach (var v in verts) top = Mathf.Max(top, (toHere * v).Y);
+
+        float height = crown.Scale.Y;
+        float sink = Mathf.Max(1.2f, height * 0.38f);
+        // The rock's cross-section in the band the crown's base sinks into.
+        var up = toHere.Basis.Y.Normalized();
+        Vector3 sum = Vector3.Zero;
+        int count = 0;
+        var band = new System.Collections.Generic.List<Vector3>();
+        foreach (var v in verts)
+        {
+            var p = toHere * v;
+            if (p.Y < top - sink) continue;
+            band.Add(p);
+            sum += p;
+            count++;
+        }
+        if (count == 0) return;
+        var centre = sum / count;
+        float reach = 0f;
+        foreach (var p in band) reach = Mathf.Max(reach, new Vector2(p.X - centre.X, p.Z - centre.Z).Length());
+        float width = Mathf.Max(1f, reach * 2f * 0.85f);
+
+        float spin = crown.Rotation.Y;
+        var tilt = new Quaternion(Vector3.Up, up);
+        crown.Basis = new Basis(tilt * new Quaternion(Vector3.Up, spin)).Scaled(new Vector3(width, height, width * depthRatio));
+        crown.Position = new Vector3(centre.X, top - sink, centre.Z);
+    }
+
+    private static Transform3D RelativeTo(Node3D node, Node3D root)
+    {
+        var t = Transform3D.Identity;
+        for (Node n = node; n != null && n != root; n = n.GetParent())
+            if (n is Node3D n3) t = n3.Transform * t;
+        return t;
     }
 
     private void BuildSideWalls()
@@ -177,10 +228,10 @@ public partial class HomeCliffs : Node3D
                 var size = new Vector3(_rng.RandfRange(12, 18), h, _rng.RandfRange(10, 14));
                 var pos = new Vector3(side * (64 + _rng.RandfRange(0, 6)), h / 2f - 4, z + _rng.RandfRange(-2, 2));
                 int before = GetChildCount();
-                Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
+                var wall = Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
                     _rng.Randf() < 0.35f ? SlateLight : Slate);
                 if (_rng.Randf() < 0.6f)
-                    Crag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _rng.RandfRange(8, 18));
+                    Crag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _rng.RandfRange(8, 18), on: wall);
                 // The pass to Falls Valley: drop these rocks (made anyway, so the random numbers
                 // for everything after come out the same as before the valley existed).
                 if (side > 0 && z > PassMinZ - 4 && z < PassMaxZ - 2)
@@ -446,7 +497,7 @@ void fragment() {
             spire.Position = pos + new Vector3(0, height / 2f - 6f, 0);
             spire.Rotation = new Vector3(0, _rng.RandfRange(0, Mathf.Tau), 0);
             AddChild(spire);
-            Crag(pos + new Vector3(0, height - 9f, 0), 15f, _rng.RandfRange(12, 20));
+            Crag(pos + new Vector3(0, height - 9f, 0), 15f, _rng.RandfRange(12, 20), on: spire);
             Fall(pos + new Vector3(0, height - 8f, 7.5f), width, height - 4f, _rng.RandfRange(-0.2f, 0.2f));
         }
         _clouds?.ApplyLava();

@@ -11,6 +11,8 @@ public partial class CharacterModel : Node3D
     [Export] public float TargetHeight { get; set; } = 1.8f;
 
     public Node3D RightHandSlot { get; private set; }
+    /// <summary>The left hand (the archer's bow); null if the rig has no slot there.</summary>
+    public Node3D LeftHandSlot { get; private set; }
     public float ModelScale => _model?.Scale.X ?? 1f;
 
     private PlayerController _player;
@@ -54,6 +56,7 @@ public partial class CharacterModel : Node3D
             _model.QueueFree();
         }
         RightHandSlot = null;
+        LeftHandSlot = null;
 
         _model = BuildBody(Look);
         AddChild(_model);
@@ -77,6 +80,11 @@ public partial class CharacterModel : Node3D
             skeleton.AddChild(attach);
             RightHandSlot = attach;
             foreach (var child in held) child.Reparent(attach, false);
+            if (skeleton.FindBone("handslot.l") >= 0)
+            {
+                LeftHandSlot = new BoneAttachment3D { Name = "LeftHandSlot", BoneName = "handslot.l" };
+                skeleton.AddChild(LeftHandSlot);
+            }
         }
         DressGear(_model, Look);
         if (_fade > 0) SetFade(_fade);

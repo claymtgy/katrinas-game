@@ -333,6 +333,7 @@ public partial class PlayerController : CharacterBody3D
         {
             LastHurtAt = Net.Now;
             if (amount > 0 && !Net.Instance.IsDedicated) Sfx.At("hit_flesh", GlobalPosition + Vector3.Up * 1.1f, IsLocal ? 2f : 0f, 0.1f);
+            if (amount > 0 && IsLocal) Gamepad.Rumble(0.4f, Mathf.Clamp(amount / 30f, 0.2f, 0.9f), 0.22f);
         };
         if (IsLocal)
         {
@@ -565,7 +566,7 @@ public partial class PlayerController : CharacterBody3D
         if (!IsLocal) { FollowRemote(dt); return; }
 
         var gs = GameState.Instance;
-        bool blocked = gs.UiOpen || Sleeping;
+        bool blocked = gs.UiOpen || Sleeping || gs.InputQuiet;
         bool onFloor = IsOnFloor();
         var v = Velocity;
         if (!Sleeping) _wakeRequested = false;
@@ -577,6 +578,7 @@ public partial class PlayerController : CharacterBody3D
 
         // Camera-relative movement on the ground plane.
         Vector2 input = gs.UiOpen ? Vector2.Zero : Input.GetVector("move_left", "move_right", "move_forward", "move_back");
+        bool sprintHeld = Input.IsActionPressed("sprint") || Gamepad.SprintLatched;
         if (Sleeping)
         {
             // Moving or jumping gets you out of bed.
@@ -606,7 +608,7 @@ public partial class PlayerController : CharacterBody3D
 
         bool moving = dir.LengthSquared() > 0.01f;
         bool guarding = Combat.GuardUp;
-        bool sprinting = !blocked && !guarding && moving && onFloor && Input.IsActionPressed("sprint") && Stamina > 1f;
+        bool sprinting = !blocked && !guarding && moving && onFloor && sprintHeld && Stamina > 1f;
         if (sprinting)
         {
             Stamina = Mathf.Max(0, Stamina - SprintCostPerSecond * dt);

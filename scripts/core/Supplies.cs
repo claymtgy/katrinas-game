@@ -92,6 +92,7 @@ public static class Supplies
             p.Pack.Remove(kv.Key, kv.Value);
             moved += kv.Value;
         }
+        if (moved > 0) Journal.Fact("deposited");
         return moved;
     }
 
