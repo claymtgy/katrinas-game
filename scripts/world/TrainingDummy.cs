@@ -29,6 +29,7 @@ public partial class TrainingDummy : StaticBody3D
         UpdateLabel();
         _health.Damaged += OnDamaged;
         _health.Died += OnDied;
+        _health.Revived += OnRebuilt;
     }
 
     private void UpdateLabel() => _hpLabel.Text = $"Training Dummy  {_health.Current:0}/{_health.Max:0}";
@@ -65,22 +66,27 @@ public partial class TrainingDummy : StaticBody3D
 
     private void OnDied(Node source)
     {
-        Hud.Toast("Training dummy destroyed! It will be rebuilt shortly.");
+        if (Net.Instance.IsServer && source is PlayerController p)
+            Net.Instance.ToastTo(p.PeerId, "Training dummy destroyed! It will be rebuilt shortly.");
         CollisionLayer = 0;
         _hpLabel.Visible = false;
         _tween?.Kill();
         _tween = CreateTween();
         _tween.TweenProperty(_visual, "rotation:x", -Mathf.Pi / 2f, 0.5).SetTrans(Tween.TransitionType.Bounce).SetEase(Tween.EaseType.Out);
-        GetTree().CreateTimer(RespawnSeconds).Timeout += () =>
-        {
-            if (!IsInstanceValid(this)) return;
-            _health.Reset();
-            CollisionLayer = _layer;
-            _hpLabel.Visible = true;
-            UpdateLabel();
-            _tween?.Kill();
-            _tween = CreateTween();
-            _tween.TweenProperty(_visual, "rotation:x", 0f, 0.6).SetTrans(Tween.TransitionType.Back);
-        };
+        if (Net.Instance.IsServer)
+            GetTree().CreateTimer(RespawnSeconds).Timeout += () =>
+            {
+                if (IsInstanceValid(this)) _health.Reset(); // fires Revived everywhere
+            };
+    }
+
+    private void OnRebuilt()
+    {
+        CollisionLayer = _layer;
+        _hpLabel.Visible = true;
+        UpdateLabel();
+        _tween?.Kill();
+        _tween = CreateTween();
+        _tween.TweenProperty(_visual, "rotation:x", 0f, 0.6).SetTrans(Tween.TransitionType.Back);
     }
 }

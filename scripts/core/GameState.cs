@@ -1,10 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using GArray = Godot.Collections.Array;
+using GDict = Godot.Collections.Dictionary;
 
 namespace KatrinasGame;
 
-/// <summary>Autoload singleton: inventory, time, equipment, placed buildings, input map, save/load.</summary>
+/// <summary>Autoload singleton: the shared stockpile, time, placed buildings, the player registry,
+/// input map and save/load. Only the server (host / dedicated / single player) saves; see Net.</summary>
 public partial class GameState : Node
 {
     public static GameState Instance { get; private set; }
@@ -13,36 +16,77 @@ public partial class GameState : Node
     public const uint LayerProps = 2;
     public const uint LayerPlayer = 4;
 
-    public const string SavePath = "user://save.json";
+    public const int SaveVersion = 2;
+    private const string LegacySavePath = "user://save.json";
 
+    /// <summary>The shared base stockpile (GDD §16). Server-owned; clients mirror it.</summary>
     public Inventory Inventory { get; } = new();
 
     /// <summary>0..1, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.</summary>
     public float TimeOfDay { get; set; } = 0.735f;
     public int Day { get; set; } = 1;
+    /// <summary>Days since the world began (Day + TimeOfDay): crops grow against this.</summary>
+    public float AbsoluteTime => Day + TimeOfDay;
 
-    /// <summary>Equipped weapon item id; "" = bare fists.</summary>
-    public string Equipped { get; set; } = "";
+    /// <summary>1 = the starting shack, 2 = the cottage. Server-owned, saved.</summary>
+    public int HomeTier { get; private set; } = 1;
+    public event System.Action<int> HomeTierChanged;
 
     /// <summary>True while a menu is open: frees the mouse and blocks movement/attacks.</summary>
     public bool UiOpen { get; private set; }
 
-    public PlayerController Player { get; set; }
-    /// <summary>Parent node for placed buildings (set by the world scene).</summary>
+    /// <summary>This machine's player (null on a dedicated server or before spawning).</summary>
+    public PlayerController LocalPlayer { get; set; }
+    /// <summary>Every player in the world, by network peer id (1 = host / single player).</summary>
+    public readonly Dictionary<int, PlayerController> Players = new();
+
+    /// <summary>Parents set by the world scene.</summary>
     public Node3D BuildingsRoot { get; set; }
-    public Vector3 SpawnPoint { get; set; } = Vector3.Zero;
+    public Node3D PlayersRoot { get; set; }
+    /// <summary>Where new players appear and respawn until they pray at a shrine.</summary>
+    public Vector3 WorldSpawn { get; set; } = Vector3.Zero;
     public Vector3 ClaimCenter { get; set; } = Vector3.Zero;
     public float ClaimRadius { get; set; } = 30f;
 
     public readonly List<PlacedBuilding> PlacedBuildings = new();
+    private int _nextBuildingId = 1;
+
+    /// <summary>Blossom sanctuaries' light: enemies won't enter or hunt inside (center, radius).</summary>
+    public readonly List<(Vector3 Center, float Radius)> SafeZones = new();
+
+    public bool InSafeZone(Vector3 pos) =>
+        SafeZones.Any(z => new Vector2(pos.X - z.Center.X, pos.Z - z.Center.Z).Length() < z.Radius);
+
+    /// <summary>Server: saved per-player data by name (position, respawn shrine).</summary>
+    public readonly Dictionary<string, GDict> PlayerRecords = new();
 
     public class PlacedBuilding
     {
+        public int NetId;
         public string Id;
         public Vector3 Position;
         public float RotationY;
         public Node3D Node;
+
+        /// <summary>Saved / replicated state of buildings that have some (farm plots).</summary>
+        public Variant State => Node is INetState s && GodotObject.IsInstanceValid(Node) ? s.GetState() : default;
+
+        public void ApplyState(Variant state)
+        {
+            if (Node is INetState s && GodotObject.IsInstanceValid(Node) && state.VariantType != Variant.Type.Nil) s.ApplyState(state);
+        }
     }
+
+    public void SetHomeTier(int tier)
+    {
+        tier = Mathf.Clamp(tier, 1, 2);
+        if (tier == HomeTier) return;
+        HomeTier = tier;
+        ClaimRadius = tier >= 2 ? 42f : 30f;
+        HomeTierChanged?.Invoke(tier);
+    }
+
+    public static string SavePath => $"user://saves/{Net.Instance?.Config.World ?? "home"}.json";
 
     public override void _EnterTree()
     {
@@ -52,7 +96,8 @@ public partial class GameState : Node
         ItemDb.Load();
     }
 
-    public override void _Ready() => DevAutotest.MaybeStart(this);
+    public PlayerController GetPlayer(int peerId) =>
+        Players.TryGetValue(peerId, out var p) && IsInstanceValid(p) ? p : null;
 
     public void SetUiOpen(bool open)
     {
@@ -60,27 +105,59 @@ public partial class GameState : Node
         Input.MouseMode = open ? Input.MouseModeEnum.Visible : Input.MouseModeEnum.Captured;
     }
 
+    /// <summary>Forget everything from the last session (back at the main menu).</summary>
+    public void ResetSession()
+    {
+        Players.Clear();
+        LocalPlayer = null;
+        PlacedBuildings.Clear();
+        PlayerRecords.Clear();
+        SafeZones.Clear();
+        Inventory.Clear();
+        HomeTier = 1;
+        ClaimRadius = 30f;
+        HomeTierChanged = null;
+        TimeOfDay = 0.735f;
+        Day = 1;
+        _nextBuildingId = 1;
+        UiOpen = false;
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+    }
+
     public override void _UnhandledInput(InputEvent e)
     {
-        if (e.IsActionPressed("save_game")) { SaveGame(); GetViewport().SetInputAsHandled(); }
-        else if (e.IsActionPressed("load_game")) { LoadGame(); GetViewport().SetInputAsHandled(); }
+        var net = Net.Instance;
+        if (!net.InSession) return;
+        if (e.IsActionPressed("save_game"))
+        {
+            if (net.IsServer) SaveGame();
+            else Hud.Toast("Only the host can save. The world saves when everyone sleeps.");
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsActionPressed("load_game"))
+        {
+            if (net.IsServer) LoadGame();
+            else Hud.Toast("Only the host can load the world.");
+            GetViewport().SetInputAsHandled();
+        }
         else if (e.IsActionPressed("ui_cancel"))
         {
             if (UiOpen) Hud.Instance?.CloseMenus();
-            else Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured
-                ? Input.MouseModeEnum.Visible
-                : Input.MouseModeEnum.Captured;
+            else Hud.Instance?.OpenGameMenu();
             GetViewport().SetInputAsHandled();
         }
     }
 
     // ---------------------------------------------------------------- weapons
 
-    /// <summary>Hotbar: slot 1 is always fists, then owned weapons by damage.</summary>
-    public List<string> WeaponSlots()
+    /// <summary>Hotbar for a player: slot 1 is fists, then the weapon in hand and the weapons
+    /// in the shared stockpile, by damage.</summary>
+    public List<string> WeaponSlots(PlayerController player)
     {
+        var ids = Inventory.Items.Keys.ToList();
+        if (player != null && player.Equipped != "") ids.Add(player.Equipped);
         var slots = new List<string> { "" };
-        slots.AddRange(Inventory.Items.Keys
+        slots.AddRange(ids.Distinct()
             .Select(ItemDb.Get)
             .Where(d => d != null && d.IsWeapon)
             .OrderBy(d => d.Damage)
@@ -90,63 +167,122 @@ public partial class GameState : Node
 
     // ---------------------------------------------------------------- buildings
 
-    public Node3D PlaceBuilding(BuildingDef def, Vector3 position, float rotationY)
+    /// <summary>Spawns a building. The server picks the id (netId 0); clients pass the server's id.
+    /// Callers on the server must also tell clients (Net does).</summary>
+    public PlacedBuilding PlaceBuilding(BuildingDef def, Vector3 position, float rotationY, int netId = 0, Variant state = default)
     {
         if (def?.Scene == null || BuildingsRoot == null) return null;
+        if (netId == 0) netId = _nextBuildingId++;
+        else _nextBuildingId = Mathf.Max(_nextBuildingId, netId + 1);
         var node = def.Scene.Instantiate<Node3D>();
+        node.Name = $"B{netId}";
         BuildingsRoot.AddChild(node);
         node.GlobalPosition = position;
         node.Rotation = new Vector3(0, rotationY, 0);
-        PlacedBuildings.Add(new PlacedBuilding { Id = def.Id, Position = position, RotationY = rotationY, Node = node });
-        return node;
+        var b = new PlacedBuilding { NetId = netId, Id = def.Id, Position = position, RotationY = rotationY, Node = node };
+        PlacedBuildings.Add(b);
+        b.ApplyState(state);
+        return b;
     }
 
-    private void ClearBuildings()
+    public PlacedBuilding FindBuilding(int netId) => PlacedBuildings.FirstOrDefault(b => b.NetId == netId);
+
+    public PlacedBuilding FindBuilding(Node node) => PlacedBuildings.FirstOrDefault(b => b.Node == node);
+
+    public void RemoveBuilding(int netId)
+    {
+        var b = FindBuilding(netId);
+        if (b == null) return;
+        PlacedBuildings.Remove(b);
+        if (IsInstanceValid(b.Node))
+        {
+            b.Node.GetParent()?.RemoveChild(b.Node);
+            b.Node.QueueFree();
+        }
+    }
+
+    public void ClearBuildings()
     {
         foreach (var b in PlacedBuildings)
-            if (IsInstanceValid(b.Node)) b.Node.QueueFree();
+            if (IsInstanceValid(b.Node))
+            {
+                // Detach now so a rebuilt building can reuse the name this frame.
+                b.Node.GetParent()?.RemoveChild(b.Node);
+                b.Node.QueueFree();
+            }
         PlacedBuildings.Clear();
     }
 
-    // ---------------------------------------------------------------- save / load
+    // ---------------------------------------------------------------- save / load (server only)
 
-    public void SaveGame()
+    /// <summary>Server: remember a player's position and shrine for when they rejoin.</summary>
+    public void RememberPlayer(PlayerController p) =>
+        PlayerRecords[p.DisplayName] = new GDict { ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint };
+
+    public void SaveGame(bool silent = false)
     {
-        var inv = new Godot.Collections.Dictionary();
-        foreach (var kv in Inventory.Items) inv[kv.Key] = kv.Value;
+        if (!Net.Instance.IsServer) return;
+        foreach (var p in Players.Values) RememberPlayer(p);
 
-        var buildings = new Godot.Collections.Array();
+        // Weapons in players' hands belong to the stockpile.
+        var inv = Inventory.ToDictionary();
+        foreach (var p in Players.Values)
+            if (p.Equipped != "") inv[p.Equipped] = (inv.TryGetValue(p.Equipped, out var n) ? n.AsInt32() : 0) + 1;
+
+        var buildings = new GArray();
         foreach (var b in PlacedBuildings)
-            buildings.Add(new Godot.Collections.Dictionary
+        {
+            var entry = new GDict
             {
                 ["id"] = b.Id, ["x"] = b.Position.X, ["y"] = b.Position.Y, ["z"] = b.Position.Z, ["rot"] = b.RotationY,
-            });
-
-        var data = new Godot.Collections.Dictionary
-        {
-            ["version"] = 1,
-            ["time"] = TimeOfDay,
-            ["day"] = Day,
-            ["equipped"] = Equipped,
-            ["inventory"] = inv,
-            ["buildings"] = buildings,
-        };
-        if (Player != null)
-        {
-            var p = Player.GlobalPosition;
-            data["player"] = new Godot.Collections.Array { p.X, p.Y, p.Z };
+            };
+            var state = b.State;
+            if (state.VariantType != Variant.Type.Nil) entry["state"] = state;
+            buildings.Add(entry);
         }
 
+        var players = new GDict();
+        foreach (var kv in PlayerRecords)
+        {
+            var pos = kv.Value["pos"].AsVector3();
+            var spawn = kv.Value["spawn"].AsVector3();
+            players[kv.Key] = new GDict
+            {
+                ["pos"] = new GArray { pos.X, pos.Y, pos.Z },
+                ["spawn"] = new GArray { spawn.X, spawn.Y, spawn.Z },
+            };
+        }
+
+        var data = new GDict
+        {
+            ["version"] = SaveVersion,
+            ["time"] = TimeOfDay,
+            ["day"] = Day,
+            ["inventory"] = inv,
+            ["buildings"] = buildings,
+            ["players"] = players,
+            ["home_tier"] = HomeTier,
+            ["camps"] = Wildlife.Instance?.SaveCamps() ?? new GArray(),
+        };
+
+        DirAccess.MakeDirRecursiveAbsolute(SavePath.GetBaseDir());
         using var file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Write);
-        if (file == null) { Hud.Toast("Save failed!"); return; }
+        if (file == null) { Net.Instance.ToastAll("Save failed!"); return; }
         file.StoreString(Json.Stringify(data, "  "));
-        Hud.Toast("Game saved");
+        GD.Print($"[GameState] Saved {ProjectSettings.GlobalizePath(SavePath)}");
+        if (!silent) Net.Instance.ToastAll("Game saved");
     }
 
-    public void LoadGame()
+    /// <summary>Server: load the world file. resync = push it to connected clients (F9 mid-game).</summary>
+    public void LoadGame(bool silent = false, bool resync = true)
     {
-        if (!FileAccess.FileExists(SavePath)) { Hud.Toast("No save found"); return; }
-        using var file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Read);
+        if (!Net.Instance.IsServer) return;
+        string path = SavePath;
+        if (!FileAccess.FileExists(path) && Net.Instance.Config.World == "home" && FileAccess.FileExists(LegacySavePath))
+            path = LegacySavePath;
+        if (!FileAccess.FileExists(path)) { if (!silent) Hud.Toast("No save found"); return; }
+
+        using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
         var parsed = Json.ParseString(file.GetAsText());
         if (parsed.VariantType != Variant.Type.Dictionary) { Hud.Toast("Save file is corrupt"); return; }
         var data = parsed.AsGodotDictionary();
@@ -154,30 +290,51 @@ public partial class GameState : Node
         TimeOfDay = data.TryGetValue("time", out var t) ? (float)t.AsDouble() : 0.3f;
         Day = data.TryGetValue("day", out var d) ? d.AsInt32() : 1;
 
-        Inventory.Clear();
-        if (data.TryGetValue("inventory", out var invV))
-            foreach (var kv in invV.AsGodotDictionary())
-                Inventory.Add(kv.Key.AsString(), kv.Value.AsInt32());
-
-        Equipped = data.TryGetValue("equipped", out var eq) ? eq.AsString() : "";
-        if (!WeaponSlots().Contains(Equipped)) Equipped = "";
+        // Held weapons were saved into the stockpile; empty everyone's hands.
+        foreach (var p in Players.Values.Where(p => p.Equipped != "")) Net.Instance.SetEquipped(p, "");
+        Inventory.ReplaceAll(data.TryGetValue("inventory", out var invV) ? invV.AsGodotDictionary() : new GDict());
 
         ClearBuildings();
+        _nextBuildingId = 1;
         if (data.TryGetValue("buildings", out var bv))
             foreach (var v in bv.AsGodotArray())
             {
                 var b = v.AsGodotDictionary();
                 var def = ItemDb.GetBuilding(b["id"].AsString());
                 var pos = new Vector3((float)b["x"].AsDouble(), (float)b["y"].AsDouble(), (float)b["z"].AsDouble());
-                PlaceBuilding(def, pos, (float)b["rot"].AsDouble());
+                PlaceBuilding(def, pos, (float)b["rot"].AsDouble(), 0, b.TryGetValue("state", out var st) ? st : default);
             }
 
-        if (Player != null && data.TryGetValue("player", out var pv))
-        {
-            var a = pv.AsGodotArray();
-            Player.Teleport(new Vector3((float)a[0].AsDouble(), (float)a[1].AsDouble(), (float)a[2].AsDouble()));
-        }
-        Hud.Toast("Game loaded");
+        SetHomeTier(data.TryGetValue("home_tier", out var tier) ? tier.AsInt32() : 1);
+        Wildlife.Instance?.LoadCamps(data.TryGetValue("camps", out var camps) ? camps.AsGodotArray() : null);
+
+        PlayerRecords.Clear();
+        if (data.TryGetValue("players", out var pv))
+            foreach (var kv in pv.AsGodotDictionary())
+            {
+                var rec = kv.Value.AsGodotDictionary();
+                PlayerRecords[kv.Key.AsString()] = new GDict { ["pos"] = ToVec(rec["pos"]), ["spawn"] = ToVec(rec["spawn"]) };
+            }
+        else if (data.TryGetValue("player", out var legacy)) // version 1: one player
+            PlayerRecords[Net.Instance.LocalName] = new GDict { ["pos"] = ToVec(legacy), ["spawn"] = WorldSpawn };
+
+        // Put connected players back where the save had them.
+        foreach (var p in Players.Values)
+            if (PlayerRecords.TryGetValue(p.DisplayName, out var rec))
+            {
+                p.SpawnPoint = rec["spawn"].AsVector3();
+                Net.Instance.ServerTeleport(p, rec["pos"].AsVector3());
+            }
+
+        if (resync) Net.Instance.ResyncAll();
+        GD.Print($"[GameState] Loaded {ProjectSettings.GlobalizePath(path)}");
+        if (!silent) Net.Instance.ToastAll("Game loaded");
+    }
+
+    private static Vector3 ToVec(Variant v)
+    {
+        var a = v.AsGodotArray();
+        return new Vector3((float)a[0].AsDouble(), (float)a[1].AsDouble(), (float)a[2].AsDouble());
     }
 
     // ---------------------------------------------------------------- input map
@@ -197,8 +354,12 @@ public partial class GameState : Node
         AddKey("help", Key.F1);
         AddKey("save_game", Key.F5);
         AddKey("load_game", Key.F9);
+        AddKey("player_list", Key.Tab);
         AddMouse("attack", MouseButton.Left);
-        AddMouse("heavy_attack", MouseButton.Right);
+        AddKey("heavy_attack", Key.Q);
+        AddMouse("heavy_attack", MouseButton.Middle);
+        AddMouse("block", MouseButton.Right);
+        AddKey("eat", Key.F);
         AddMouse("next_build", MouseButton.WheelDown);
         AddMouse("prev_build", MouseButton.WheelUp);
         AddKey("next_build", Key.Period);

@@ -12,12 +12,18 @@ public partial class Interactor : Node
 
     private PlayerController _player;
 
-    public override void _Ready() => _player = GetParent<PlayerController>();
+    public override void _Ready()
+    {
+        _player = GetParent<PlayerController>();
+        if (_player.IsLocal) return;
+        SetPhysicsProcess(false);
+        SetProcessUnhandledInput(false);
+    }
 
     public override void _PhysicsProcess(double delta)
     {
         Target = null;
-        if (GameState.Instance.UiOpen || _player.Build.Active) return;
+        if (GameState.Instance.UiOpen || _player.Build.Active || _player.Sleeping) return;
 
         var cam = _player.Rig.Camera;
         var from = cam.GlobalPosition;
@@ -37,7 +43,12 @@ public partial class Interactor : Node
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (e.IsActionPressed("interact") && Target != null && !GameState.Instance.UiOpen)
+        if (e.IsActionPressed("interact") && _player.Sleeping)
+        {
+            Net.Instance.RequestWake();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsActionPressed("interact") && Target != null && !GameState.Instance.UiOpen)
         {
             Target.Interact(_player);
             GetViewport().SetInputAsHandled();

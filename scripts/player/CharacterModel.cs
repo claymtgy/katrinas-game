@@ -121,8 +121,10 @@ public partial class CharacterModel : Node3D
 
         var v = _player.Velocity;
         float speed = new Vector2(v.X, v.Z).Length();
-        bool armed = GameState.Instance.Equipped != "";
-        if (!_player.IsOnFloor()) Play("Jump_Idle", 0.15);
+        bool armed = _player.Equipped != "";
+        if (_player.Sleeping && HasAnimation("Lie_Idle")) Play("Lie_Idle", 0.4);
+        else if (_player.GuardShown && HasAnimation("Blocking")) Play("Blocking", 0.12);
+        else if (!_player.Grounded) Play("Jump_Idle", 0.15);
         else if (speed > 6f) Play("Running_A", 0.2);
         else if (speed > 0.6f) Play("Walking_A", 0.2, Mathf.Clamp(speed / 3.2f, 0.7f, 1.6f));
         else Play(armed ? "Idle" : "Unarmed_Idle", 0.25);

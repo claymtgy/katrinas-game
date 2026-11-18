@@ -3,7 +3,9 @@ using Godot;
 namespace KatrinasGame;
 
 /// <summary>B toggles build mode. A translucent ghost follows the crosshair on the ground,
-/// snaps to a grid, turns red when placement is invalid. Wheel cycles, R rotates, LMB places.</summary>
+/// snaps to a grid, turns red when placement is invalid. Wheel cycles, R rotates, LMB places.
+/// The ghost is local; placing asks the server, which re-checks the spot and pays from the
+/// shared stockpile (Net.RequestBuild).</summary>
 public partial class BuildSystem : Node
 {
     [Export] public float GridSize { get; set; } = 0.5f;
@@ -28,12 +30,18 @@ public partial class BuildSystem : Node
         AlbedoColor = new Color(0.4f, 1f, 0.5f, 0.45f),
     };
 
-    public override void _Ready() => _player = GetParent<PlayerController>();
+    public override void _Ready()
+    {
+        _player = GetParent<PlayerController>();
+        if (_player.IsLocal) return;
+        SetPhysicsProcess(false);
+        SetProcessUnhandledInput(false);
+    }
 
     public override void _UnhandledInput(InputEvent e)
     {
         var gs = GameState.Instance;
-        if (gs.UiOpen) return;
+        if (gs.UiOpen || _player.Sleeping) return;
 
         if (e.IsActionPressed("build_mode"))
         {
@@ -47,7 +55,7 @@ public partial class BuildSystem : Node
         else if (e.IsActionPressed("prev_build")) Cycle(-1);
         else if (e.IsActionPressed("rotate_build")) _rotationY += Mathf.DegToRad(RotationStepDegrees);
         else if (e.IsActionPressed("attack")) TryPlace();
-        else if (e.IsActionPressed("heavy_attack")) SetActive(false);
+        else if (e.IsActionPressed("block")) SetActive(false);
         else return;
         GetViewport().SetInputAsHandled();
     }
@@ -58,6 +66,15 @@ public partial class BuildSystem : Node
         Active = active;
         if (active) CreateGhost();
         else FreeGhost();
+    }
+
+    /// <summary>Pick a building by id (scripted tests, future build menu).</summary>
+    public void Select(string buildingId)
+    {
+        int i = ItemDb.Buildings.FindIndex(b => b.Id == buildingId);
+        if (i < 0) return;
+        _index = i;
+        if (Active) CreateGhost();
     }
 
     private void Cycle(int dir)
@@ -121,27 +138,33 @@ public partial class BuildSystem : Node
         _ghost.GlobalPosition = _spot;
         _ghost.Rotation = new Vector3(0, _rotationY, 0);
 
-        InvalidReason = Validate(space, normal);
+        InvalidReason = normal.Y < 0.85f ? "Too steep" : CheckPlacement(space, Current, _spot, _rotationY);
         _ghostMaterial.AlbedoColor = InvalidReason == ""
             ? new Color(0.4f, 1f, 0.5f, 0.45f)
             : new Color(1f, 0.3f, 0.3f, 0.45f);
     }
 
-    private string Validate(PhysicsDirectSpaceState3D space, Vector3 normal)
+    /// <summary>Why a building can't go here ("" = it can). Used by the local ghost and again by
+    /// the server before it builds.</summary>
+    public static string CheckPlacement(PhysicsDirectSpaceState3D space, BuildingDef def, Vector3 spot, float rotationY)
     {
         var gs = GameState.Instance;
-        var def = Current;
-        if (normal.Y < 0.85f) return "Too steep";
 
-        var flatOffset = new Vector2(_spot.X - gs.ClaimCenter.X, _spot.Z - gs.ClaimCenter.Z);
+        var ground = space.IntersectRay(PhysicsRayQueryParameters3D.Create(
+            spot + Vector3.Up * 1.5f, spot + Vector3.Down * 1.5f, GameState.LayerWorld));
+        if (ground.Count == 0) return "Aim at the ground";
+        if (ground["normal"].AsVector3().Y < 0.85f) return "Too steep";
+
+        var flatOffset = new Vector2(spot.X - gs.ClaimCenter.X, spot.Z - gs.ClaimCenter.Z);
         if (flatOffset.Length() > gs.ClaimRadius) return "Outside your land claim";
+        if (gs.HomeTier < 2 && HomeUpgradeBoard.InCottage(spot, 0.6f)) return "Space kept for the cottage";
 
-        // Overlap test against props, other buildings and the player.
+        // Overlap test against props, other buildings and players.
         var size = def.Footprint;
         var shapeQuery = new PhysicsShapeQueryParameters3D
         {
             Shape = new BoxShape3D { Size = size - new Vector3(0.05f, 0.1f, 0.05f) },
-            Transform = new Transform3D(new Basis(Vector3.Up, _rotationY), _spot + Vector3.Up * (size.Y * 0.5f + 0.05f)),
+            Transform = new Transform3D(new Basis(Vector3.Up, rotationY), spot + Vector3.Up * (size.Y * 0.5f + 0.05f)),
             CollisionMask = GameState.LayerProps | GameState.LayerPlayer,
         };
         if (space.IntersectShape(shapeQuery, 1).Count > 0) return "Something is in the way";
@@ -157,10 +180,6 @@ public partial class BuildSystem : Node
             Hud.Toast(InvalidReason == "" ? "Can't build here" : InvalidReason);
             return;
         }
-        var gs = GameState.Instance;
-        var def = Current;
-        if (!gs.Inventory.TryConsume(def.GetCost())) return;
-        gs.PlaceBuilding(def, _spot, _rotationY);
-        Hud.Toast($"Built {def.DisplayName}");
+        Net.Instance.RequestBuild(Current.Id, _spot, _rotationY);
     }
 }

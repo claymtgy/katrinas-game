@@ -15,9 +15,9 @@ render_mode unshaded, cull_back;
 global uniform vec3 sun_dir;
 global uniform vec4 sun_color;
 global uniform float night;
-uniform vec3 lit_color : source_color = vec3(1.0, 0.8, 0.74);
-uniform vec3 shade_color : source_color = vec3(0.42, 0.3, 0.5);
-uniform vec3 night_color : source_color = vec3(0.1, 0.1, 0.22);
+uniform vec3 lit_color : source_color = vec3(1.0, 0.86, 0.72);
+uniform vec3 shade_color : source_color = vec3(0.5, 0.48, 0.66);
+uniform vec3 night_color : source_color = vec3(0.2, 0.25, 0.42);
 uniform vec3 lava_color : source_color = vec3(1.0, 0.4, 0.13);
 uniform vec4 lava_points[8];
 uniform int lava_count = 0;
@@ -34,10 +34,10 @@ void fragment() {
     float band = smoothstep(0.38, 0.7, l);
     vec3 sun_tint = clamp(sun_color.rgb, vec3(0.0), vec3(1.4));
     vec3 col = mix(shade_color, lit_color * mix(vec3(1.0), sun_tint, 0.6), band);
-    col += vec3(0.32, 0.26, 0.5) * max(n.y, 0.0) * 0.18;                 // sky bounce on tops
+    col += vec3(1.0, 0.72, 0.55) * smoothstep(0.2, 0.9, n.y) * 0.22;     // warm light pooling on the flat tops
     float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
     col += sun_tint * rim * 0.45;                                        // silver lining
-    col = mix(col, night_color + col * 0.15, night);
+    col = mix(col, night_color * (0.75 + 0.5 * smoothstep(-0.2, 0.8, n.y)) + col * 0.08, night);  // moonlit blue, brighter tops
     float g = 0.0;
     for (int i = 0; i < lava_count; i++) {
         float d = length(wpos - lava_points[i].xyz);
@@ -106,13 +106,13 @@ void fragment() {
     /// <summary>One cumulus: a wide flat base of big puffs topped by smaller billows.</summary>
     private static void Cluster(RandomNumberGenerator rng, Vector3 center, float radius, List<Transform3D> output)
     {
-        int count = rng.RandiRange(6, 10);
+        int count = rng.RandiRange(8, 13);
         for (int i = 0; i < count; i++)
         {
             float t = (float)i / count;
-            var offset = new Vector3(rng.RandfRange(-1f, 1f) * radius, t * radius * 0.55f, rng.RandfRange(-0.6f, 0.6f) * radius);
+            var offset = new Vector3(rng.RandfRange(-1.4f, 1.4f) * radius, t * radius * 0.35f, rng.RandfRange(-0.8f, 0.8f) * radius);
             float size = radius * rng.RandfRange(0.7f, 1.15f) * (1f - t * 0.45f) * (1f - Mathf.Abs(offset.X) / radius * 0.3f);
-            var basis = Basis.Identity.Scaled(new Vector3(size * 1.15f, size * 0.78f, size));
+            var basis = Basis.Identity.Scaled(new Vector3(size * 1.35f, size * (0.42f + t * 0.3f), size * 1.1f));
             output.Add(new Transform3D(basis, center + offset));
         }
     }

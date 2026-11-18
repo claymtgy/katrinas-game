@@ -2,16 +2,23 @@ using Godot;
 
 namespace KatrinasGame;
 
-/// <summary>Flickering light; resting restores health and stamina.</summary>
-public partial class Campfire : StaticBody3D, IInteractable
+/// <summary>Flickering light and a cooking station: rest here to heal, or cook (bread, roast
+/// turnips) from the shared stockpile.</summary>
+public partial class Campfire : CraftingStation, IServerInteractable
 {
+    public Campfire()
+    {
+        StationId = "campfire";
+        StationName = "Campfire";
+    }
+
     [Export] public float HealAmount { get; set; } = 40f;
 
     private OmniLight3D _light;
     private Node3D _flame;
     private float _t;
 
-    public string InteractPrompt => "Rest by the fire";
+    public override string InteractPrompt => "Rest or cook at the fire";
 
     public override void _Ready()
     {
@@ -28,10 +35,12 @@ public partial class Campfire : StaticBody3D, IInteractable
         if (_flame != null) _flame.Scale = new Vector3(1, 0.85f + 0.3f * flicker, 1);
     }
 
-    public void Interact(PlayerController player)
+    /// <summary>Local player: ask the server to rest here.</summary>
+    public void Rest() => Net.Instance.RequestInteract(this);
+
+    public void ServerInteract(PlayerController player)
     {
-        player.Health.Heal(HealAmount);
-        player.RestoreStamina();
-        Hud.Toast("You rest by the fire and feel restored.");
+        Net.Instance.ServerRestore(player, HealAmount);
+        Net.Instance.ToastTo(player.PeerId, "You rest by the fire and feel restored.");
     }
 }

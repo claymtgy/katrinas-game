@@ -4,7 +4,8 @@ using System.Linq;
 
 namespace KatrinasGame;
 
-/// <summary>Simple item-id -> count bag. Plain C# so it can be reused for chests, traders, workers later.</summary>
+/// <summary>Simple item-id -> count bag. Plain C# so it can be reused for chests, traders, workers later.
+/// GameState.Inventory is the shared base stockpile: the server owns it, clients hold a mirror.</summary>
 public class Inventory
 {
     private readonly Dictionary<string, int> _items = new();
@@ -44,6 +45,25 @@ public class Inventory
         foreach (var key in _items.Where(kv => kv.Value <= 0).Select(kv => kv.Key).ToList()) _items.Remove(key);
         Changed?.Invoke();
         return true;
+    }
+
+    /// <summary>Replace everything (clients mirroring the server). Doesn't fire ItemAdded.</summary>
+    public void ReplaceAll(Godot.Collections.Dictionary items)
+    {
+        _items.Clear();
+        foreach (var kv in items)
+        {
+            int n = kv.Value.AsInt32();
+            if (n > 0) _items[kv.Key.AsString()] = n;
+        }
+        Changed?.Invoke();
+    }
+
+    public Godot.Collections.Dictionary ToDictionary()
+    {
+        var d = new Godot.Collections.Dictionary();
+        foreach (var kv in _items) d[kv.Key] = kv.Value;
+        return d;
     }
 
     public void Clear()

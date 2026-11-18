@@ -1,14 +1,19 @@
 [gd_scene format=3]
 
+[ext_resource type="Script" path="res://scripts/core/Main.cs" id="0_main"]
 [ext_resource type="PackedScene" path="res://scenes/world/HomeCliffs.tscn" id="1_world"]
-[ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="2_player"]
 [ext_resource type="Script" path="res://scripts/ui/Hud.cs" id="3_hud"]
+[ext_resource type="Script" path="res://scripts/enemies/Wildlife.cs" id="4_wild"]
 
 [node name="Main" type="Node3D"]
+script = ExtResource("0_main")
 
 [node name="HomeCliffs" parent="." instance=ExtResource("1_world")]
 
-[node name="Player" parent="." instance=ExtResource("2_player")]
+[node name="Wildlife" type="Node3D" parent="."]
+script = ExtResource("4_wild")
+
+[node name="Players" type="Node3D" parent="."]
 
 [node name="Hud" type="CanvasLayer" parent="."]
 script = ExtResource("3_hud")

@@ -3,7 +3,8 @@ using Godot;
 namespace KatrinasGame;
 
 /// <summary>Owns the sun, moon, sky and WorldEnvironment; advances GameState.TimeOfDay.
-/// The sun arcs across the north (cliff) side so the view off the cliff is always backlit.</summary>
+/// The sun arcs across the north (cliff) side so the view off the cliff is always backlit.
+/// The server's clock is the real one; clients run theirs between the server's time syncs.</summary>
 public partial class DayNight : Node3D
 {
     [Export] public float DayLengthSeconds { get; set; } = 600f;
@@ -13,8 +14,8 @@ public partial class DayNight : Node3D
     private static readonly Color DayHorizon = new(0.98f, 0.82f, 0.66f);
     private static readonly Color DuskTop = new(0.13f, 0.11f, 0.32f);      // twilight indigo
     private static readonly Color DuskHorizon = new(0.98f, 0.46f, 0.2f);   // magma orange / sunset gold
-    private static readonly Color NightTop = new(0.02f, 0.02f, 0.07f);    // obsidian
-    private static readonly Color NightHorizon = new(0.1f, 0.08f, 0.22f);
+    private static readonly Color NightTop = new(0.04f, 0.06f, 0.17f);    // deep night blue
+    private static readonly Color NightHorizon = new(0.14f, 0.18f, 0.36f);
     private static readonly Color SunNoon = new(1f, 0.93f, 0.82f);
     private static readonly Color SunLow = new(1f, 0.55f, 0.35f);
 
@@ -46,7 +47,12 @@ void sky() {
     if (!AT_CUBEMAP_PASS && night > 0.01 && h > 0.0) {
         vec3 cell = floor(dir * 260.0);
         float r = hash(cell);
-        float star = step(0.9965, r) * (0.55 + 0.45 * sin(TIME * (1.5 + r * 3.0) + r * 60.0));
+        // r only says *whether* a cell has a star (r > 0.9965, so every star's r is ~1). Speed and
+        // phase need their own hashes, or every star twinkles in lockstep.
+        float speed = 0.6 + hash(cell + 17.31) * 2.4;
+        float phase = hash(cell + 41.7) * 6.2832;
+        float tw = 0.5 + 0.5 * sin(TIME * speed + phase);
+        float star = step(0.9965, r) * (0.35 + 0.65 * tw * tw) * (0.6 + 0.4 * hash(cell + 3.9));
         col += vec3(0.9, 0.9, 1.0) * star * night * smoothstep(0.02, 0.35, h) * 2.2;
     }
     COLOR = col * energy;
@@ -105,10 +111,14 @@ void sky() {
     public override void _Process(double delta)
     {
         var gs = GameState.Instance;
-        float t = gs.TimeOfDay + (float)delta / DayLengthSeconds;
-        if (t >= 1f) { t -= 1f; gs.Day++; }
-        gs.TimeOfDay = t;
-        Apply(t);
+        float t = gs.TimeOfDay;
+        if (!Net.Instance.ClockPaused)
+        {
+            t += (float)delta / DayLengthSeconds;
+            if (t >= 1f) { t -= 1f; if (Net.Instance.IsServer) gs.Day++; }
+            gs.TimeOfDay = t;
+        }
+        if (!Net.Instance.IsDedicated) Apply(t);
     }
 
     private void Apply(float t)
@@ -128,7 +138,7 @@ void sky() {
         _sun.LightEnergy = Mathf.Clamp(elevation * 4f, 0f, 1f) * 1.3f;
         _sun.LightColor = SunLow.Lerp(SunNoon, day);
         _sun.Visible = elevation > -0.05f;
-        _moon.LightEnergy = 0.22f * night;
+        _moon.LightEnergy = 0.55f * night;
         _moon.Visible = night > 0.01f;
 
         var top = DayTop.Lerp(DuskTop, dusk).Lerp(NightTop, night);
@@ -138,7 +148,7 @@ void sky() {
         _sky.SetShaderParameter("ground_color", horizon.Lerp(top, 0.6f).Darkened(0.3f));
         _sky.SetShaderParameter("glow_color", SunLow);
         _sky.SetShaderParameter("glow_strength", Mathf.Clamp(dusk * 1.2f, 0f, 1f) * (1f - night * 0.6f));
-        _sky.SetShaderParameter("energy", Mathf.Lerp(1f, 0.55f, night));
+        _sky.SetShaderParameter("energy", Mathf.Lerp(1f, 0.85f, night));
 
         _env.FogLightColor = horizon.Lerp(new Color(1f, 0.75f, 0.8f), 0.3f * dusk);
 
@@ -146,6 +156,6 @@ void sky() {
         RenderingServer.GlobalShaderParameterSet("sun_dir", toSun);
         RenderingServer.GlobalShaderParameterSet("sun_color", _sun.LightColor * Mathf.Max(_sun.LightEnergy, 0.15f));
         RenderingServer.GlobalShaderParameterSet("night", night);
-        _env.AmbientLightEnergy = Mathf.Lerp(0.8f, 0.35f, night);
+        _env.AmbientLightEnergy = Mathf.Lerp(0.8f, 0.6f, night);
     }
 }

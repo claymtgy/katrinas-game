@@ -40,7 +40,7 @@ void fragment() {
 render_mode diffuse_lambert_wrap, specular_disabled;
 global uniform vec3 sun_dir;
 global uniform float night;
-uniform vec3 inner_color : source_color = vec3(1.0, 0.78, 0.88);
+uniform vec3 inner_color : source_color = vec3(1.0, 0.7, 0.84);
 uniform vec3 outer_color : source_color = vec3(0.86, 0.24, 0.52);
 uniform float glow = 1.1;
 void fragment() {
@@ -49,7 +49,7 @@ void fragment() {
     ALBEDO = c * 0.55;
     BACKLIGHT = vec3(1.0, 0.55, 0.72);
     ROUGHNESS = 1.0;
-    EMISSION = c * glow * (0.55 + 0.25 * f) * (1.0 + night * 0.8);
+    EMISSION = c * glow * (0.55 + 0.25 * f) * (1.0 + night * 0.25);
 }";
 
     // ------------------------------------------------------------------ public API
@@ -121,6 +121,9 @@ void fragment() {
             copy.RimTint = 0.6f;
             // Third-party packs are brighter/more saturated than our palette: pull them toward it.
             copy.AlbedoColor = std.AlbedoColor * new Color(0.8f, 0.8f, 0.88f);
+            // Quaternius twisted-tree leaves are fire-engine red: push them to a dusky plum so the
+            // sacred cherry stays the only strong pink/red in the scene.
+            if (key == "Leaves_TwistedTree") copy.AlbedoColor = new Color(0.5f, 0.36f, 0.6f);
             return copy;
         }
         return source;

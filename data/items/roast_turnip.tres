@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "roast_turnip"
+DisplayName = "Roast Turnip"
+Category = "food"
+IconColor = Color(0.7, 0.4, 0.35, 1)
+FoodHeal = 25.0
+SellPrice = 4

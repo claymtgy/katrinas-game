@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "iron_nails"
+DisplayName = "Iron Nails"
+Category = "material"
+IconColor = Color(0.6, 0.62, 0.68, 1)
+BuyPrice = 5

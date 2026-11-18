@@ -19,6 +19,7 @@ public partial class CameraRig : Node3D
     private Node3D _pivot;
     private SpringArm3D _arm;
     private Tween _tween;
+    private bool _local = true;
 
     public override void _Ready()
     {
@@ -27,6 +28,17 @@ public partial class CameraRig : Node3D
         Camera = _arm.GetNode<Camera3D>("Camera3D");
         if (GetParent() is CollisionObject3D owner) _arm.AddExcludedObject(owner.GetRid());
 
+        // Other players' rigs only carry their aim; they never render or read input.
+        _local = GetParent() is not PlayerController player || player.IsLocal;
+        if (!_local)
+        {
+            Camera.Current = false;
+            SetProcessUnhandledInput(false);
+            CallDeferred(MethodName.SetView, false, true);
+            return;
+        }
+
+        Camera.MakeCurrent();
         Input.MouseMode = Input.MouseModeEnum.Captured;
         // Defer so listeners (player body, combat) have connected first.
         CallDeferred(MethodName.SetView, StartInFirstPerson, true);
@@ -59,7 +71,10 @@ public partial class CameraRig : Node3D
         }
     }
 
-    /// <summary>Point the camera (radians). Used by scripted tests and cutscenes.</summary>
+    /// <summary>(yaw, pitch) in radians: sent over the network as the player's aim.</summary>
+    public (float Yaw, float Pitch) Look => (Rotation.Y, _pivot.Rotation.X);
+
+    /// <summary>Point the camera (radians). Used by scripted tests, cutscenes and remote players.</summary>
     public void SetLook(float yaw, float pitch)
     {
         Rotation = new Vector3(0, yaw, 0);

@@ -1,0 +1,333 @@
+using Godot;
+
+namespace KatrinasGame;
+
+/// <summary>Shared brain for hostile creatures (wolves, bandits). Subclasses give the tuning
+/// numbers, the body and the animations; the state machine, targeting, steering and replication
+/// hooks live here.
+///
+/// Multiplayer: the server runs Think and the physics; clients glide to the positions Wildlife
+/// sends and play animations. Health is the usual networked Health component, and a hit on a
+/// player goes through Net.ServerDamagePlayer so blocks and parries work.</summary>
+public abstract partial class Enemy : CharacterBody3D
+{
+    public enum State { Prowl, Chase, Windup, Recover, Stagger, Flee, Dead }
+
+    /// <summary>"wolf", "bandit", "captain"... (sent over the network to build the right body).</summary>
+    public abstract string Kind { get; }
+    public int NetId { get; protected set; }
+    /// <summary>Pack (wolves) or camp (bandits). Members alert each other and share an anchor.</summary>
+    public int Group { get; protected set; }
+    public Health Health { get; protected set; }
+    public State Current { get; protected set; } = State.Prowl;
+    public PlayerController Target { get; protected set; }
+    /// <summary>Damage per hit (big monsters get it scaled by player count when spawned).</summary>
+    public float Damage { get; set; }
+
+    // ---- tuning
+    protected abstract float WalkSpeed { get; }
+    protected abstract float RunSpeed { get; }
+    protected abstract float AggroRange { get; }
+    /// <summary>Give up on a target farther than this from the enemy.</summary>
+    protected abstract float LeashRange { get; }
+    /// <summary>Give up on a target farther than this from the group's anchor (0 = no limit).</summary>
+    protected virtual float HomeLeash => 0f;
+    protected abstract float AttackRange { get; }
+    protected abstract float AttackReach { get; }
+    protected abstract float AttackWindup { get; }
+    protected abstract float AttackCooldown { get; }
+    protected virtual bool FleesByDay => false;
+    protected virtual float HitStagger => 0.35f;
+    protected virtual float HitKnockback => 5f;
+    protected virtual float WanderRadius => 6f;
+
+    // ---- server AI
+    protected float StateTime;
+    private float _attackCooldown, _gravity, _staggerFor;
+    private Vector3 _wanderTo, _knockback;
+    private bool _hasWander;
+    protected readonly RandomNumberGenerator Rng = new();
+
+    // ---- client interpolation
+    private Vector3 _netPos;
+    private float _netYaw;
+    private bool _hasNet;
+
+    // ---- visual
+    protected Vector3 LastPos;
+    protected float SpeedSmoothed;
+
+    /// <summary>Common setup; call from the subclass factory before the enemy enters the tree.</summary>
+    protected void Init(int netId, int group, Vector3 position, float yaw, float maxHealth, Vector3 colliderSize)
+    {
+        NetId = netId;
+        Group = group;
+        CollisionLayer = GameState.LayerProps;
+        CollisionMask = GameState.LayerWorld | GameState.LayerProps | GameState.LayerPlayer;
+        Position = position;
+        Rotation = new Vector3(0, yaw, 0);
+        AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = colliderSize }, Position = new Vector3(0, colliderSize.Y / 2f + 0.05f, 0) });
+        Health = new Health { Name = "Health", Max = maxHealth };
+        AddChild(Health);
+    }
+
+    public override void _Ready()
+    {
+        _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
+        Rng.Seed = (ulong)NetId * 7919;
+        LastPos = GlobalPosition;
+        _netPos = GlobalPosition;
+        _netYaw = Rotation.Y;
+        Health.Damaged += OnDamaged;
+        Health.Died += OnDied;
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        float dt = (float)delta;
+        if (Current != State.Dead)
+        {
+            if (Net.Instance.IsServer) Think(dt);
+            else Follow(dt);
+        }
+        if (!Net.Instance.IsDedicated)
+        {
+            var pos = GlobalPosition;
+            float speed = dt > 0 ? Flat(pos - LastPos).Length() / dt : 0f;
+            LastPos = pos;
+            SpeedSmoothed = Mathf.Lerp(SpeedSmoothed, Mathf.Min(speed, 10f), Mathf.Min(1f, 10f * dt));
+            Animate(dt);
+        }
+    }
+
+    // ================================================================== server AI
+
+    protected void Enter(State s)
+    {
+        Current = s;
+        StateTime = 0;
+        _hasWander = false;
+    }
+
+    /// <summary>Server: is this player fair game for us right now?</summary>
+    public bool CanHunt(PlayerController p)
+    {
+        if (p == null || !IsInstanceValid(p) || !p.IsInsideTree() || p.Health.IsDead) return false;
+        if (GameState.Instance.InSafeZone(p.GlobalPosition)) return false;
+        if (GlobalPosition.DistanceTo(p.GlobalPosition) >= LeashRange) return false;
+        if (HomeLeash > 0 && Flat(Wildlife.Instance.GroupAnchor(Group, GlobalPosition) - p.GlobalPosition).Length() > HomeLeash) return false;
+        return true;
+    }
+
+    /// <summary>Server: chase this player (group alert, being hit).</summary>
+    public void Hunt(PlayerController p)
+    {
+        if (Current is State.Dead or State.Flee || !CanHunt(p)) return;
+        Target = p;
+        if (Current == State.Prowl) Enter(State.Chase);
+    }
+
+    /// <summary>Server: knocked off balance (a parried attack). Can't act for a while.</summary>
+    public void Stun(float seconds)
+    {
+        if (Current == State.Dead) return;
+        Enter(State.Stagger);
+        _staggerFor = seconds;
+        Wildlife.Instance.BroadcastAnim(this, Wildlife.AnimStun);
+    }
+
+    private void Think(float dt)
+    {
+        var wildlife = Wildlife.Instance;
+        StateTime += dt;
+        _attackCooldown -= dt;
+        if (FleesByDay && Current != State.Flee && Wildlife.IsDay(GameState.Instance.TimeOfDay)) Enter(State.Flee);
+
+        Vector3 pos = GlobalPosition;
+        Vector3 desired = Vector3.Zero;
+        float speed = 0f;
+        float? faceYaw = null;
+
+        switch (Current)
+        {
+            case State.Prowl:
+            {
+                var found = wildlife.FindTarget(this, AggroRange);
+                if (found != null)
+                {
+                    Target = found;
+                    wildlife.AlertGroup(this, found);
+                    Enter(State.Chase);
+                    break;
+                }
+                // Roam around the group's anchor (packs creep toward the base; camps stay put).
+                var anchor = wildlife.GroupAnchor(Group, pos);
+                if (!_hasWander || Flat(pos - _wanderTo).Length() < 1f || StateTime > 6f)
+                {
+                    _wanderTo = anchor + new Vector3(Rng.RandfRange(-WanderRadius, WanderRadius), 0, Rng.RandfRange(-WanderRadius, WanderRadius));
+                    _hasWander = true;
+                    StateTime = 0;
+                }
+                desired = Flat(_wanderTo - pos);
+                speed = Flat(anchor - pos).Length() > WanderRadius * 2f ? RunSpeed * 0.7f : WalkSpeed;
+                break;
+            }
+            case State.Chase:
+            {
+                if (!CanHunt(Target)) { Target = null; Enter(State.Prowl); break; }
+                var to = Flat(Target.GlobalPosition - pos);
+                float dist = to.Length();
+                if (dist < AttackRange && _attackCooldown <= 0)
+                {
+                    Enter(State.Windup);
+                    wildlife.BroadcastAnim(this, Wildlife.AnimAttack);
+                    break;
+                }
+                desired = to;
+                speed = dist > 4f ? RunSpeed : Mathf.Lerp(WalkSpeed, RunSpeed, (dist - 1f) / 3f);
+                if (dist < AttackRange) speed = 0; // waiting out the cooldown
+                faceYaw = YawOf(to);
+                break;
+            }
+            case State.Windup:
+            {
+                if (Target != null && IsInstanceValid(Target)) faceYaw = YawOf(Flat(Target.GlobalPosition - pos));
+                if (StateTime >= AttackWindup)
+                {
+                    _attackCooldown = AttackCooldown;
+                    Enter(State.Recover);
+                    if (CanHunt(Target) && Flat(Target.GlobalPosition - pos).Length() < AttackReach)
+                        wildlife.Strike(this, Target); // may stun us (parry): do it last
+                }
+                break;
+            }
+            case State.Recover:
+                if (Target != null && IsInstanceValid(Target)) desired = -Flat(Target.GlobalPosition - pos);
+                speed = 1.5f;
+                if (StateTime > 0.5f) Enter(Target != null ? State.Chase : State.Prowl);
+                break;
+            case State.Stagger:
+                if (StateTime > Mathf.Max(_staggerFor, 0.05f)) { _staggerFor = 0; Enter(Target != null ? State.Chase : State.Prowl); }
+                break;
+            case State.Flee:
+            {
+                var nearest = wildlife.NearestPlayer(pos, out float d);
+                desired = nearest != null ? Flat(pos - nearest.GlobalPosition) : Flat(pos - GameState.Instance.ClaimCenter);
+                speed = RunSpeed;
+                if (nearest == null || d > 40f || StateTime > 12f) wildlife.Despawn(this);
+                break;
+            }
+        }
+
+        if (desired.LengthSquared() > 0.0001f) desired = desired.Normalized();
+        desired += wildlife.Separation(this) + Avoid(desired) + SafeZonePush(pos);
+        if (desired.LengthSquared() > 1f) desired = desired.Normalized();
+
+        var v = Velocity;
+        var target = desired * speed + _knockback;
+        float accel = Mathf.Min(1f, 8f * dt);
+        v.X = Mathf.Lerp(v.X, target.X, accel);
+        v.Z = Mathf.Lerp(v.Z, target.Z, accel);
+        v.Y = IsOnFloor() ? -0.5f : v.Y - _gravity * dt;
+        _knockback = _knockback.Lerp(Vector3.Zero, Mathf.Min(1f, 6f * dt));
+        Velocity = v;
+        MoveAndSlide();
+
+        GlobalPosition = Wildlife.ClampToWorld(GlobalPosition);
+
+        float flatSpeed = Flat(Velocity).Length();
+        if (faceYaw == null && flatSpeed > 0.4f) faceYaw = YawOf(Flat(Velocity));
+        if (faceYaw != null) Rotation = new Vector3(0, Mathf.LerpAngle(Rotation.Y, faceYaw.Value, Mathf.Min(1f, 10f * dt)), 0);
+    }
+
+    /// <summary>Steer around trees and rocks with a short feeler ray.</summary>
+    private Vector3 Avoid(Vector3 dir)
+    {
+        if (dir.LengthSquared() < 0.01f) return Vector3.Zero;
+        var from = GlobalPosition + Vector3.Up * 0.5f;
+        var query = PhysicsRayQueryParameters3D.Create(from, from + dir * 1.8f, GameState.LayerProps,
+            new Godot.Collections.Array<Rid> { GetRid() });
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
+        if (hit.Count == 0 || hit["collider"].AsGodotObject() is Enemy) return Vector3.Zero;
+        var side = new Vector3(-dir.Z, 0, dir.X);
+        return side * ((NetId & 1) == 0 ? 1.2f : -1.2f);
+    }
+
+    /// <summary>Hostiles won't enter a sanctuary (blossom shrine, the village).</summary>
+    private static Vector3 SafeZonePush(Vector3 pos)
+    {
+        foreach (var (center, radius) in GameState.Instance.SafeZones)
+        {
+            var off = Flat(pos - center);
+            if (off.Length() < radius + 1.5f) return off.Normalized() * 2f;
+        }
+        return Vector3.Zero;
+    }
+
+    private void OnDamaged(float amount, Node source)
+    {
+        if (!Net.Instance.IsDedicated) FlashHit();
+        if (!Net.Instance.IsServer || Health.IsDead) return;
+        // Server: flinch away from the hit and go for whoever did it.
+        if (source is Node3D s) _knockback = Flat(GlobalPosition - s.GlobalPosition).Normalized() * HitKnockback;
+        if (Current != State.Stagger || _staggerFor <= HitStagger) { Enter(State.Stagger); _staggerFor = HitStagger; }
+        if (source is PlayerController p)
+        {
+            Target = p;
+            Wildlife.Instance.AlertGroup(this, p);
+        }
+    }
+
+    private void OnDied(Node source)
+    {
+        Current = State.Dead;
+        CollisionLayer = 0;
+        CollisionMask = GameState.LayerWorld;
+        Velocity = Vector3.Zero;
+        if (!Net.Instance.IsDedicated) PlayDeath();
+        if (Net.Instance.IsServer) Wildlife.Instance.OnEnemyKilled(this, source);
+    }
+
+    // ================================================================== client
+
+    public void ApplyNetState(Vector3 pos, float yaw)
+    {
+        _netPos = pos;
+        _netYaw = yaw;
+        if (!_hasNet) { GlobalPosition = pos; Rotation = new Vector3(0, yaw, 0); }
+        _hasNet = true;
+    }
+
+    private void Follow(float dt)
+    {
+        if (!_hasNet) return;
+        if (GlobalPosition.DistanceTo(_netPos) > 5f) GlobalPosition = _netPos;
+        else GlobalPosition = GlobalPosition.Lerp(_netPos, Mathf.Min(1f, 12f * dt));
+        Rotation = new Vector3(0, Mathf.LerpAngle(Rotation.Y, _netYaw, Mathf.Min(1f, 12f * dt)), 0);
+    }
+
+    // ================================================================== subclass hooks
+
+    /// <summary>Server: loot for the shared stockpile. Killer may be null.</summary>
+    public abstract void ServerDropLoot(Node killer);
+    /// <summary>Everyone: the attack telegraph (windup then strike).</summary>
+    public abstract void PlayAttack();
+    public virtual void PlayStun() { }
+    protected abstract void Animate(float dt);
+    protected abstract void FlashHit();
+    protected abstract void PlayDeath();
+
+    // ================================================================== helpers
+
+    protected static Vector3 Flat(Vector3 v) => new(v.X, 0, v.Z);
+    protected static float YawOf(Vector3 dir) => Mathf.Atan2(-dir.X, -dir.Z);
+
+    /// <summary>Build an enemy of a kind (server spawn, client mirror, snapshot).</summary>
+    public static Enemy Create(string kind, int netId, int group, Vector3 pos, float yaw, float maxHealth, float damage) => kind switch
+    {
+        "wolf" => Wolf.Create(netId, group, pos, yaw, maxHealth, damage),
+        "bandit" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: false),
+        "captain" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: true),
+        _ => null,
+    };
+}

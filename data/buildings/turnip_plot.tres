@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/TurnipPlot.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "turnip_plot"
+DisplayName = "Turnip Plot"
+Description = "Plant turnip seeds from the Ashby trader (E). Roast turnips at a campfire."
+Scene = ExtResource("2_scene")
+Cost = {"wood": 4, "stone": 1}
+Footprint = Vector3(1.8, 0.3, 1.8)
+SortOrder = 5

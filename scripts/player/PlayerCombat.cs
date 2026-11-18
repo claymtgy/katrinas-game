@@ -3,8 +3,14 @@ using Godot;
 
 namespace KatrinasGame;
 
-/// <summary>Light (LMB) and heavy (RMB) swings, weapon slots (1-5), and the held-weapon visual.
-/// The weapon attaches to the camera in first person and to the body in third person.</summary>
+/// <summary>Light (LMB) and heavy (Q / middle mouse) swings, the guard (hold RMB), weapon slots
+/// (1-5), and the held-weapon visual.
+/// Guard: hits from in front are mostly blocked (each costs stamina; run out and the guard breaks).
+/// Raise it just before a blow lands (Net.ParryWindow) to parry: no damage, attacker staggered.
+/// The weapon attaches to the camera in first person and to the body in third person.
+/// Multiplayer: the swinging player's machine handles cooldown, stamina and animation and asks the
+/// server to swing (Net.RequestAttack); the server runs ServerAttack, finds what was hit and applies
+/// damage. Other players see the swing through PlayRemoteAttack.</summary>
 public partial class PlayerCombat : Node
 {
     [Export] public float FistDamage { get; set; } = 6f;
@@ -24,6 +30,17 @@ public partial class PlayerCombat : Node
     private string _shownWeapon = null;
     private float _cooldown;
     private Tween _swingTween;
+    private float _guardLock;
+
+    /// <summary>Local player: guard is up (sent to the server with Net.RequestBlock).</summary>
+    public bool GuardUp { get; private set; }
+    /// <summary>Scripted tests: hold the guard without the mouse.</summary>
+    public bool HoldGuard { get; set; }
+    /// <summary>Local player: parries landed this session (tests, HUD).</summary>
+    public int Parries { get; private set; }
+
+    private static readonly Vector3 GuardPos = new(0.22f, -0.42f, -0.72f);
+    private static readonly Vector3 GuardRot = new(Mathf.DegToRad(30), Mathf.DegToRad(-25), Mathf.DegToRad(62));
 
     public override void _Ready()
     {
@@ -32,6 +49,7 @@ public partial class PlayerCombat : Node
         _hand = new Node3D { Name = "Hand" };
         _player.Body.AddChild(_hand);
         _player.Rig.ViewChanged += OnViewChanged;
+        if (!_player.IsLocal) SetProcessUnhandledInput(false);
     }
 
     private bool FirstPerson => _player.Rig.FirstPerson;
@@ -56,9 +74,73 @@ public partial class PlayerCombat : Node
 
     public override void _Process(double delta)
     {
-        if (_cooldown > 0) _cooldown -= (float)delta;
+        float dt = (float)delta;
+        if (_cooldown > 0) _cooldown -= dt;
+        if (_guardLock > 0) _guardLock -= dt;
+        if (_shownWeapon != _player.Equipped) RebuildWeapon(_player.Equipped);
+        if (_player.IsLocal) UpdateGuard();
+    }
+
+    // ================================================================== guard
+
+    private void UpdateGuard()
+    {
         var gs = GameState.Instance;
-        if (_shownWeapon != gs.Equipped) RebuildWeapon(gs.Equipped);
+        bool input = !gs.UiOpen && Input.MouseMode == Input.MouseModeEnum.Captured && !_player.Build.Active
+                     && Input.IsActionPressed("block");
+        bool want = (input || HoldGuard) && !_player.Sleeping && !_player.Health.IsDead && _guardLock <= 0 && _player.Stamina > 0.5f;
+        if (want != GuardUp) SetGuard(want);
+    }
+
+    private void SetGuard(bool up)
+    {
+        GuardUp = up;
+        Net.Instance.RequestBlock(up);
+        if (!FirstPerson) return;
+        _swingTween?.Kill();
+        _swingTween = CreateTween().SetParallel();
+        _swingTween.TweenProperty(_hand, "position", up ? GuardPos : FirstPersonHandPos, 0.1);
+        _swingTween.TweenProperty(_hand, "rotation", up ? GuardRot : FirstPersonRest, 0.1);
+    }
+
+    /// <summary>Local player: the server says our guard took a blow.</summary>
+    public void OnGuardHit(bool parried, float staminaCost)
+    {
+        if (parried)
+        {
+            Parries++;
+            _player.DrainStamina(-20f); // a clean parry gives breath back
+            Hud.Instance?.FlashHitMarker();
+            Hud.Toast("Parried!");
+            return;
+        }
+        _player.DrainStamina(staminaCost);
+        if (_player.Stamina <= 0.5f)
+        {
+            _guardLock = 1.2f;
+            SetGuard(false);
+            Hud.Toast("Guard broken!");
+        }
+    }
+
+    /// <summary>Everyone: a guard took a hit (recoil in first person, flinch anim in third).</summary>
+    public void PlayGuardImpact(bool parried)
+    {
+        if (_player.IsLocal && FirstPerson && GuardUp)
+        {
+            _swingTween?.Kill();
+            _swingTween = CreateTween();
+            _swingTween.TweenProperty(_hand, "position", GuardPos + new Vector3(0, 0.05f, 0.12f), 0.05);
+            _swingTween.TweenProperty(_hand, "position", GuardPos, 0.18);
+        }
+        else if (_model != null && _model.HasAnimation("Block_Hit")) _model.PlayOneShot(parried ? "Block_Attack" : "Block_Hit", 1.4f);
+    }
+
+    /// <summary>Local player: our swing was parried; no attacking for a moment.</summary>
+    public void Stagger(float seconds)
+    {
+        _cooldown = Mathf.Max(_cooldown, seconds);
+        Hud.Toast("Your attack was parried!");
     }
 
     private void RebuildWeapon(string itemId)
@@ -99,45 +181,63 @@ public partial class PlayerCombat : Node
     public override void _UnhandledInput(InputEvent e)
     {
         var gs = GameState.Instance;
-        if (gs.UiOpen || Input.MouseMode != Input.MouseModeEnum.Captured) return;
+        if (gs.UiOpen || Input.MouseMode != Input.MouseModeEnum.Captured || _player.Sleeping) return;
 
         for (int i = 1; i <= 5; i++)
         {
             if (!e.IsActionPressed($"slot_{i}")) continue;
-            var slots = gs.WeaponSlots();
-            if (i - 1 < slots.Count)
-            {
-                gs.Equipped = slots[i - 1];
-                Hud.Toast($"Equipped {(gs.Equipped == "" ? "Fists" : ItemDb.NameOf(gs.Equipped))}");
-            }
+            var slots = gs.WeaponSlots(_player);
+            if (i - 1 < slots.Count) Net.Instance.RequestEquip(slots[i - 1]);
             GetViewport().SetInputAsHandled();
             return;
         }
 
-        if (_player.Build.Active) return;
+        if (e.IsActionPressed("eat"))
+        {
+            Net.Instance.RequestEat();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (_player.Build.Active || GuardUp) return;
         if (e.IsActionPressed("attack")) TryAttack(heavy: false);
         else if (e.IsActionPressed("heavy_attack")) TryAttack(heavy: true);
     }
 
+    /// <summary>Local player: swing now (animation, stamina) and ask the server to resolve the hit.</summary>
     public void TryAttack(bool heavy)
     {
-        if (_cooldown > 0) return;
+        if (_cooldown > 0 || GuardUp) return;
         if (!_player.TrySpendStamina(heavy ? HeavyStamina : LightStamina))
         {
             Hud.Toast("Too tired to swing!");
             return;
         }
 
-        var def = ItemDb.Get(GameState.Instance.Equipped);
+        var stats = Stats(heavy);
+        _cooldown = stats.Cooldown;
+        if (FirstPerson) PlaySwing(stats.Windup, heavy);
+        else _model?.PlayAttack(heavy, ItemDb.Get(_player.Equipped) != null);
+        Net.Instance.RequestAttack(heavy, -_player.Rig.Camera.GlobalBasis.Z);
+    }
+
+    /// <summary>Someone else's swing, seen on this machine.</summary>
+    public void PlayRemoteAttack(bool heavy) => _model?.PlayAttack(heavy, ItemDb.Get(_player.Equipped) != null);
+
+    private (float Damage, float Reach, float Windup, float Cooldown) Stats(bool heavy)
+    {
+        var def = ItemDb.Get(_player.Equipped);
         float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier : 1f);
         float reach = def?.Reach ?? FistReach;
-        float baseCooldown = def?.AttackCooldown ?? 0.4f;
-        float windup = heavy ? 0.38f : 0.2f;
-        _cooldown = baseCooldown * (heavy ? 1.8f : 1f);
+        float cooldown = (def?.AttackCooldown ?? 0.4f) * (heavy ? 1.8f : 1f);
+        return (damage, reach, heavy ? 0.38f : 0.2f, cooldown);
+    }
 
-        if (FirstPerson) PlaySwing(windup, heavy);
-        else _model?.PlayAttack(heavy, def != null);
-        GetTree().CreateTimer(windup).Timeout += () => DoHit(damage, reach);
+    /// <summary>Server: resolve this player's swing after its windup.</summary>
+    public void ServerAttack(bool heavy, Vector3 aim)
+    {
+        var stats = Stats(heavy);
+        if (aim.LengthSquared() < 0.01f) aim = -_player.Body.GlobalBasis.Z;
+        GetTree().CreateTimer(stats.Windup).Timeout += () => DoHit(stats.Damage, stats.Reach, aim);
     }
 
     private void PlaySwing(float windup, bool heavy)
@@ -151,30 +251,38 @@ public partial class PlayerCombat : Node
         _swingTween.TweenProperty(_hand, "rotation", FirstPersonRest, 0.28).SetTrans(Tween.TransitionType.Sine);
     }
 
-    private void DoHit(float damage, float reach)
+    private void DoHit(float damage, float reach, Vector3 aim)
     {
-        if (!IsInstanceValid(_player)) return;
+        if (!IsInstanceValid(_player) || !_player.IsInsideTree()) return;
+        bool pvp = Net.Instance.Pvp;
 
-        // Sphere in front of the chest, along the camera's aim (works in both views).
-        var aim = -_player.Rig.Camera.GlobalBasis.Z;
+        // Sphere in front of the chest, along the aim (works in both views).
         var center = _player.GlobalPosition + Vector3.Up * 1.2f + aim * (reach * 0.65f);
         var query = new PhysicsShapeQueryParameters3D
         {
             Shape = new SphereShape3D { Radius = 0.45f + reach * 0.3f },
             Transform = new Transform3D(Basis.Identity, center),
-            CollisionMask = GameState.LayerProps,
+            CollisionMask = GameState.LayerProps | (pvp ? GameState.LayerPlayer : 0),
             Exclude = new Godot.Collections.Array<Rid> { _player.GetRid() },
         };
 
         var hitThisSwing = new HashSet<ulong>();
+        bool hitSomething = false;
         foreach (var hit in _player.GetWorld3D().DirectSpaceState.IntersectShape(query, 16))
         {
             var collider = hit["collider"].AsGodotObject();
             if (collider == null || !hitThisSwing.Add(collider.GetInstanceId())) continue;
+            if (collider is PlayerController && !pvp) continue;
             var health = Health.FindOn(collider);
             if (health == null || health.IsDead) continue;
-            health.TakeDamage(damage, _player);
-            Hud.Instance?.FlashHitMarker();
+            hitSomething = true;
+            if (collider is PlayerController target)
+            {
+                if (Net.Instance.ServerDamagePlayer(target, damage, _player) == Net.HitResult.Parried)
+                    Net.Instance.StaggerPlayer(_player, 1.0f);
+            }
+            else health.TakeDamage(damage, _player);
         }
+        if (hitSomething) Net.Instance.HitMarkerTo(_player.PeerId);
     }
 }

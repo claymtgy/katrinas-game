@@ -2,17 +2,22 @@ using Godot;
 
 namespace KatrinasGame;
 
-/// <summary>Sleep until dawn: full heal, full stamina, autosave.</summary>
-public partial class Bed : StaticBody3D, IInteractable
+/// <summary>Lie down to sleep. The night is skipped (full heal, autosave) only once every
+/// connected player is asleep; until then you wait in bed. E or moving gets you up.</summary>
+public partial class Bed : StaticBody3D, IInteractable, IServerInteractable
 {
-    public string InteractPrompt => "Sleep until dawn (saves the game)";
+    public string InteractPrompt =>
+        Net.Instance.IsMultiplayer && GameState.Instance.Players.Count > 1
+            ? "Sleep (the night passes when everyone is asleep)"
+            : "Sleep until dawn (saves the game)";
 
-    public void Interact(PlayerController player)
+    public void Interact(PlayerController player) => Net.Instance.RequestInteract(this);
+
+    public void ServerInteract(PlayerController player)
     {
-        InteractHelpers.SkipToMorning();
-        player.Health.Reset();
-        player.RestoreStamina();
-        Hud.Toast($"You slept soundly. Day {GameState.Instance.Day} begins.");
-        GameState.Instance.SaveGame();
+        if (player.Sleeping) return;
+        Net.Instance.SetSleeping(player, true);
+        if (player.Sleeping && GameState.Instance.Players.Count > 1)
+            Net.Instance.ToastAll($"{player.DisplayName} is asleep ({Net.Instance.SleepingCount}/{Net.Instance.SleepTotal})");
     }
 }

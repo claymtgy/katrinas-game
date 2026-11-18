@@ -20,5 +20,15 @@ public partial class ItemDef : Resource
     /// <summary>Size of the greybox weapon mesh held in hand.</summary>
     [Export] public Vector3 WeaponSize { get; set; } = new(0.08f, 0.08f, 0.9f);
 
+    [ExportGroup("Food")]
+    /// <summary>Health restored when eaten (F). 0 = not food.</summary>
+    [Export] public float FoodHeal { get; set; } = 0f;
+
+    [ExportGroup("Trade")]
+    /// <summary>Coins a trader asks for one (0 = traders don't sell it).</summary>
+    [Export] public int BuyPrice { get; set; } = 0;
+    /// <summary>Coins a trader pays for one (0 = traders won't buy it).</summary>
+    [Export] public int SellPrice { get; set; } = 0;
+
     public bool IsWeapon => Category == "weapon";
 }

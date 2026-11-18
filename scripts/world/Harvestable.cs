@@ -3,7 +3,9 @@ using Godot;
 namespace KatrinasGame;
 
 /// <summary>A tree / rock / bush. Hitting it deals damage to its Health child; every
-/// DamagePerDrop damage yields one item, breaking it yields a bonus. Respawns later.</summary>
+/// DamagePerDrop damage yields one item, breaking it yields a bonus. Respawns later.
+/// Multiplayer: drops go to the shared stockpile and are decided on the server; the shake, fall
+/// and regrow animations play on every machine (driven by the mirrored Health events).</summary>
 public partial class Harvestable : StaticBody3D
 {
     [Export] public string DropItemId { get; set; } = "wood";
@@ -34,6 +36,7 @@ public partial class Harvestable : StaticBody3D
         SwapInModel();
         _health.Damaged += OnDamaged;
         _health.Died += OnBroken;
+        _health.Revived += Respawn;
     }
 
     private void SwapInModel()
@@ -45,7 +48,8 @@ public partial class Harvestable : StaticBody3D
             _visual.RemoveChild(child);
             child.QueueFree();
         }
-        var model = Models.Instance(paths[GD.RandRange(0, paths.Length - 1)]);
+        // Pick by name (not randomly) so every player sees the same model.
+        var model = Models.Instance(paths[(int)((uint)GD.Hash(Name) % (uint)paths.Length)]);
         _visual.AddChild(model);
         if (TargetHeight > 0) Models.FitHeight(model, TargetHeight);
         else model.Scale = Vector3.One * ModelScale;
@@ -53,12 +57,15 @@ public partial class Harvestable : StaticBody3D
 
     private void OnDamaged(float amount, Node source)
     {
-        _accumulated += amount;
-        int drops = (int)(_accumulated / DamagePerDrop);
-        if (drops > 0)
+        if (Net.Instance.IsServer)
         {
-            _accumulated -= drops * DamagePerDrop;
-            GameState.Instance.Inventory.Add(DropItemId, drops);
+            _accumulated += amount;
+            int drops = (int)(_accumulated / DamagePerDrop);
+            if (drops > 0)
+            {
+                _accumulated -= drops * DamagePerDrop;
+                Give(source, drops);
+            }
         }
 
         // Little shake.
@@ -72,7 +79,14 @@ public partial class Harvestable : StaticBody3D
 
     private void OnBroken(Node source)
     {
-        GameState.Instance.Inventory.Add(DropItemId, BonusOnBreak);
+        if (Net.Instance.IsServer)
+        {
+            Give(source, BonusOnBreak);
+            GetTree().CreateTimer(RespawnSeconds).Timeout += () =>
+            {
+                if (IsInstanceValid(this)) _health.Reset(); // fires Revived everywhere
+            };
+        }
         CollisionLayer = 0;
         _tween?.Kill();
         _tween = CreateTween();
@@ -85,13 +99,19 @@ public partial class Harvestable : StaticBody3D
         }
         _tween.TweenProperty(_visual, "scale", Vector3.One * 0.01f, 0.35);
         _tween.TweenCallback(Callable.From(() => _visual.Visible = false));
-        GetTree().CreateTimer(RespawnSeconds).Timeout += Respawn;
+    }
+
+    /// <summary>Server: into the shared stockpile, with a pickup message for whoever gathered it.</summary>
+    private void Give(Node source, int count)
+    {
+        if (count <= 0) return;
+        GameState.Instance.Inventory.Add(DropItemId, count);
+        if (source is PlayerController p) Net.Instance.ToastTo(p.PeerId, $"+{count} {ItemDb.NameOf(DropItemId)}");
     }
 
     private void Respawn()
     {
         if (!IsInstanceValid(this)) return;
-        _health.Reset();
         _accumulated = 0;
         CollisionLayer = _layer;
         _visual.Rotation = Vector3.Zero;

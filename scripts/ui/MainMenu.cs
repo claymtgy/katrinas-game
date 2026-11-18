@@ -1,0 +1,283 @@
+using System.Linq;
+using Godot;
+
+namespace KatrinasGame;
+
+/// <summary>Title screen: Single Player, Host, Join, Quit. Built in code like the HUD.
+///
+/// Command line (after "--"), for servers and testing:
+///   --server [--config=path]             dedicated server (use with --headless), reads server.cfg
+///   --host [--port=N] [--max-players=N] [--pvp] [--world=name] [--password=pw]
+///   --join=address[:port] [--password=pw]
+///   --solo [--world=name]                single player
+///   --name=Player                        your player name
+///   --autotest / --autotest-mp=host|client   scripted tests (see DevAutotest / NetAutotest)</summary>
+public partial class MainMenu : Control
+{
+    private const string SettingsPath = "user://settings.cfg";
+    private static readonly Color Gold = new(1f, 0.82f, 0.45f);
+    private static readonly Color Blush = new(1f, 0.7f, 0.78f);
+
+    private LineEdit _name, _world, _address, _password;
+    private SpinBox _port, _maxPlayers;
+    private CheckBox _pvp;
+    private Label _status;
+    /// <summary>The command line starts at most one session per launch (not again after leaving).</summary>
+    private static bool _argsHandled;
+
+    public override void _Ready()
+    {
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+        if (HandleCommandLine()) return;
+        BuildUi();
+        LoadSettings();
+        var err = Net.Instance.LastError;
+        if (err != "") SetStatus(err, error: true);
+    }
+
+    // ------------------------------------------------------------------ command line
+
+    private static string Arg(string[] args, string key, string fallback = null) =>
+        args.FirstOrDefault(a => a.StartsWith(key + "="))?.Substring(key.Length + 1) ?? fallback;
+
+    /// <summary>Returns true if the command line started a session (no menu needed).</summary>
+    private bool HandleCommandLine()
+    {
+        if (_argsHandled) return false;
+        _argsHandled = true;
+        var args = OS.GetCmdlineUserArgs();
+        var net = Net.Instance;
+        net.LocalName = Arg(args, "--name", net.LocalName);
+        string mpTest = Arg(args, "--autotest-mp");
+
+        if (args.Contains("--server"))
+        {
+            string path = Arg(args, "--config", ServerConfig.DefaultPath);
+            var cfg = ServerConfig.LoadOrCreate(path);
+            GD.Print($"[Server] Config: {ProjectSettings.GlobalizePath(path)}");
+            if (net.StartDedicated(cfg) != Error.Ok) GetTree().Quit(1);
+            return true;
+        }
+        if (args.Contains("--host") || mpTest == "host")
+        {
+            var cfg = new ServerConfig
+            {
+                Name = $"{net.LocalName}'s world",
+                Port = int.Parse(Arg(args, "--port", ServerConfig.DefaultPort.ToString())),
+                MaxPlayers = int.Parse(Arg(args, "--max-players", ServerConfig.DesignedMaxPlayers.ToString())),
+                Pvp = args.Contains("--pvp"),
+                World = Arg(args, "--world", mpTest != null ? "autotest_mp" : "home"),
+                Password = Arg(args, "--password", ""),
+            };
+            StartTests(mpTest);
+            if (net.StartHost(cfg) != Error.Ok) GetTree().Quit(1);
+            return true;
+        }
+        var join = Arg(args, "--join") ?? (mpTest == "client" ? "127.0.0.1" : null);
+        if (join != null)
+        {
+            var (address, port) = ParseAddress(join, int.Parse(Arg(args, "--port", ServerConfig.DefaultPort.ToString())));
+            StartTests(mpTest);
+            if (net.Join(address, port, Arg(args, "--password", "")) != Error.Ok) GetTree().Quit(1);
+            return true;
+        }
+        if (args.Contains("--solo") || args.Contains("--autotest"))
+        {
+            StartTests(null);
+            net.StartOffline(Arg(args, "--world", args.Contains("--autotest") ? "autotest" : "home"));
+            return true;
+        }
+        return false;
+    }
+
+    private static void StartTests(string mpRole)
+    {
+        // Scripted tests always start from a fresh world, and spawn wolves themselves.
+        Wildlife.AutoSpawn = false;
+        foreach (var world in new[] { "autotest", "autotest_mp" })
+            if (FileAccess.FileExists($"user://saves/{world}.json")) DirAccess.RemoveAbsolute($"user://saves/{world}.json");
+
+        if (mpRole != null) NetAutotest.Start(GameState.Instance, mpRole);
+        else DevAutotest.MaybeStart(GameState.Instance);
+    }
+
+    private static (string, int) ParseAddress(string text, int defaultPort)
+    {
+        text = text.StripEdges();
+        int colon = text.LastIndexOf(':');
+        if (colon > 0 && int.TryParse(text[(colon + 1)..], out int port)) return (text[..colon], port);
+        return (text, defaultPort);
+    }
+
+    // ------------------------------------------------------------------ UI
+
+    private void BuildUi()
+    {
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(new ColorRect { Color = new Color(0.05f, 0.04f, 0.1f), AnchorRight = 1, AnchorBottom = 1 });
+        var glow = new ColorRect { Color = new Color(0.98f, 0.46f, 0.2f, 0.18f), AnchorTop = 0.62f, AnchorRight = 1, AnchorBottom = 1 };
+        AddChild(glow);
+
+        var center = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
+        AddChild(center);
+        var col = new VBoxContainer { CustomMinimumSize = new Vector2(560, 0) };
+        col.AddThemeConstantOverride("separation", 12);
+        center.AddChild(col);
+
+        var title = Label("Ember & Blossom", 56, Gold);
+        title.HorizontalAlignment = HorizontalAlignment.Center;
+        col.AddChild(title);
+        var sub = Label("A cliffside base-building adventure · alone or with up to 3 friends", 17, Blush);
+        sub.HorizontalAlignment = HorizontalAlignment.Center;
+        col.AddChild(sub);
+        col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 12) });
+
+        _name = Field(col, "Your name", "Player");
+        _world = Field(col, "World (save name)", "home");
+
+        var solo = BigButton("Single Player");
+        solo.Pressed += OnSolo;
+        col.AddChild(solo);
+
+        col.AddChild(Section("Host a co-op game"));
+        var hostRow = new HBoxContainer();
+        hostRow.AddThemeConstantOverride("separation", 10);
+        col.AddChild(hostRow);
+        hostRow.AddChild(Label("Max players", 16));
+        _maxPlayers = new SpinBox { MinValue = 2, MaxValue = ServerConfig.DesignedMaxPlayers, Value = ServerConfig.DesignedMaxPlayers };
+        hostRow.AddChild(_maxPlayers);
+        _pvp = new CheckBox { Text = "PVP" };
+        hostRow.AddChild(_pvp);
+        hostRow.AddChild(Label("Port", 16));
+        _port = new SpinBox { MinValue = 1024, MaxValue = 65535, Value = ServerConfig.DefaultPort };
+        hostRow.AddChild(_port);
+        var host = BigButton("Host Game");
+        host.Pressed += OnHost;
+        col.AddChild(host);
+
+        col.AddChild(Section("Join a friend"));
+        _address = Field(col, "Address (ip or ip:port)", "127.0.0.1");
+        _password = Field(col, "Password (if any)", "");
+        _password.Secret = true;
+        var join = BigButton("Join Game");
+        join.Pressed += OnJoin;
+        col.AddChild(join);
+
+        col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
+        var quit = new Button { Text = "Quit" };
+        quit.Pressed += () => GetTree().Quit();
+        col.AddChild(quit);
+
+        _status = Label("", 16, Blush);
+        _status.HorizontalAlignment = HorizontalAlignment.Center;
+        _status.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        col.AddChild(_status);
+
+        var hint = Label("Dedicated server: run with  --headless -- --server  (settings in server.cfg)", 13, new Color(0.7f, 0.7f, 0.8f));
+        hint.HorizontalAlignment = HorizontalAlignment.Center;
+        col.AddChild(hint);
+    }
+
+    private void OnSolo()
+    {
+        Apply();
+        Net.Instance.StartOffline(_world.Text);
+    }
+
+    private void OnHost()
+    {
+        Apply();
+        var cfg = new ServerConfig
+        {
+            Name = $"{Net.Instance.LocalName}'s world",
+            Port = (int)_port.Value,
+            MaxPlayers = (int)_maxPlayers.Value,
+            Pvp = _pvp.ButtonPressed,
+            World = _world.Text,
+        };
+        if (Net.Instance.StartHost(cfg) != Error.Ok) SetStatus(Net.Instance.LastError, error: true);
+    }
+
+    private void OnJoin()
+    {
+        Apply();
+        var (address, port) = ParseAddress(_address.Text, (int)_port.Value);
+        if (address == "") { SetStatus("Enter the host's address.", error: true); return; }
+        if (Net.Instance.Join(address, port, _password.Text) != Error.Ok) SetStatus(Net.Instance.LastError, error: true);
+        else SetStatus($"Connecting to {address}:{port}…", error: false);
+    }
+
+    private void Apply()
+    {
+        Net.Instance.LocalName = _name.Text.StripEdges() == "" ? "Player" : _name.Text.StripEdges();
+        Net.Instance.LastError = "";
+        SaveSettings();
+    }
+
+    private void SetStatus(string text, bool error)
+    {
+        _status.Text = text;
+        _status.Modulate = error ? new Color(1f, 0.5f, 0.45f) : Blush;
+    }
+
+    private void LoadSettings()
+    {
+        var cfg = new ConfigFile();
+        if (cfg.Load(SettingsPath) != Error.Ok) return;
+        _name.Text = cfg.GetValue("player", "name", _name.Text).AsString();
+        _world.Text = cfg.GetValue("player", "world", _world.Text).AsString();
+        _address.Text = cfg.GetValue("join", "address", _address.Text).AsString();
+        _port.Value = cfg.GetValue("host", "port", _port.Value).AsDouble();
+        _maxPlayers.Value = cfg.GetValue("host", "max_players", _maxPlayers.Value).AsDouble();
+        _pvp.ButtonPressed = cfg.GetValue("host", "pvp", false).AsBool();
+    }
+
+    private void SaveSettings()
+    {
+        var cfg = new ConfigFile();
+        cfg.SetValue("player", "name", _name.Text);
+        cfg.SetValue("player", "world", _world.Text);
+        cfg.SetValue("join", "address", _address.Text);
+        cfg.SetValue("host", "port", _port.Value);
+        cfg.SetValue("host", "max_players", _maxPlayers.Value);
+        cfg.SetValue("host", "pvp", _pvp.ButtonPressed);
+        cfg.Save(SettingsPath);
+    }
+
+    // ------------------------------------------------------------------ widgets
+
+    private static Label Label(string text, int size, Color? color = null)
+    {
+        var l = new Label { Text = text };
+        l.AddThemeFontSizeOverride("font_size", size);
+        if (color != null) l.Modulate = color.Value;
+        return l;
+    }
+
+    private static Label Section(string text)
+    {
+        var l = Label(text, 20, Gold);
+        l.AddThemeConstantOverride("outline_size", 4);
+        return l;
+    }
+
+    private static LineEdit Field(Container parent, string label, string value)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        parent.AddChild(row);
+        var l = Label(label, 16);
+        l.CustomMinimumSize = new Vector2(190, 0);
+        row.AddChild(l);
+        var edit = new LineEdit { Text = value, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        row.AddChild(edit);
+        return edit;
+    }
+
+    private static Button BigButton(string text)
+    {
+        var b = new Button { Text = text, CustomMinimumSize = new Vector2(0, 44) };
+        b.AddThemeFontSizeOverride("font_size", 20);
+        return b;
+    }
+}

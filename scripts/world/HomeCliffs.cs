@@ -28,7 +28,16 @@ public partial class HomeCliffs : Node3D
     private static readonly Vector3 PoolPos = new(-44, 0, -4);
 
     private RandomNumberGenerator _rng;
+    private int _resourceCount;
     private readonly Dictionary<Color, StandardMaterial3D> _mats = new();
+
+    private GpuParticles3D _fireflies;
+
+    public override void _Process(double delta)
+    {
+        float t = GameState.Instance.TimeOfDay;
+        if (_fireflies != null) _fireflies.Emitting = t < 0.24f || t > 0.77f;
+    }
 
     public override void _Ready()
     {
@@ -42,13 +51,16 @@ public partial class HomeCliffs : Node3D
         gs.BuildingsRoot = buildings;
         gs.ClaimCenter = ShackPos;
         gs.ClaimRadius = 30f;
-        gs.SpawnPoint = BlossomPos + new Vector3(2.5f, 0.2f, 3.5f);
+        gs.WorldSpawn = BlossomPos + new Vector3(2.5f, 0.2f, 3.5f);
 
         BuildGround();
         BuildCliffFace();
         BuildSideWalls();
         BuildCloudSea();
-        BuildShack();
+        BuildYard();
+        BuildHome(gs.HomeTier);
+        gs.HomeTierChanged += OnHomeTierChanged;
+        BuildUpgradeBoard();
         BuildBlossomTree();
         BuildWaterfalls();
         BuildRoadAndSign();
@@ -56,7 +68,12 @@ public partial class HomeCliffs : Node3D
         BuildLava();
         ScatterProps();
         ScatterFoliage();
+        BuildVale();
+        BuildAshby();
+        BuildBanditCamp();
     }
+
+    public override void _ExitTree() => GameState.Instance.HomeTierChanged -= OnHomeTierChanged;
 
     // ================================================================== terrain
 
@@ -73,11 +90,11 @@ public partial class HomeCliffs : Node3D
     private void BuildCliffFace()
     {
         // Jagged dark volcanic rock along the north edge (z = -30), falling into the clouds.
-        for (float x = -64; x <= 64; x += 7)
+        for (float x = -64; x <= 64; x += 5.5f)
         {
             float h = _rng.RandfRange(30, 55);
             var size = new Vector3(_rng.RandfRange(8, 12), h, _rng.RandfRange(5, 9));
-            var pos = new Vector3(x + _rng.RandfRange(-2, 2), -h / 2f - _rng.RandfRange(0, 6), -31 - _rng.RandfRange(0, 3));
+            var pos = new Vector3(x + _rng.RandfRange(-2, 2), -h / 2f - _rng.RandfRange(0.4f, 1.8f), -31 - _rng.RandfRange(0, 2));
             Rock(pos, size, new Vector3(_rng.RandfRange(-0.15f, 0.25f), _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)),
                 _rng.Randf() < 0.5f ? Obsidian : Slate);
         }
@@ -171,7 +188,8 @@ public partial class HomeCliffs : Node3D
 
     // ================================================================== landmarks
 
-    private void BuildShack()
+    /// <summary>Home tier 1: the starting shack (replaced by the cottage on upgrade).</summary>
+    private Node3D BuildShackTier()
     {
         var root = new Node3D { Name = "Shack", Position = ShackPos };
         AddChild(root);
@@ -185,12 +203,9 @@ public partial class HomeCliffs : Node3D
         Block(new Vector3(-1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);   // front-left
         Block(new Vector3(1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);    // front-right
         Block(new Vector3(0, 2.6f, 2.1f), new Vector3(1.2f, 0.4f, 0.2f), Vector3.Zero, Wood, root, visible: false);      // lintel
-        // Yard props from the Medieval Village kit.
-        Prop(Models.Village("Prop_Crate"), ShackPos + new Vector3(3.2f, 0, 1.2f), 0.4f, 0.9f);
-        Prop(Models.Village("Prop_Crate"), ShackPos + new Vector3(3.3f, 0, 2.4f), 1.2f, 0.75f);
-        Prop(Models.Village("Prop_Wagon"), ShackPos + new Vector3(6.5f, 0, -1f), 1.9f, 1f);
-        for (int f = 0; f < 4; f++)
-            Prop(Models.Village("Prop_WoodenFence_Single"), ShackPos + new Vector3(-7f + f * 2f, 0, 9.5f), 0f, 1f);
+        // Crates by the door (the cottage takes their spot).
+        Prop(Models.Village("Prop_Crate"), new Vector3(3.2f, 0, 1.2f), 0.4f, 0.9f, root);
+        Prop(Models.Village("Prop_Crate"), new Vector3(3.3f, 0, 2.4f), 1.2f, 0.75f, root);
         root.AddChild(new OmniLight3D { Position = new Vector3(0, 2.2f, 0), LightColor = new Color(1f, 0.7f, 0.45f), LightEnergy = 1.2f, OmniRange = 6f });
 
         // Bed inside.
@@ -200,9 +215,25 @@ public partial class HomeCliffs : Node3D
         Visual(new BoxMesh { Size = new Vector3(1.0f, 0.4f, 2.0f) }, wood, new Vector3(0, 0.2f, 0), Vector3.Zero, bed);
         Visual(new BoxMesh { Size = new Vector3(0.9f, 0.15f, 1.5f) }, Mat(new Color(0.55f, 0.25f, 0.3f)), new Vector3(0, 0.47f, 0.2f), Vector3.Zero, bed);
         Visual(new BoxMesh { Size = new Vector3(0.7f, 0.15f, 0.4f) }, Mat(new Color(0.9f, 0.85f, 0.78f)), new Vector3(0, 0.47f, -0.7f), Vector3.Zero, bed);
+        return root;
+    }
+
+    /// <summary>Around the home: wagon, fence, ledge campfire, training dummy.</summary>
+    private void BuildYard()
+    {
+        Prop(Models.Village("Prop_Wagon"), ShackPos + new Vector3(6.5f, 0, -1f), 1.9f, 1f);
+        for (int f = 0; f < 4; f++)
+            Prop(Models.Village("Prop_WoodenFence_Single"), ShackPos + new Vector3(-7f + f * 2f, 0, 9.5f), 0f, 1f);
+
+        // Campfire on the ledge between the shack and the drop: a warm pool of light at night.
+        var fire = GD.Load<PackedScene>("res://scenes/buildings/Campfire.tscn").Instantiate<Node3D>();
+        fire.Name = "LedgeCampfire";
+        fire.Position = ShackPos + new Vector3(-4.5f, 0, -3.5f);
+        AddChild(fire);
 
         // Training dummy in the yard.
         var dummy = GD.Load<PackedScene>("res://scenes/enemies/TrainingDummy.tscn").Instantiate<Node3D>();
+        dummy.Name = "TrainingDummy";
         dummy.Position = ShackPos + new Vector3(-4, 0, 7);
         AddChild(dummy);
     }
@@ -231,6 +262,11 @@ public partial class HomeCliffs : Node3D
         var petals = Particles(160, 9f, new Vector3(3, 1.2f, 2.5f), BlossomPos + new Vector3(0, 6f, -2.5f),
             new Color(1f, 0.6f, 0.75f), 0.08f, 0.16f, new Vector3(0.35f, -0.25f, -0.5f));
         petals.Name = "Petals";
+
+        // Fireflies drifting around the sanctuary; only shown at night (see _Process).
+        _fireflies = Particles(70, 7f, new Vector3(12, 2.5f, 8), BlossomPos + new Vector3(6, 2f, 2),
+            new Color(1f, 0.85f, 0.35f), 0.1f, 0.17f, new Vector3(0.15f, 0.1f, 0.1f), emissive: 4f);
+        _fireflies.Name = "Fireflies";
 
         var label = new Label3D
         {
@@ -312,17 +348,20 @@ render_mode unshaded, cull_disabled, depth_draw_never;
 uniform vec3 hot : source_color = vec3(1.0, 0.86, 0.4);
 uniform vec3 cool : source_color = vec3(0.95, 0.24, 0.04);
 uniform float speed = 0.45;
-uniform float columns = 7.0;
-uniform float intensity = 3.2;
+uniform float columns = 2.0;
+uniform float intensity = 4.0;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 void fragment() {
     float col = floor(UV.x * columns);
     float flow = fract(UV.y * (1.5 + hash(col) * 1.5) - TIME * speed * (0.7 + hash(col + 5.0) * 0.6) + hash(col + 2.0) * 10.0);
     float streak = smoothstep(0.35, 1.0, flow);
     float center = 1.0 - abs(UV.x * 2.0 - 1.0);
-    vec3 c = mix(cool, hot, clamp(streak * 0.6 + center * 0.55 - UV.y * 0.25, 0.0, 1.0));
-    ALBEDO = c * intensity;
-    ALPHA = smoothstep(0.0, 0.45, center) * (1.0 - smoothstep(0.8, 1.0, UV.y));
+    // Thin white-hot core inside a soft orange halo: a seam of lava, not a sheet.
+    float core = smoothstep(0.55, 0.92, center);
+    float halo = smoothstep(0.0, 0.7, center);
+    vec3 c = mix(cool, hot, clamp(core * 0.8 + streak * 0.35 * core - UV.y * 0.2, 0.0, 1.0));
+    ALBEDO = c * intensity * (0.35 + 0.65 * core + 0.3 * streak * core);
+    ALPHA = (halo * 0.45 + core * 0.55) * (1.0 - smoothstep(0.85, 1.0, UV.y));
 }";
 
     private void BuildLava()
@@ -348,16 +387,16 @@ void fragment() {
         }
 
         // Under the blossom tree: two falls pouring out of the cliff face into the clouds.
-        Fall(new Vector3(-12f, -5f, -38.5f), 2.6f, 42f, 0.1f);
-        Fall(new Vector3(-21f, -9f, -38f), 1.6f, 36f, -0.15f);
-        Fall(new Vector3(-3.5f, -14f, -39f), 1.2f, 30f, 0.05f);
+        Fall(new Vector3(-12f, -5f, -38.5f), 1.5f, 42f, 0.1f);
+        Fall(new Vector3(-21f, -9f, -38f), 1.1f, 36f, -0.15f);
+        Fall(new Vector3(-3.5f, -14f, -39f), 0.9f, 30f, 0.05f);
 
         // Lava spires out in the cloud sea (right side of the classic view, like the concept art).
         foreach (var (pos, height, width) in new[]
                  {
-                     (new Vector3(14f, -36f, -80f), 50f, 3.6f),
-                     (new Vector3(40f, -38f, -115f), 64f, 4.5f),
-                     (new Vector3(-48f, -40f, -150f), 58f, 4f),
+                     (new Vector3(14f, -36f, -80f), 50f, 1.8f),
+                     (new Vector3(40f, -38f, -115f), 64f, 2.2f),
+                     (new Vector3(-48f, -40f, -150f), 58f, 2f),
                  })
         {
             var spire = Models.Instance(Models.Columns[_rng.RandiRange(0, Models.Columns.Length - 1)]);
@@ -383,14 +422,11 @@ void fragment() {
         Visual(new BoxMesh { Size = new Vector3(4, 0.04f, 80) }, road, new Vector3(2, 0.02f, 40), new Vector3(0, -0.08f, 0));
         Visual(new BoxMesh { Size = new Vector3(4, 0.04f, 22) }, road, new Vector3(6, 0.02f, -4), new Vector3(0, 0.35f, 0));
 
-        // Fallen-log barrier where the greybox ends.
-        Block(new Vector3(0, 0.4f, 91), new Vector3(10, 0.8f, 0.8f), new Vector3(0, 0.1f, 0), WoodDark, layer: GameState.LayerProps);
-
         var sign = new InfoSign
         {
             Name = "AshbySign",
             Title = "Road to Ashby",
-            Message = "Village of Ashby — 10 minutes south. (The bridge is out: the village arrives in the next update!)",
+            Message = "Village of Ashby: follow the road south. Mind the bandit camp east of the road past the gap.",
             Position = new Vector3(5, 0, 86),
             CollisionLayer = GameState.LayerProps,
             CollisionMask = 0,
@@ -405,7 +441,7 @@ void fragment() {
         {
             Name = "HomeSign",
             Title = "Your shack",
-            Message = "Home, such as it is. Build within 30 m of the shack. Sleep in the bed to skip the night and save.",
+            Message = "Home, such as it is. Build within 30 m (42 m once it's a cottage). Sleep in the bed to skip the night and save. In co-op, the night passes once everyone is in bed, so build a bedroll each. The plans board shows what the cottage needs.",
             Position = ShackPos + new Vector3(3, 0, 4),
             CollisionLayer = GameState.LayerProps,
             CollisionMask = 0,
@@ -513,6 +549,7 @@ void fragment() {
     private void Spawn(PackedScene scene, Vector3 pos, List<Vector3> placed)
     {
         var n = scene.Instantiate<Node3D>();
+        n.Name = $"Res_{_resourceCount++}"; // stable name: the network refers to it by path
         AddChild(n);
         n.Position = pos;
         n.Rotation = new Vector3(0, _rng.RandfRange(0, Mathf.Tau), 0);

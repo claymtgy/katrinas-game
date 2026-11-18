@@ -5,7 +5,8 @@ using Godot;
 namespace KatrinasGame;
 
 /// <summary>All on-screen UI, built in code: bars, inventory, hotbar, prompt, build info,
-/// toasts, crosshair/hit marker, crafting menu and help overlay.</summary>
+/// toasts, crosshair/hit marker, crafting menu, help overlay, and the co-op bits: session status,
+/// player list (Tab), sleep vote banner and the Esc game menu.</summary>
 public partial class Hud : CanvasLayer
 {
     public static Hud Instance { get; private set; }
@@ -14,17 +15,20 @@ public partial class Hud : CanvasLayer
     private static readonly Color Blush = new(1f, 0.7f, 0.78f);
 
     private ProgressBar _health, _stamina;
-    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help;
+    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help, _session, _sleep, _playerList;
+    private PanelContainer _gameMenu;
     private VBoxContainer _toasts;
     private PanelContainer _craftPanel;
     private VBoxContainer _craftList;
     private Label _craftTitle;
     private CraftingStation _station;
+    private Trader _trader;
     private float _hitFlash;
     private bool _inventoryDirty = true;
 
     public override void _Ready()
     {
+        if (Net.Instance.IsDedicated) return; // Main frees us; a server has no screen
         Instance = this;
         var root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
         AddChild(root);
@@ -46,6 +50,21 @@ public partial class Hud : CanvasLayer
         _clock = MakeLabel(18);
         _clock.Modulate = Gold;
         Place(root, _clock, 0, 0, 0, 0, 24, 20, 400, 50);
+
+        // Session status — under the clock.
+        _session = MakeLabel(15);
+        _session.Modulate = Blush;
+        Place(root, _session, 0, 0, 0, 0, 24, 46, 600, 70);
+
+        // Sleep vote — top centre.
+        _sleep = MakeLabel(20, HorizontalAlignment.Center);
+        _sleep.Modulate = Gold;
+        Place(root, _sleep, 0.5f, 0, 0.5f, 0, -500, 60, 500, 120);
+
+        // Player list (hold Tab) — centre.
+        _playerList = MakeLabel(20, HorizontalAlignment.Center);
+        _playerList.Visible = false;
+        Place(root, _playerList, 0.5f, 0.5f, 0.5f, 0.5f, -300, -220, 300, -40);
 
         // Hotbar — bottom centre.
         _hotbar = MakeLabel(18, HorizontalAlignment.Center);
@@ -74,21 +93,30 @@ public partial class Hud : CanvasLayer
             "CONTROLS   (F1 to toggle)\n" +
             "WASD move · Shift sprint · Space jump · Mouse look\n" +
             "V  first / third person\n" +
-            "LMB light attack · RMB heavy attack · 1-5 weapon slots\n" +
-            "E  interact (workbench, bed, shrine, signs)\n" +
+            "LMB light attack · Q / MMB heavy attack · hold RMB block (just in time = parry) · 1-5 weapons\n" +
+            "E  interact (workbench, campfire, bed, plots, trader, signs) · F eat\n" +
             "B  build mode: wheel cycle · R rotate · LMB place · RMB exit\n" +
-            "F5 save · F9 load · Esc free mouse / close menu\n\n" +
-            "Goal: chop trees & mine rocks → build a Workbench → craft a Wooden Sword → defeat the training dummy.";
+            "F5 save · F9 load (host only) · Tab players · Esc menu\n\n" +
+            "Goal: chop & mine → Workbench → sword → follow the road south to Ashby → clear the bandit camp\n" +
+            "→ farm and trade for nails → upgrade the shack to a cottage (board by the shack).";
         _help.Modulate = Blush;
-        Place(root, _help, 0, 0, 0, 0, 24, 60, 760, 280);
+        Place(root, _help, 0, 0, 0, 0, 24, 80, 900, 300);
         GetTree().CreateTimer(25).Timeout += () => _help.Visible = false;
 
         BuildCraftPanel(root);
+        BuildGameMenu(root);
 
-        var gs = GameState.Instance;
-        gs.Inventory.Changed += () => _inventoryDirty = true;
-        gs.Inventory.ItemAdded += (id, n) => Toast($"+{n} {ItemDb.NameOf(id)}");
+        // The stockpile outlives this scene, so unsubscribe in _ExitTree.
+        GameState.Instance.Inventory.Changed += OnInventoryChanged;
     }
+
+    public override void _ExitTree()
+    {
+        GameState.Instance.Inventory.Changed -= OnInventoryChanged;
+        if (Instance == this) Instance = null;
+    }
+
+    private void OnInventoryChanged() => _inventoryDirty = true;
 
     // ------------------------------------------------------------------ public API
 
@@ -111,7 +139,19 @@ public partial class Hud : CanvasLayer
     public void OpenCrafting(CraftingStation station)
     {
         _station = station;
+        _trader = null;
         _craftTitle.Text = station.StationName;
+        RefreshCrafting();
+        _craftPanel.Visible = true;
+        GameState.Instance.SetUiOpen(true);
+    }
+
+    /// <summary>Buy from / sell to a trader (stockpile goods for coins).</summary>
+    public void OpenTrade(Trader trader)
+    {
+        _station = null;
+        _trader = trader;
+        _craftTitle.Text = trader.TraderName;
         RefreshCrafting();
         _craftPanel.Visible = true;
         GameState.Instance.SetUiOpen(true);
@@ -120,15 +160,30 @@ public partial class Hud : CanvasLayer
     public void CloseMenus()
     {
         _craftPanel.Visible = false;
+        _gameMenu.Visible = false;
         _station = null;
+        _trader = null;
         GameState.Instance.SetUiOpen(false);
+    }
+
+    /// <summary>Esc menu. The game keeps running (it's multiplayer, even solo).</summary>
+    public void OpenGameMenu()
+    {
+        _gameMenu.Visible = true;
+        GameState.Instance.SetUiOpen(true);
     }
 
     public override void _UnhandledInput(InputEvent e)
     {
+        if (Instance != this) return;
         if (e.IsActionPressed("help"))
         {
             _help.Visible = !_help.Visible;
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsAction("player_list"))
+        {
+            _playerList.Visible = e.IsPressed();
             GetViewport().SetInputAsHandled();
         }
         else if (_craftPanel.Visible && e.IsActionPressed("interact"))
@@ -142,8 +197,11 @@ public partial class Hud : CanvasLayer
 
     public override void _Process(double delta)
     {
+        if (Instance != this) return;
         var gs = GameState.Instance;
-        var player = gs.Player;
+        var net = Net.Instance;
+        UpdateSession(gs, net);
+        var player = gs.LocalPlayer;
         if (player == null) return;
 
         _health.MaxValue = player.Health.Max;
@@ -158,12 +216,12 @@ public partial class Hud : CanvasLayer
 
         if (_inventoryDirty) RefreshInventory();
 
-        var slots = gs.WeaponSlots();
+        var slots = gs.WeaponSlots(player);
         var sb = new StringBuilder();
         for (int i = 0; i < slots.Count && i < 5; i++)
         {
             string name = slots[i] == "" ? "Fists" : ItemDb.NameOf(slots[i]);
-            sb.Append(slots[i] == gs.Equipped ? $"  [{i + 1}] » {name} «  " : $"  [{i + 1}] {name}  ");
+            sb.Append(slots[i] == player.Equipped ? $"  [{i + 1}] » {name} «  " : $"  [{i + 1}] {name}  ");
         }
         _hotbar.Text = sb.ToString();
 
@@ -184,15 +242,44 @@ public partial class Hud : CanvasLayer
         _crosshair.Text = _hitFlash > 0 ? "✕" : "·";
         _crosshair.Modulate = _hitFlash > 0 ? new Color(1, 0.4f, 0.3f) : Colors.White;
         _crosshair.Visible = !gs.UiOpen;
+
+        // Sleep vote.
+        if (player.Sleeping)
+            _sleep.Text = net.SleepTotal > 1
+                ? $"Sleeping… {net.SleepingCount}/{net.SleepTotal} asleep. The night passes when everyone is in bed.\n[E] or move to get up"
+                : "Sleeping…";
+        else if (net.SleepingCount > 0)
+            _sleep.Text = $"{net.SleepingCount}/{net.SleepTotal} asleep. Go to bed to skip the night.";
+        else _sleep.Text = "";
+    }
+
+    private void UpdateSession(GameState gs, Net net)
+    {
+        if (!net.IsMultiplayer)
+        {
+            _session.Text = "";
+            _playerList.Text = "";
+            return;
+        }
+        string role = net.Mode == NetMode.Client ? "Co-op" : "Hosting";
+        _session.Text = $"{role} · {gs.Players.Count}/{net.Config.MaxPlayers} players · PVP {(net.Pvp ? "ON" : "off")}";
+        if (_playerList.Visible)
+        {
+            var lines = gs.Players.Values.OrderBy(p => p.PeerId).Select(p =>
+                $"{p.DisplayName}{(p.PeerId == 1 ? "  (host)" : "")}{(p.IsLocal ? "  ← you" : "")}" +
+                $"   HP {p.Health.Current:0}{(p.Sleeping ? "   asleep" : "")}");
+            _playerList.Text = $"{net.Config.Name}\n\n" + string.Join("\n", lines);
+        }
     }
 
     private void RefreshInventory()
     {
         _inventoryDirty = false;
         var items = GameState.Instance.Inventory.Items;
+        string title = Net.Instance.IsMultiplayer ? "Stockpile (shared)" : "Stockpile";
         _inventory.Text = items.Count == 0
-            ? "Inventory: empty"
-            : "Inventory\n" + string.Join("\n", items.OrderBy(kv => kv.Key).Select(kv => $"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}"));
+            ? $"{title}: empty"
+            : $"{title}\n" + string.Join("\n", items.OrderBy(kv => kv.Key).Select(kv => $"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}"));
         if (_craftPanel.Visible) RefreshCrafting();
     }
 
@@ -210,7 +297,7 @@ public partial class Hud : CanvasLayer
         style.SetBorderWidthAll(2);
         style.SetCornerRadiusAll(8);
         _craftPanel.AddThemeStyleboxOverride("panel", style);
-        Place(root, _craftPanel, 0.5f, 0.5f, 0.5f, 0.5f, -260, -180, 260, 180);
+        Place(root, _craftPanel, 0.5f, 0.5f, 0.5f, 0.5f, -280, -260, 280, 260);
 
         var vbox = new VBoxContainer();
         vbox.AddThemeConstantOverride("separation", 8);
@@ -231,9 +318,16 @@ public partial class Hud : CanvasLayer
 
     private void RefreshCrafting()
     {
-        if (_station == null) return;
         foreach (var child in _craftList.GetChildren()) child.QueueFree();
+        if (_trader != null) { RefreshTrade(); return; }
+        if (_station == null) return;
         var inv = GameState.Instance.Inventory;
+        if (_station is Campfire fire)
+        {
+            var rest = new Button { Text = "Rest by the fire  (heal, refill stamina)" };
+            rest.Pressed += () => { fire.Rest(); CloseMenus(); };
+            _craftList.AddChild(rest);
+        }
         foreach (var recipe in _station.Recipes)
         {
             var cost = recipe.GetInputs();
@@ -245,14 +339,74 @@ public partial class Hud : CanvasLayer
                 TooltipText = canAfford ? "Click to craft" : "Not enough materials",
             };
             var r = recipe;
-            button.Pressed += () =>
-            {
-                if (CraftingStation.TryCraft(r)) Toast($"Crafted {r.DisplayName}");
-            };
+            var station = _station;
+            button.Pressed += () => station.RequestCraft(r);
             _craftList.AddChild(button);
         }
         if (_craftList.GetChildCount() == 0)
             _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Center, "No recipes for this station yet."));
+    }
+
+    private void RefreshTrade()
+    {
+        var inv = GameState.Instance.Inventory;
+        int coins = inv.Count("coin");
+        _craftList.AddChild(MakeLabel(17, HorizontalAlignment.Center, $"Stockpile coins: {coins}"));
+        _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Left, "Buy"));
+        foreach (var item in ItemDb.Items.Values.Where(i => i.BuyPrice > 0).OrderBy(i => i.BuyPrice))
+        {
+            var id = item.Id;
+            var b = new Button { Text = $"{item.DisplayName}   —   {item.BuyPrice} coins", Disabled = coins < item.BuyPrice };
+            b.Pressed += () => Net.Instance.RequestTrade(_trader, id, buy: true);
+            _craftList.AddChild(b);
+        }
+        _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Left, "Sell"));
+        foreach (var item in ItemDb.Items.Values.Where(i => i.SellPrice > 0).OrderBy(i => i.DisplayName))
+        {
+            var id = item.Id;
+            int have = inv.Count(id);
+            var b = new Button { Text = $"{item.DisplayName} (×{have})   —   +{item.SellPrice} coins", Disabled = have == 0 };
+            b.Pressed += () => Net.Instance.RequestTrade(_trader, id, buy: false);
+            _craftList.AddChild(b);
+        }
+    }
+
+    // ------------------------------------------------------------------ game menu (Esc)
+
+    private void BuildGameMenu(Control root)
+    {
+        _gameMenu = new PanelContainer { Visible = false };
+        var style = new StyleBoxFlat
+        {
+            BgColor = new Color(0.07f, 0.06f, 0.13f, 0.92f),
+            BorderColor = Gold,
+            ContentMarginLeft = 18, ContentMarginRight = 18, ContentMarginTop = 14, ContentMarginBottom = 14,
+        };
+        style.SetBorderWidthAll(2);
+        style.SetCornerRadiusAll(8);
+        _gameMenu.AddThemeStyleboxOverride("panel", style);
+        Place(root, _gameMenu, 0.5f, 0.5f, 0.5f, 0.5f, -180, -120, 180, 120);
+
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 10);
+        _gameMenu.AddChild(vbox);
+        var title = MakeLabel(26, HorizontalAlignment.Center, "Menu");
+        title.Modulate = Gold;
+        vbox.AddChild(title);
+
+        var resume = new Button { Text = "Resume  [Esc]" };
+        resume.Pressed += CloseMenus;
+        vbox.AddChild(resume);
+        var leave = new Button { Text = "Leave to main menu" };
+        leave.Pressed += () => Net.Instance.Leave();
+        vbox.AddChild(leave);
+        var quit = new Button { Text = "Quit to desktop" };
+        quit.Pressed += () =>
+        {
+            Net.Instance.Leave();
+            GetTree().Quit();
+        };
+        vbox.AddChild(quit);
     }
 
     // ------------------------------------------------------------------ helpers
