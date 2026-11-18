@@ -58,7 +58,11 @@ public partial class BlossomShrine : StaticBody3D, IInteractable, IServerInterac
         player.SpawnPoint = ArrivalPoint;
         Net.Instance.ServerRestore(player);
         Journal.Fact($"prayed:{Name}");
-        if (first) Net.Instance.BroadcastJournal("");
+        if (first)
+        {
+            Net.Instance.BroadcastJournal("");
+            Net.Instance.ServerAwardXpAll(Levels.SanctuaryLit, $"lit the {ShrineName}");
+        }
         Net.Instance.ToastTo(player.PeerId, first
             ? $"The {ShrineName} blooms. Respawn point set, wounds healed. You can now travel here from any sanctuary."
             : $"The {ShrineName} glows warmly. Respawn point set, wounds healed.");

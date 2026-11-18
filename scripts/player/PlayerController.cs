@@ -17,7 +17,8 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float AirAcceleration { get; set; } = 3f;
 
     [ExportGroup("Stamina")]
-    [Export] public float MaxStamina { get; set; } = 100f;
+    /// <summary>Stamina at level 1; each level adds Levels.StaminaPerLevel (see MaxStamina).</summary>
+    [Export] public float BaseStamina { get; set; } = 100f;
     [Export] public float StaminaRegen { get; set; } = 20f;
     [Export] public float SprintCostPerSecond { get; set; } = 14f;
     [Export] public float JumpCost { get; set; } = 8f;
@@ -123,6 +124,31 @@ public partial class PlayerController : CharacterBody3D
     public const string BuffStamina = "stamina";
     public const string BuffVigor = "vigor";
     public float BaseMaxHealth { get; private set; } = 100f;
+    public float MaxStamina => BaseStamina + (Level - 1) * Levels.StaminaPerLevel;
+    /// <summary>Max health from levels (+2 for each past the first).</summary>
+    public float LevelHealth => (Level - 1) * Levels.HealthPerLevel;
+
+    // ---------------------------------------------------------------- XP and level (GDD §6)
+
+    /// <summary>Total XP. Server-owned; every machine mirrors it (Net.C_Xp), since the level shows
+    /// on the nameplate.</summary>
+    public int Xp { get; private set; }
+    public int Level { get; private set; } = 1;
+    /// <summary>Server: the firsts this character has had XP for ("kill:wolf", "craft:glider").</summary>
+    public readonly System.Collections.Generic.HashSet<string> XpFirsts = new();
+
+    /// <summary>Every machine: set the total XP (the server decides). Returns true on a level up.</summary>
+    public bool SetXp(int total)
+    {
+        Xp = Mathf.Max(0, total);
+        int old = Level;
+        Level = Levels.LevelFor(Xp);
+        if (Level == old) return false;
+        if (Health != null && BaseMaxHealth > 0) UpdateMaxHealth();
+        Stamina = Mathf.Min(Stamina, MaxStamina);
+        UpdateNameplate();
+        return Level > old;
+    }
 
     public float Stamina { get; private set; }
     public Health Health { get; private set; }
@@ -409,7 +435,7 @@ public partial class PlayerController : CharacterBody3D
         _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
         Stamina = MaxStamina;
         BaseMaxHealth = Health.Max;
-        Health.InitMax(BaseMaxHealth + Class.BonusHealth); // class health, full on spawn
+        Health.InitMax(BaseMaxHealth + LevelHealth + Class.BonusHealth); // class and level health, full on spawn
 
         var gs = GameState.Instance;
         gs.Players[PeerId] = this;
@@ -456,13 +482,20 @@ public partial class PlayerController : CharacterBody3D
         AddChild(new Label3D
         {
             Name = "Nameplate",
-            Text = DisplayName,
+            Text = NameplateText,
             Position = new Vector3(0, 2.15f, 0),
             Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             FontSize = 40, PixelSize = 0.006f, OutlineSize = 10,
             Modulate = new Color(1f, 0.85f, 0.6f),
             NoDepthTest = false,
         });
+    }
+
+    private string NameplateText => $"{DisplayName} · {Level}";
+
+    private void UpdateNameplate()
+    {
+        if (GetNodeOrNull<Label3D>("Nameplate") is { } plate) plate.Text = NameplateText;
     }
 
     public bool TrySpendStamina(float amount)
@@ -497,7 +530,7 @@ public partial class PlayerController : CharacterBody3D
         UpdateMaxHealth();
     }
 
-    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + Class.BonusHealth + BuffAmount(BuffVigor) + Gear.MaxHealthBonus(this));
+    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + LevelHealth + Class.BonusHealth + BuffAmount(BuffVigor) + Gear.MaxHealthBonus(this));
 
     // ---------------------------------------------------------------- class
 

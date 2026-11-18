@@ -100,6 +100,8 @@ public partial class NetAutotest : Node
             $"client's movement replicates to the host (at {other?.GlobalPosition})");
         Check(await Until(() => gs.PlacedBuildings.Any(b => b.Id == "campfire"), 60), "client's campfire exists on the host");
         Check(await Until(() => gs.Inventory.Count("stone") > 0 && other.Pack.Load == 0, 30), "the client emptied its pack into the shared stockpile");
+        Check(await Until(() => other.Xp > 0 && me.Xp > 0, 15), $"both players earned XP from the shared goals (host {me.Xp}, client {other.Xp})");
+        Check(other.GetNodeOrNull<Label3D>("Nameplate")?.Text == $"{other.DisplayName} · {other.Level}", "the client's nameplate shows its level");
         Check(await Until(() => other.DodgeUntil > 0, 30), "the client's dodge roll reached the server");
         Check(await Until(() => other.Look.Body == Appearance.Rogue && other.Look.Outfit == "#2c5c8c", 30), "the client changed its look mid-game (blue wanderer)");
         Check(await Until(() => Projectile.Spawned > 0, 30), "the client's arrow flew on the server");
@@ -260,6 +262,12 @@ public partial class NetAutotest : Node
         await Wait(0.4);
         chest.Interact(me);
         Check(await Until(() => me.Pack.Load == 0 && gs.Inventory.Count("stone") > 0, 10), "client emptied its pack into the stockpile (mirrored)");
+
+        // XP (GDD §6): goals are world milestones, so both players earn them; levels show on nameplates.
+        Check(await Until(() => me.Xp > 0, 15), $"the client earned XP from the shared goals ({me.Xp})");
+        if (!dedicated)
+            Check(await Until(() => host.Xp > 0 && host.GetNodeOrNull<Label3D>("Nameplate")?.Text == $"{host.DisplayName} · {host.Level}", 15),
+                $"the client sees the host's XP and level on its nameplate ({host.Xp} XP)");
 
         // Change our look from the pause menu's creator: everyone sees it.
         var creator = Hud.Instance.OpenCreator();

@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 8;
+    public const int ProtocolVersion = 9;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -364,6 +364,7 @@ public partial class Net : Node
     {
         ["id"] = p.PeerId, ["name"] = p.DisplayName, ["pos"] = p.GlobalPosition,
         ["equipped"] = p.Equipped, ["sleeping"] = p.Sleeping, ["look"] = p.Look.ToDict(), ["worn"] = Gear.ToDict(p.Worn),
+        ["xp"] = p.Xp,
     };
 
     private void ApplySnapshot(GDict s)
@@ -396,6 +397,7 @@ public partial class Net : Node
             p.Equipped = info["equipped"].AsString();
             p.Sleeping = info["sleeping"].AsBool();
             p.SetWorn(Gear.FromDict(info.TryGetValue("worn", out var wv) ? wv.AsGodotDictionary() : null));
+            p.SetXp(info.TryGetValue("xp", out var xv) ? xv.AsInt32() : 0);
         }
 
         Gs.SetHomeTier(s["home_tier"].AsInt32());
@@ -456,6 +458,7 @@ public partial class Net : Node
             p.SpawnPoint = rec["spawn"].AsVector3();
             if (rec.TryGetValue("pack", out var pack)) p.Pack.ReplaceAll(pack.AsGodotDictionary());
             if (rec.TryGetValue("worn", out var worn)) p.SetWorn(Gear.FromDict(worn.AsGodotDictionary()));
+            GameState.ApplyXpRecord(p, rec);
         }
         p.Pack.Changed += () => _packDirty.Add(id);
         GD.Print($"[Net] {name} (peer {id}) is in the world. {Gs.Players.Count}/{Config.MaxPlayers} players");
@@ -484,6 +487,7 @@ public partial class Net : Node
         var p = SpawnPlayerNode(id, info["name"].AsString(), info["pos"].AsVector3(), look);
         p.Equipped = info["equipped"].AsString();
         p.SetWorn(Gear.FromDict(info.TryGetValue("worn", out var wv) ? wv.AsGodotDictionary() : null));
+        p.SetXp(info.TryGetValue("xp", out var xv) ? xv.AsInt32() : 0);
         Hud.Toast($"{p.DisplayName} joined the game");
     }
 
@@ -832,6 +836,7 @@ public partial class Net : Node
         var item = ItemDb.Get(recipe.OutputItem);
         int count = recipe.OutputCount;
         Journal.Fact($"crafted:{recipe.OutputItem}");
+        ServerXpForCraft(p, recipe.OutputItem);
         if (item is { IsWeapon: true }) Journal.Fact("crafted_weapon");
         if (item != null && item.IsWeapon)
         {

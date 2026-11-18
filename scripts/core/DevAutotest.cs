@@ -149,7 +149,7 @@ public partial class DevAutotest : Node
         p.Rig.SetView(true, true);
         await Wait(0.3);
         await Become(PlayerClasses.WarriorId);
-        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + 30f), $"a Warrior has +30 health ({p.Health.Max})");
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.LevelHealth + 30f), $"a Warrior has +30 health ({p.Health.Max})");
 
         // Away from home the class stays.
         p.Teleport(HomeCliffs.AshbyCenter + new Vector3(0, 0.1f, 10));
@@ -208,7 +208,7 @@ public partial class DevAutotest : Node
 
         // Wizard: a firebolt bursts on its target and scorches the one beside it.
         await Become(PlayerClasses.WizardId);
-        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth - 20f), "a Wizard has -20 health");
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.LevelHealth - 20f), "a Wizard has -20 health");
         var bolt1 = await Target(p.GlobalPosition + fwd * 10f);
         var bolt2 = await Target(p.GlobalPosition + fwd * 10f + new Vector3(1.4f, 0, 0));
         AimAt(bolt1.GlobalPosition + Vector3.Up * 0.45f);
@@ -1372,12 +1372,12 @@ public partial class DevAutotest : Node
         Check(p.Health.Current >= p.Health.Max - 0.01f && Have("bread") == 0, "eating bread (F) heals");
         Check(p.BuffAmount(PlayerController.BuffStamina) > 0.4f, "bread gives a stamina-regen buff");
         Net.Instance.RequestEat();
-        Check(Have("roast_turnip") == 0 && Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.Class.BonusHealth + 25f),
+        Check(Have("roast_turnip") == 0 && Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.LevelHealth + p.Class.BonusHealth + 25f),
             $"at full health a roast turnip is still worth it: +25 max health ({p.Health.Max})");
         Net.Instance.RequestEat();
         Check(Have("roast_turnip") == 0, "nothing more to gain: no eating");
         p.ApplyBuff(PlayerController.BuffVigor, 0f, 0f); // (test) let it wear off
-        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.Class.BonusHealth) && p.Health.Current <= p.Health.Max, "when the buff wears off max health goes back");
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.LevelHealth + p.Class.BonusHealth) && p.Health.Current <= p.Health.Max, "when the buff wears off max health goes back");
         p.ClearBuffs();
     }
 
@@ -1538,6 +1538,40 @@ public partial class DevAutotest : Node
         Check(gs.Day == day + 1, "sleeping in the cottage's second bed works");
     }
 
+    /// <summary>XP and levels (GDD §6): the curve, what the run so far earned, a level-up with
+    /// its health and stamina, the banner and bar, and a save/load round trip.</summary>
+    private async Task Xp(GameState gs, PlayerController p)
+    {
+        var net = Net.Instance;
+        Check(Levels.LevelFor(0) == 1 && Levels.LevelFor(Levels.StartOf(5)) == 5 && Levels.LevelFor(Levels.StartOf(5) - 1) == 4
+            && Levels.LevelFor(int.MaxValue / 2) == Levels.MaxLevel && Levels.ToNext(1) == 120,
+            $"the level curve (level 5 at {Levels.StartOf(5)} XP, level 20 at {Levels.StartOf(20)})");
+        Check(p.Xp > 0 && p.XpFirsts.Contains("kill:wolf") && p.XpFirsts.Contains("craft:wooden_sword"),
+            $"the run so far earned XP from kills and crafts ({p.Xp} XP, level {p.Level}, {p.XpFirsts.Count} firsts)");
+
+        p.Teleport(new Vector3(0, 0.1f, 20f));
+        await Wait(0.3);
+        int level = p.Level, xpBefore = p.Xp;
+        float maxHealth = p.Health.Max;
+        net.ServerAwardXp(p, Levels.StartOf(level + 1) - p.Xp, "a test");
+        await Wait(0.3);
+        Check(p.Level == level + 1, $"enough XP levels you up ({level} -> {p.Level})");
+        Check(Mathf.IsEqualApprox(p.Health.Max, maxHealth + Levels.HealthPerLevel) && Mathf.IsEqualApprox(p.Health.Current, p.Health.Max),
+            $"a level adds 2 max health, healed ({p.Health.Current:0} / {p.Health.Max:0})");
+        Check(Mathf.IsEqualApprox(p.MaxStamina, p.BaseStamina + (p.Level - 1) * Levels.StaminaPerLevel), $"and 1 max stamina per level ({p.MaxStamina:0})");
+        Check(Hud.Instance.LevelBannerShown && Hud.Instance.XpBarLevelText == $"Lv {p.Level}", "the level-up banner and the XP bar show the new level");
+        await Shot("24_level_up");
+
+        int saved = p.Xp;
+        gs.SaveGame(silent: true);
+        net.ServerAwardXp(p, 5000);
+        p.XpFirsts.Remove("kill:wolf");
+        gs.LoadGame(silent: true);
+        await Wait(0.3);
+        Check(p.Xp == saved && p.Level == level + 1 && p.XpFirsts.Contains("kill:wolf"), $"save/load keeps XP, level and firsts ({p.Xp} XP)");
+        Check(saved > xpBefore, "XP only goes up in play");
+    }
+
     private async Task Run()
     {
         var gs = GameState.Instance;
@@ -1681,6 +1715,7 @@ public partial class DevAutotest : Node
         await Raids(gs, p);
         await GearAndUi(gs, p);
         await ControllerAndGuidance(gs, p);
+        await Xp(gs, p);
 
         // Night look.
         gs.TimeOfDay = 0.745f;

@@ -11,9 +11,15 @@ public partial class FramedBar : Control
     private float _shown = -1, _trailValue = -1;
 
     public bool ShowNumbers { get; set; } = true;
+    /// <summary>Written after the numbers ("120 / 380 XP").</summary>
+    public string Suffix { get; set; } = "";
+    /// <summary>Replaces the numbers when set ("Max level").</summary>
+    public string Caption { get; set; } = "";
 
-    public FramedBar(string fill, Vector2 size)
+    /// <summary>tint: recolour the fill texture (keeps its shading), for a bar with no art of its own.</summary>
+    public FramedBar(string fill, Vector2 size, Color? tint = null)
     {
+        _tint = tint;
         CustomMinimumSize = size;
         MouseFilter = MouseFilterEnum.Ignore;
         const float inset = 5;
@@ -34,13 +40,15 @@ public partial class FramedBar : Control
         _text.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
     }
 
+    private readonly Color? _tint;
+
     private TextureProgressBar MakeBar(string fill, float inset)
     {
         var bar = new TextureProgressBar
         {
             NinePatchStretch = true, MouseFilter = MouseFilterEnum.Ignore, Step = 0.01,
             TextureUnder = fill == null ? UiTheme.Tex("bar_back") : null,
-            TextureProgress = UiTheme.Tex(fill ?? "bar_stamina"),
+            TextureProgress = fill != null && _tint is { } tint ? Recolor(UiTheme.Tex(fill), tint) : UiTheme.Tex(fill ?? "bar_stamina"),
         };
         AddChild(bar);
         bar.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -56,7 +64,25 @@ public partial class FramedBar : Control
         _fill.Value = value;
         if (value > _trailValue) _trailValue = value;
         _trail.Value = _trailValue;
-        _text.Text = ShowNumbers ? $"{Mathf.CeilToInt(value)} / {Mathf.RoundToInt(max)}" : "";
+        _text.Text = Caption != "" ? Caption : ShowNumbers ? $"{Mathf.CeilToInt(value)} / {Mathf.RoundToInt(max)}{Suffix}" : "";
+    }
+
+    /// <summary>The texture's brightness, in a new colour.</summary>
+    private static Texture2D Recolor(Texture2D tex, Color tint)
+    {
+        var img = tex?.GetImage();
+        if (img == null) return tex;
+        img = (Image)img.Duplicate();
+        if (img.IsCompressed()) img.Decompress();
+        img.Convert(Image.Format.Rgba8);
+        for (int y = 0; y < img.GetHeight(); y++)
+            for (int x = 0; x < img.GetWidth(); x++)
+            {
+                var c = img.GetPixel(x, y);
+                float l = Mathf.Clamp(c.Luminance * 1.35f, 0f, 1.2f);
+                img.SetPixel(x, y, new Color(Mathf.Min(1f, tint.R * l), Mathf.Min(1f, tint.G * l), Mathf.Min(1f, tint.B * l), c.A));
+            }
+        return ImageTexture.CreateFromImage(img);
     }
 
     public override void _Process(double delta)

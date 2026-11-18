@@ -55,6 +55,7 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
             net.ServerRemoveBuilding(b, refund: true);
         net.ServerSetHomeTier(2);
         net.ToastAll($"{player.DisplayName} raised the cottage! Two beds, and you can build farther from home (42 m).");
+        net.ServerAwardXpAll(Levels.HomeUpgrade, "raised the cottage");
         gs.SaveGame(silent: true);
     }
 

@@ -384,6 +384,7 @@ public partial class Wildlife : Node3D
         if (group != _raidGroup || RaidActive) return;
         _raidGroup = 0;
         Net.Instance.ToastAll("The raid is beaten off!");
+        Net.Instance.ServerAwardXpAll(Levels.RaidBeaten, "raid beaten off");
     }
 
     /// <summary>Hit points of a placed building against raiders.</summary>
@@ -617,6 +618,7 @@ public partial class Wildlife : Node3D
     public void OnEnemyKilled(Enemy e, Node source)
     {
         e.ServerDropLoot(source);
+        Net.Instance.ServerXpForKill(e);
         if (e.Group >= RaidGroupBase) CheckRaid(e.Group);
         else if (e.Group >= RoostGroupBase) CheckRoost(e.Group - RoostGroupBase);
         else if (e.Group >= CampGroupBase) CheckCamp(e.Group - CampGroupBase);

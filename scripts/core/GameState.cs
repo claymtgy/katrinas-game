@@ -303,7 +303,20 @@ public partial class GameState : Node
 
     /// <summary>Server: remember a player's position and shrine for when they rejoin.</summary>
     public void RememberPlayer(PlayerController p) =>
-        PlayerRecords[p.DisplayName] = new GDict { ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary(), ["worn"] = Gear.ToDict(p.Worn) };
+        PlayerRecords[p.DisplayName] = new GDict
+        {
+            ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary(), ["worn"] = Gear.ToDict(p.Worn),
+            ["xp"] = p.Xp, ["firsts"] = new GArray(p.XpFirsts.Select(f => Variant.From(f))),
+        };
+
+    /// <summary>Server: put a saved character's XP and firsts back on a player.</summary>
+    public static void ApplyXpRecord(PlayerController p, GDict rec)
+    {
+        p.XpFirsts.Clear();
+        if (rec.TryGetValue("firsts", out var firsts) && firsts.VariantType == Variant.Type.Array)
+            foreach (var f in firsts.AsGodotArray()) p.XpFirsts.Add(f.AsString());
+        Net.Instance.ServerLoadXp(p, rec.TryGetValue("xp", out var xp) ? xp.AsInt32() : 0);
+    }
 
     public void SaveGame(bool silent = false)
     {
@@ -338,6 +351,8 @@ public partial class GameState : Node
                 ["spawn"] = new GArray { spawn.X, spawn.Y, spawn.Z },
                 ["pack"] = kv.Value.TryGetValue("pack", out var pack) ? pack : new GDict(),
                 ["worn"] = kv.Value.TryGetValue("worn", out var worn) ? worn : new GDict(),
+                ["xp"] = kv.Value.TryGetValue("xp", out var xp) ? xp : 0,
+                ["firsts"] = kv.Value.TryGetValue("firsts", out var firsts) ? firsts : new GArray(),
             };
         }
 
@@ -412,6 +427,8 @@ public partial class GameState : Node
                     ["pos"] = ToVec(rec["pos"]), ["spawn"] = ToVec(rec["spawn"]),
                     ["pack"] = rec.TryGetValue("pack", out var pack) ? pack.AsGodotDictionary() : new GDict(),
                     ["worn"] = rec.TryGetValue("worn", out var worn) ? worn.AsGodotDictionary() : new GDict(),
+                    ["xp"] = rec.TryGetValue("xp", out var xp) ? xp.AsInt32() : 0,
+                    ["firsts"] = rec.TryGetValue("firsts", out var firsts) ? firsts.AsGodotArray() : new GArray(),
                 };
             }
         else if (data.TryGetValue("player", out var legacy)) // version 1: one player
@@ -424,6 +441,7 @@ public partial class GameState : Node
                 p.SpawnPoint = rec["spawn"].AsVector3();
                 p.Pack.ReplaceAll(rec.TryGetValue("pack", out var pack) ? pack.AsGodotDictionary() : new GDict());
                 p.SetWorn(Gear.FromDict(rec.TryGetValue("worn", out var worn) ? worn.AsGodotDictionary() : null));
+                ApplyXpRecord(p, rec);
                 Net.Instance.ServerTeleport(p, rec["pos"].AsVector3());
             }
 

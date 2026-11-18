@@ -86,7 +86,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | A boss (the bandit captain, then each region's boss) | 200, rising by 100 a region |
 | Lighting (first prayer at) a new sanctuary | 150 |
 | Beating off a raid | 100 |
-| Journal goals and errands | 30–80 each |
+| Journal goals and errands | main goal 60, side goal 40, errand 30 |
 | First craft of each item | 20 |
 | A home upgrade (Cottage, Longhouse, Keep) | 250 |
 
@@ -126,8 +126,9 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 **Saving and code.**
 - Level, XP and talents are saved with the character in the world save, like the pack and worn gear (§16). Class stays in your own settings, as now.
-- Abilities and talents are data in `PlayerClasses`, each ability with an `UnlockLevel`. `PlayerAbility` gets one slot per ability. The server awards XP (`Net.S_Xp`), and the level is part of each player's info in the snapshot (a protocol bump).
-- The HUD gets an XP bar under the stamina bar and a "Level up" banner. The character sheet (I) gets a Talents tab.
+- **Built:** `Levels` holds the curve and the XP table. A player's progress is one number, their total XP, and the level is worked out from it. The server awards XP (`Net.Xp.cs`: `ServerAwardXp`, `ServerXpForKill`, `ServerXpForCraft`) and sends every machine the new total (`Net.C_Xp`). The total is part of each player's info in the snapshot (protocol 9). Each character's "firsts" (first wolf, first glider) are saved with it, so a first is paid once per character. Journal goals count as world milestones: everyone online gets them.
+- Still to build: abilities and talents as data in `PlayerClasses`, each ability with an `UnlockLevel`. `PlayerAbility` gets one slot per ability.
+- The HUD has an XP bar under the stamina bar with the level beside it, a "+50 XP" note for anything but a repeat kill, and a "Level up" banner (built). The character sheet (I) shows the level and XP, and gets a Talents tab later.
 
 **Controls.**
 - Keyboard: **R** (or mouse button 4) for the first ability, as now, then **T** for the level-5 ability and **G** for the level-12 ability.
@@ -463,7 +464,7 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities:** XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner and levels on nameplates are built) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
 9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.

@@ -105,6 +105,7 @@ public partial class Hud : CanvasLayer
         box.AddChild(_health);
         _stamina = new FramedBar("bar_stamina", new Vector2(290, 22)) { ShowNumbers = false, SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
         box.AddChild(_stamina);
+        BuildXpRow(box);
     }
 
     private void BuildClock()
@@ -459,6 +460,7 @@ public partial class Hud : CanvasLayer
 
         _health.Set(player.Health.Current, player.Health.Max);
         _stamina.Set(player.Stamina, player.MaxStamina);
+        UpdateXp(player);
 
         float hours = gs.TimeOfDay * 24f;
         int h = (int)hours, m = (int)((hours - h) * 60);
@@ -933,6 +935,8 @@ public partial class Hud : CanvasLayer
         Stat("Vitals", true);
         Stat($"Health {me.Health.Current:0} / {me.Health.Max:0}");
         Stat($"Stamina {me.MaxStamina:0}");
+        var (into, need) = Levels.Progress(me.Xp);
+        Stat(need == 0 ? $"Level {me.Level} (the cap)" : $"Level {me.Level}: {into} / {need} XP to the next");
         Stat("Armour", true);
         foreach (var line in Gear.Summary(me)) Stat(line);
         Stat("Class", true);

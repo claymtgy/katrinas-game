@@ -186,6 +186,7 @@ public partial class Journal : Node
             Completed.Add(g.Id);
             GD.Print($"[Journal] Goal done: {g.Id}");
             net.BroadcastJournal(g.Id);
+            net.ServerAwardXpAll(g.Side ? Levels.SideGoal : Levels.MainGoal, $"goal: {g.Title}");
         }
     }
 
@@ -204,6 +205,7 @@ public partial class Journal : Node
         ErrandsDone++;
         NewErrand();
         net.ToastTo(p.PeerId, $"Errand done: +{e.Reward} coins. Marta has another job for you.");
+        net.ServerAwardXp(p, Levels.Errand, "errand for Marta");
         _nextCheck = 0;
         net.BroadcastJournal("");
     }
