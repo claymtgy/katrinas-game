@@ -127,7 +127,7 @@ public partial class Projectile : Node3D
         if (health == null || health.IsDead) return false;
         if (collider is PlayerController target)
         {
-            if (!Net.Instance.Pvp || target == shooter) return false;
+            if (!Net.Instance.Pvp || shooter == null || target == shooter) return false;
             Net.Instance.ServerDamagePlayer(target, amount, shooter);
         }
         else health.TakeDamage(amount, shooter);

@@ -29,15 +29,56 @@ public partial class ItemDef : Resource
     /// <summary>Real seconds the buff lasts.</summary>
     [Export] public float BuffSeconds { get; set; } = 0f;
 
+    [ExportGroup("Armour")]
+    /// <summary>Where it's worn (Gear.Slots: head, body, hands, feet, cloak, charm). "" = not wearable.</summary>
+    [Export] public string Slot { get; set; } = "";
+    [Export] public float Armor { get; set; } = 0f;
+    /// <summary>Metal: slows stamina regeneration a little (Gear.HeavyRegenPenalty).</summary>
+    [Export] public bool Heavy { get; set; } = false;
+    /// <summary>A built-in bonus (Gear.Perk*: grip, regen, feather, might, vigor) and its size.</summary>
+    [Export] public string Perk { get; set; } = "";
+    [Export] public float PerkAmount { get; set; } = 0f;
+    [Export(PropertyHint.MultilineText)] public string PerkText { get; set; } = "";
+    /// <summary>Colours it gives the body when worn (alpha 0 = leave the player's own).</summary>
+    [Export] public Color WornColor { get; set; } = new(0, 0, 0, 0);
+    [Export] public Color WornTrim { get; set; } = new(0, 0, 0, 0);
+
     [ExportGroup("Trade")]
     /// <summary>Coins a trader asks for one (0 = traders don't sell it).</summary>
     [Export] public int BuyPrice { get; set; } = 0;
     /// <summary>Coins a trader pays for one (0 = traders won't buy it).</summary>
     [Export] public int SellPrice { get; set; } = 0;
 
+    /// <summary>The enchantment on this copy (an "id@enchant" variant, see ItemDb.Get), or "".</summary>
+    public string Enchant { get; set; } = "";
+    /// <summary>The item this is an enchanted copy of (its own id if it isn't one).</summary>
+    public string BaseId { get; set; } = "";
+    /// <summary>Which picture to show: res://assets/ui/icons/&lt;Icon&gt;.png ("" = the base id).</summary>
+    [Export] public string Icon { get; set; } = "";
+
     public bool IsWeapon => Category == "weapon";
+    public bool IsWearable => Slot != "";
+    /// <summary>Stays with its owner: crafted into their pack, kept at a chest, never lost on defeat.</summary>
+    public bool IsPersonal => Category is "gear" or "armor";
     public bool HasBuff => BuffKind != "" && BuffSeconds > 0;
     public bool IsFood => FoodHeal > 0 || HasBuff;
+
+    /// <summary>Several lines for a tooltip: what it is and what it does.</summary>
+    public string Describe()
+    {
+        var lines = new System.Collections.Generic.List<string> { DisplayName };
+        if (IsWearable)
+        {
+            lines.Add($"{Gear.SlotName(Slot)} armour" + (Armor > 0 ? $" · {Armor:0} armour" : "") + (Heavy ? " · heavy" : ""));
+            if (PerkText != "") lines.Add(PerkText);
+            if (Gear.GetEnchantment(Enchant) is { } e) lines.Add($"Enchanted: {e.Text}");
+        }
+        else if (IsWeapon) lines.Add($"Weapon · {Damage:0} damage · {Reach:0.0} m reach");
+        else if (IsFood) lines.Add($"Food" + (FoodHeal > 0 ? $" · heals {FoodHeal:0}" : "") + (HasBuff ? $" · {BuffText}" : ""));
+        else if (Category == "gear" && Id == "glider") lines.Add("Gear · Space in the air to glide");
+        if (SellPrice > 0) lines.Add($"Sells for {SellPrice} coins");
+        return string.Join('\n', lines);
+    }
 
     /// <summary>"+25 max health", "Stamina regen +50%".</summary>
     public string BuffText => BuffKind switch

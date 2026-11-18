@@ -161,6 +161,26 @@ public partial class NetAutotest : Node
         Weather.Instance.SetRain(true);
         Check(gs.Raining, "the host starts a shower");
 
+        // Falls Valley and raids in co-op: the client glides (the host sees it), harpies and a raid
+        // show up on the client.
+        Supplies.Give(other, "glider", 1);
+        Check(await Until(() => other.Gliding, 40), "the host sees the client gliding");
+        var wildlife = Wildlife.Instance;
+        var harpies = wildlife.SpawnRoost(0);
+        Check(harpies.Count == Difficulty.PackSize(Wildlife.SoloRoostSize), $"2 players: a bigger roost ({harpies.Count} harpies)");
+        gs.TimeOfDay = 0.72f; // dusk: raiders run off in the morning
+        var raid = wildlife.StartRaid(new Vector3(2, 0, 60));
+        Check(raid.Count == Difficulty.PackSize(Wildlife.SoloRaidSize), $"2 players: a bigger raid ({raid.Count} raiders)");
+
+        // Armour in co-op: the host puts on a helm (the client must see it); the client is handed
+        // a jerkin and wears it (the host must see that, and it must protect the client).
+        Supplies.Give(me, "iron_helm", 1);
+        Net.Instance.RequestWear("iron_helm");
+        Check(me.Worn.GetValueOrDefault(Gear.Head) == "iron_helm", "the host wears an iron helm");
+        Supplies.Give(other, "leather_jerkin@ward", 1);
+        Check(await Until(() => other.Worn.GetValueOrDefault(Gear.Body) == "leather_jerkin@ward", 40), "the host sees the client put on its enchanted jerkin");
+        Check(Mathf.IsEqualApprox(Gear.Armor(other), 10f), $"...and the server counts its armour ({Gear.Armor(other)})");
+
         // The client leaves at the end.
         Check(await Until(() => gs.Players.Count == 1, 60), "client left; the host keeps running");
         Check(FileAccess.FileExists(GameState.SavePath), "the host wrote the save file");
@@ -374,6 +394,32 @@ public partial class NetAutotest : Node
             await Wait(0.6);
             await Shot("05_cottage");
             Check(await Until(() => gs.Raining, 20), "client sees the host's rain shower");
+
+            // The host hands us a glider: jump off something high and glide.
+            Check(await Until(() => me.HasGlider, 20), "client has the glider the host gave it (pack mirrored)");
+            me.Teleport(new Vector3(0, 14f, 30f));
+            await Wait(0.1);
+            Check(me.TryGlide() && me.Gliding, "client opens its glider");
+            await Wait(1.5);
+            await Shot("06_glider");
+            Check(await Until(() => me.IsOnFloor() && !me.Gliding, 15), "client glides down and lands");
+            var wl = Wildlife.Instance;
+            Check(await Until(() => wl.Harpies.Count() == Difficulty.PackSize(Wildlife.SoloRoostSize), 20), $"client sees the harpies ({wl.Harpies.Count()})");
+            Check(await Until(() => wl.Raiders.Count() == Difficulty.PackSize(Wildlife.SoloRaidSize), 20), $"client sees the raiders ({wl.Raiders.Count()})");
+            var flyer = wl.Harpies.FirstOrDefault();
+            await Wait(1.0);
+            Check(flyer != null && flyer.GlobalPosition.Y > 5f, $"client's harpies fly ({flyer?.GlobalPosition.Y:0.0} m up)");
+
+            // Armour: the host's helm shows here; we wear the jerkin the host handed us.
+            var host = gs.GetPlayer(1);
+            Check(await Until(() => host?.Worn.GetValueOrDefault(Gear.Head) == "iron_helm", 20), "client sees the host's iron helm");
+            Check(await Until(() => me.Pack.Count("leather_jerkin@ward") == 1, 20), "client got an enchanted jerkin (pack mirrored)");
+            Net.Instance.RequestWear("leather_jerkin@ward");
+            Check(await Until(() => me.Worn.GetValueOrDefault(Gear.Body) == "leather_jerkin@ward" && me.Pack.Count("leather_jerkin@ward") == 0, 10), "client wears it");
+            Hud.Instance.OpenCharacter();
+            await Wait(0.5);
+            await Shot("07_character_sheet");
+            Hud.Instance.CloseMenus();
         }
         else
         {

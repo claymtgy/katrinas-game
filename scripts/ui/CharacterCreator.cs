@@ -47,13 +47,16 @@ public partial class CharacterCreator : Control
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
-        AddChild(new ColorRect { Color = new Color(0.05f, 0.04f, 0.1f, 0.94f), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore });
+        Theme = UiTheme.Theme;
+        AddChild(new ColorRect { Color = new Color(0.06f, 0.035f, 0.02f, 0.9f), AnchorRight = 1, AnchorBottom = 1, MouseFilter = MouseFilterEnum.Ignore });
 
         var center = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
         AddChild(center);
+        var board = new PanelContainer();
+        center.AddChild(board);
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 28);
-        center.AddChild(row);
+        board.AddChild(row);
 
         // Preview.
         var frame = new SubViewportContainer { Stretch = true, CustomMinimumSize = new Vector2(380, 560) };
@@ -67,10 +70,8 @@ public partial class CharacterCreator : Control
         var right = new VBoxContainer { CustomMinimumSize = new Vector2(500, 0) };
         right.AddThemeConstantOverride("separation", 10);
         row.AddChild(right);
-        var title = new Label { Text = "Your character" };
-        title.AddThemeFontSizeOverride("font_size", 34);
-        title.Modulate = Gold;
-        right.AddChild(title);
+        right.AddChild(UiTheme.TitlePlate("Your Character", out _));
+        right.AddChild(UiTheme.Divider(480));
         _options = new VBoxContainer();
         _options.AddThemeConstantOverride("separation", 10);
         right.AddChild(_options);
@@ -91,9 +92,7 @@ public partial class CharacterCreator : Control
         done.Pressed += Done;
         buttons.AddChild(done);
 
-        var hint = new Label { Text = "Drag the preview to turn it. Your look is kept on this computer and shown to everyone you play with." };
-        hint.AddThemeFontSizeOverride("font_size", 13);
-        hint.Modulate = new Color(0.75f, 0.72f, 0.82f);
+        var hint = UiTheme.Label("Drag the preview to turn it. Your look is kept on this computer and shown to everyone you play with.", "Dim");
         hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         hint.CustomMinimumSize = new Vector2(500, 0);
         right.AddChild(hint);

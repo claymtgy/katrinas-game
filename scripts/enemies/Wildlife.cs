@@ -29,15 +29,36 @@ public partial class Wildlife : Node3D
     public const int CampRespawnDays = 3;
     public const int AnimAttack = 0, AnimStun = 1;
 
-    /// <summary>The playable area (no navmesh yet: the cliffs are walls for enemies).</summary>
+    /// <summary>The plateau and the vale, where ground enemies live (and the navmesh is baked).</summary>
     public const float WorldMinX = -56f, WorldMaxX = 56f, WorldMinZ = -27f, WorldMaxZ = 232f;
+    public static readonly Rect2 HomeBounds = new(WorldMinX, WorldMinZ, WorldMaxX - WorldMinX, WorldMaxZ - WorldMinZ);
+
+    /// <summary>Harpies per roost for one player (more players, more harpies).</summary>
+    public const int SoloRoostSize = 3;
+    /// <summary>A cleared roost fills again after this many days.</summary>
+    public const int RoostRespawnDays = 1;
+    /// <summary>Raiders per raid for one player.</summary>
+    public const int SoloRaidSize = 3;
+    /// <summary>Raids start on this day, when the base has at least RaidMinBuildings.</summary>
+    public const int RaidFirstDay = 3;
+    public const int RaidMinBuildings = 3;
+    /// <summary>Chance of a raid at each dusk (at least RaidMinGap days apart; certain after RaidMaxGap).</summary>
+    public const float RaidChance = 0.45f;
+    public const int RaidMinGap = 2, RaidMaxGap = 4;
+    /// <summary>Raiders gather out of sight on the vale road and march north.</summary>
+    public static readonly Vector3 RaidSpawn = new(2, 0, 106);
+    /// <summary>Most a raider takes from the stockpile per blow on a chest.</summary>
+    public const int StealPerStrike = 4;
+
+    /// <summary>Harpy roosts in Falls Valley (the world builder puts a spire and nest here).</summary>
+    public static readonly Vector3[] RoostSites = { new(118, 0, 80) };
 
     private const float FirstPackDelay = 6f;
     private const float PackInterval = 110f;
     private const float SendInterval = 1f / 15f;
     /// <summary>Pack anchors creep toward the base at this speed (m/s), so wolves come to you.</summary>
     private const float AnchorDrift = 0.6f;
-    private const int CampGroupBase = 10000;
+    private const int CampGroupBase = 10000, RoostGroupBase = 20000, RaidGroupBase = 30000;
 
     /// <summary>Bandit camps (the world builder puts the tents and fires here).</summary>
     public static readonly Vector3[] CampSites = { new(38, 0, 140) };
@@ -52,7 +73,9 @@ public partial class Wildlife : Node3D
     public readonly Dictionary<int, Enemy> Enemies = new();
     /// <summary>The wolves among the enemies (a fresh dictionary each call).</summary>
     public Dictionary<int, Wolf> Wolves => Enemies.Values.OfType<Wolf>().ToDictionary(w => w.NetId);
-    public IEnumerable<Bandit> Bandits => Enemies.Values.OfType<Bandit>();
+    public IEnumerable<Bandit> Bandits => Enemies.Values.OfType<Bandit>().Where(b => !b.Raider);
+    public IEnumerable<Bandit> Raiders => Enemies.Values.OfType<Bandit>().Where(b => b.Raider);
+    public IEnumerable<Harpy> Harpies => Enemies.Values.OfType<Harpy>();
     /// <summary>Server: total strikes that reached a player, blocked or not (tests, status).</summary>
     public int Bites { get; private set; }
     public int Parries { get; private set; }
@@ -65,6 +88,13 @@ public partial class Wildlife : Node3D
     }
 
     private readonly Camp[] _camps = CampSites.Select(c => new Camp { Center = c }).ToArray();
+    private readonly Camp[] _roosts = RoostSites.Select(c => new Camp { Center = c }).ToArray();
+    private int _lastRaidDay, _nextRaid, _raidGroup;
+    private bool _wasDusk, _lootWarned;
+    /// <summary>A raid is under way (raiders still standing).</summary>
+    public bool RaidActive => _raidGroup != 0 && Enemies.Values.Any(e => e.Group == _raidGroup && e.Current != Enemy.State.Dead);
+    /// <summary>Server: raids so far (tests, status).</summary>
+    public int RaidCount { get; private set; }
     private readonly Dictionary<int, Vector3> _anchors = new();
     private readonly RandomNumberGenerator _rng = new();
     private int _nextId = 1, _nextPack = 1, _packsThisNight;
@@ -75,8 +105,8 @@ public partial class Wildlife : Node3D
     /// <summary>Full daylight: wolves give up and slink off.</summary>
     public static bool IsDay(float t) => t >= 0.24f && t < 0.76f;
 
-    public static Vector3 ClampToWorld(Vector3 p) =>
-        new(Mathf.Clamp(p.X, WorldMinX, WorldMaxX), Mathf.Max(p.Y, -1f), Mathf.Clamp(p.Z, WorldMinZ, WorldMaxZ));
+    public static Vector3 ClampTo(Vector3 p, Rect2 r) =>
+        new(Mathf.Clamp(p.X, r.Position.X, r.End.X), Mathf.Max(p.Y, -1f), Mathf.Clamp(p.Z, r.Position.Y, r.End.Y));
 
     public override void _EnterTree() => Instance = this;
 
@@ -100,7 +130,14 @@ public partial class Wildlife : Node3D
         {
             _campTimer = 1f;
             for (int i = 0; i < _camps.Length; i++) TendCamp(i);
+            for (int i = 0; i < _roosts.Length; i++) TendRoost(i);
         }
+
+        // Raids come at dusk.
+        float t = GameState.Instance.TimeOfDay;
+        bool dusk = t >= 0.70f && t < 0.78f;
+        if (dusk && !_wasDusk) MaybeRaid();
+        _wasDusk = dusk;
 
         _sendTimer -= dt;
         if (_sendTimer <= 0 && Enemies.Count > 0)
@@ -119,6 +156,7 @@ public partial class Wildlife : Node3D
             _packsThisNight = 0;
             _packTimer = FirstPackDelay;
         }
+        if (!night && _wasNight) RepairBuildings();
         _wasNight = night;
         if (!AutoSpawn || !Net.Instance.Config.Enemies || gs.Players.Count == 0) return;
         if (!night || _packsThisNight >= PacksPerNight) return;
@@ -189,7 +227,9 @@ public partial class Wildlife : Node3D
         RemoveChild(e);
         e.QueueFree();
         foreach (var peer in Net.Instance.JoinedPeers) RpcId(peer, MethodName.C_Despawn, id);
-        if (e.Group < CampGroupBase && Enemies.Values.All(o => o.Group != e.Group)) _anchors.Remove(e.Group);
+        if ((e.Group < CampGroupBase || e.Group >= RaidGroupBase) && Enemies.Values.All(o => o.Group != e.Group)) _anchors.Remove(e.Group);
+        if (e is Bandit { Raider: true } r && r.CarriedCount > 0 && r.Current != Enemy.State.Dead)
+            Net.Instance.ToastAll($"A raider got away with {r.CarriedCount} items from the stockpile.");
     }
 
     private void DriftAnchors(float dt)
@@ -207,6 +247,8 @@ public partial class Wildlife : Node3D
     {
         int camp = group - CampGroupBase;
         if (camp >= 0 && camp < _camps.Length) return _camps[camp].Center;
+        int roost = group - RoostGroupBase;
+        if (roost >= 0 && roost < _roosts.Length) return _roosts[roost].Center;
         return _anchors.TryGetValue(group, out var a) ? a : fallback;
     }
 
@@ -250,6 +292,246 @@ public partial class Wildlife : Node3D
         _camps[camp].Cleared = true;
         _camps[camp].RespawnDay = GameState.Instance.Day + CampRespawnDays;
         Net.Instance.ToastAll("The bandit camp is cleared! The Ashby road is safe… for now.");
+    }
+
+    // ================================================================== server: harpy roosts
+
+    public static int RoostGroup(int roost) => RoostGroupBase + roost;
+    public bool RoostCleared(int roost) => _roosts[roost].Cleared;
+
+    private void TendRoost(int i)
+    {
+        var roost = _roosts[i];
+        var gs = GameState.Instance;
+        if (!AutoSpawn || !Net.Instance.Config.Enemies || gs.Players.Count == 0) return;
+        if (Enemies.Values.Any(e => e.Group == RoostGroup(i))) return;
+        if (roost.Cleared && gs.Day < roost.RespawnDay) return;
+        if (gs.Players.Values.Any(p => p.GlobalPosition.DistanceTo(roost.Center) < 30f)) return;
+        SpawnRoost(i);
+    }
+
+    /// <summary>Server: fill a roost with harpies, circling high over the nest.</summary>
+    public List<Harpy> SpawnRoost(int i)
+    {
+        var roost = _roosts[i];
+        roost.Cleared = false;
+        int count = Difficulty.PackSize(SoloRoostSize);
+        var list = new List<Harpy>();
+        for (int n = 0; n < count; n++)
+        {
+            float a = Mathf.Tau * n / count;
+            var pos = roost.Center + new Vector3(Mathf.Cos(a) * 6f, Harpy.CruiseHeight + n, Mathf.Sin(a) * 6f);
+            list.Add((Harpy)Spawn("harpy", RoostGroup(i), pos, a, Harpy.MaxHealth, Harpy.ClawDamage));
+        }
+        GD.Print($"[Wildlife] Harpy roost {i}: {count} harpies ({GameState.Instance.Players.Count} players)");
+        return list;
+    }
+
+    private void CheckRoost(int roost)
+    {
+        if (roost < 0 || roost >= _roosts.Length) return;
+        if (Enemies.Values.Any(e => e.Group == RoostGroup(roost) && e.Current != Enemy.State.Dead)) return;
+        _roosts[roost].Cleared = true;
+        _roosts[roost].RespawnDay = GameState.Instance.Day + RoostRespawnDays;
+        Net.Instance.ToastAll("The harpy roost is quiet. For now.");
+    }
+
+    // ================================================================== server: raids
+
+    private void MaybeRaid()
+    {
+        var gs = GameState.Instance;
+        if (!AutoSpawn || !Net.Instance.Config.Enemies || gs.Players.Count == 0 || RaidActive) return;
+        if (gs.Day < RaidFirstDay || gs.PlacedBuildings.Count < RaidMinBuildings) return;
+        int since = gs.Day - _lastRaidDay;
+        if (since < RaidMinGap) return;
+        if (since >= RaidMaxGap || _rng.Randf() < RaidChance) StartRaid();
+    }
+
+    /// <summary>Server: bandits march on the base from the vale road (or from <paramref name="from"/>).</summary>
+    public List<Bandit> StartRaid(Vector3? from = null)
+    {
+        var at = from ?? RaidSpawn;
+        int group = RaidGroupBase + _nextRaid++;
+        _raidGroup = group;
+        _anchors[group] = GameState.Instance.ClaimCenter;
+        _lastRaidDay = GameState.Instance.Day;
+        _lootWarned = false;
+        RaidCount++;
+        int count = Difficulty.PackSize(SoloRaidSize);
+        var list = new List<Bandit>();
+        for (int n = 0; n < count; n++)
+            list.Add((Bandit)SpawnAround("raider", group, at, n, count, Bandit.RaiderHealth, Bandit.RaiderDamage, 2.5f));
+        Net.Instance.ToastAll("Raiders! Bandits with torches are marching up the road toward your home!");
+        HornLocal();
+        foreach (var peer in Net.Instance.JoinedPeers) RpcId(peer, MethodName.C_Horn);
+        GD.Print($"[Wildlife] Raid: {count} raiders at {at} ({GameState.Instance.Players.Count} players)");
+        return list;
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Horn() => HornLocal();
+
+    private void HornLocal()
+    {
+        if (!Net.Instance.IsDedicated) Sfx.Ui("raid_horn", -2f);
+    }
+
+    private void CheckRaid(int group)
+    {
+        if (group != _raidGroup || RaidActive) return;
+        _raidGroup = 0;
+        Net.Instance.ToastAll("The raid is beaten off!");
+    }
+
+    /// <summary>Hit points of a placed building against raiders.</summary>
+    public static float BuildingHp(string id) => id switch
+    {
+        "palisade" => 150f,
+        "watchtower" => 300f,
+        "well" => 140f,
+        "storage_chest" => 120f,
+        "workbench" => 90f,
+        "campfire" => 60f,
+        "bedroll" => 40f,
+        "wheat_plot" or "turnip_plot" => 50f,
+        _ => 80f,
+    };
+
+    private Node3D _homeChest;
+    private Node3D HomeChest => _homeChest != null && IsInstanceValid(_homeChest)
+        ? _homeChest
+        : _homeChest = GetTree().CurrentScene?.FindChild("HomeChest", true, false) as Node3D;
+
+    public bool ValidObjective(Node3D n) =>
+        n != null && IsInstanceValid(n) && n.IsInsideTree() && (n == HomeChest || GameState.Instance.FindBuilding(n) != null);
+
+    /// <summary>What a raider goes for: the nearest building, chests first (they want the stockpile),
+    /// walls last (only when they're in the way; see NearestBuilding).</summary>
+    public Node3D PickObjective(Vector3 from)
+    {
+        var gs = GameState.Instance;
+        Node3D best = null;
+        float bestScore = float.MaxValue;
+        void Consider(Node3D n, float weight)
+        {
+            if (n == null || !IsInstanceValid(n)) return;
+            float s = n.GlobalPosition.DistanceTo(from) * weight;
+            if (s < bestScore) { bestScore = s; best = n; }
+        }
+        Consider(HomeChest, 0.6f);
+        foreach (var b in gs.PlacedBuildings)
+        {
+            if (b.Node == null || !IsInstanceValid(b.Node)) continue;
+            if (b.Position.DistanceTo(gs.ClaimCenter) > gs.ClaimRadius + 12f) continue;
+            Consider(b.Node, b.Node is StorageChest ? 0.6f : b.Id == "palisade" ? 3f : 1f);
+        }
+        return best;
+    }
+
+    /// <summary>The closest placed building within range (a wall in a raider's way).</summary>
+    public Node3D NearestBuilding(Vector3 from, float range)
+    {
+        Node3D best = null;
+        float bestD = range;
+        foreach (var b in GameState.Instance.PlacedBuildings)
+        {
+            if (b.Node == null || !IsInstanceValid(b.Node)) continue;
+            float d = new Vector2(b.Position.X - from.X, b.Position.Z - from.Z).Length() - ObjectiveRadius(b.Node) * 0.5f;
+            if (d < bestD) { bestD = d; best = b.Node; }
+        }
+        return best;
+    }
+
+    /// <summary>How far from its center a building can be struck (half its footprint).</summary>
+    public float ObjectiveRadius(Node3D n)
+    {
+        if (n == null) return 0f;
+        var b = GameState.Instance.FindBuilding(n);
+        if (b == null) return 0.7f; // the home chest
+        var f = ItemDb.GetBuilding(b.Id)?.Footprint ?? Vector3.One;
+        return Mathf.Max(f.X, f.Z) / 2f;
+    }
+
+    /// <summary>Server: a raider's blow lands on a building or chest. Chests are looted; buildings
+    /// take damage and are wrecked at zero (no refund). Repaired at dawn.</summary>
+    public void RaidStrike(Bandit raider, Node3D target)
+    {
+        var gs = GameState.Instance;
+        if (target is StorageChest)
+        {
+            var stacks = gs.Inventory.Items.Where(kv => kv.Value > 0 && kv.Key != "cottage_blueprint").Select(kv => kv.Key).ToList();
+            if (stacks.Count > 0)
+            {
+                var id = stacks[_rng.RandiRange(0, stacks.Count - 1)];
+                int take = Mathf.Min(id == "coin" ? StealPerStrike * 3 : StealPerStrike, gs.Inventory.Count(id));
+                gs.Inventory.Remove(id, take);
+                raider.Carried[id] = (raider.Carried.TryGetValue(id, out var have) ? have : 0) + take;
+                if (!_lootWarned)
+                {
+                    _lootWarned = true;
+                    Net.Instance.ToastAll("Raiders are looting the stockpile! Kill them to get it back.");
+                }
+            }
+        }
+        var b = gs.FindBuilding(target);
+        ThudLocal(target.GlobalPosition, b?.NetId ?? 0);
+        foreach (var peer in Net.Instance.JoinedPeers) RpcId(peer, MethodName.C_Thud, target.GlobalPosition, b?.NetId ?? 0);
+        if (b == null) return;
+        b.Damage += raider.Damage;
+        if (b.Damage >= BuildingHp(b.Id))
+        {
+            Net.Instance.ServerRemoveBuilding(b, refund: false);
+            Net.Instance.ToastAll($"Raiders wrecked your {ItemDb.GetBuilding(b.Id)?.DisplayName ?? b.Id}!");
+        }
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Thud(Vector3 at, int buildingId) => ThudLocal(at, buildingId);
+
+    /// <summary>Everyone: the sound and shudder of a blow on a building.</summary>
+    private void ThudLocal(Vector3 at, int buildingId)
+    {
+        if (Net.Instance.IsDedicated) return;
+        Sfx.At("chop", at + Vector3.Up, 2f, 0.1f);
+        Fx.Sparks(GetTree().CurrentScene, at + Vector3.Up * 0.8f, new Color(0.6f, 0.45f, 0.3f), 12, 2.5f, 0.3f, 0.6f);
+        var node = buildingId != 0 ? GameState.Instance.FindBuilding(buildingId)?.Node : null;
+        if (node == null || !IsInstanceValid(node)) return;
+        var rest = node.Position;
+        var t = node.CreateTween();
+        t.TweenProperty(node, "position", rest + new Vector3(0.08f, 0, 0.05f), 0.04);
+        t.TweenProperty(node, "position", rest - new Vector3(0.06f, 0, 0.04f), 0.05);
+        t.TweenProperty(node, "position", rest, 0.06);
+    }
+
+    /// <summary>Server, at dawn: everyone patches up the base.</summary>
+    private void RepairBuildings()
+    {
+        bool any = false;
+        foreach (var b in GameState.Instance.PlacedBuildings)
+            if (b.Damage > 0) { b.Damage = 0; any = true; }
+        if (any) Net.Instance.ToastAll("At first light you patch up the damage to the base.");
+    }
+
+    public GDict SaveRaids() => new() { ["last_day"] = _lastRaidDay };
+
+    public void LoadRaids(GDict d) => _lastRaidDay = d != null && d.TryGetValue("last_day", out var v) ? v.AsInt32() : 0;
+
+    public GArray SaveRoosts()
+    {
+        var list = new GArray();
+        foreach (var c in _roosts) list.Add(new GDict { ["cleared"] = c.Cleared, ["respawn_day"] = c.RespawnDay });
+        return list;
+    }
+
+    public void LoadRoosts(GArray list)
+    {
+        for (int i = 0; i < _roosts.Length; i++)
+        {
+            var d = list != null && i < list.Count ? list[i].AsGodotDictionary() : null;
+            _roosts[i].Cleared = d != null && d["cleared"].AsBool();
+            _roosts[i].RespawnDay = d != null ? d["respawn_day"].AsInt32() : 0;
+        }
     }
 
     public GArray SaveCamps()
@@ -333,7 +615,9 @@ public partial class Wildlife : Node3D
     public void OnEnemyKilled(Enemy e, Node source)
     {
         e.ServerDropLoot(source);
-        if (e.Group >= CampGroupBase) CheckCamp(e.Group - CampGroupBase);
+        if (e.Group >= RaidGroupBase) CheckRaid(e.Group);
+        else if (e.Group >= RoostGroupBase) CheckRoost(e.Group - RoostGroupBase);
+        else if (e.Group >= CampGroupBase) CheckCamp(e.Group - CampGroupBase);
         GetTree().CreateTimer(e is Bandit ? 5.0 : 3.0).Timeout += () =>
         {
             if (IsInstanceValid(e)) Despawn(e);

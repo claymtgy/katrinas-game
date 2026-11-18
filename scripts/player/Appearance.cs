@@ -23,6 +23,9 @@ public sealed class Appearance
     public string Skin = "", Hair = "", Outfit = "", Trim = "";
     public bool Cape = true, Helmet;
     public float Height = 1f;
+    /// <summary>Worn gear's look (Gear.Dress), never saved or sent: a cap's colour on the Rogue
+    /// body ("" = none), and the cape's colour ("" = the outfit's).</summary>
+    public string HeadGear = "", CapeColor = "";
 
     /// <summary>False in scripted tests, so they never overwrite the player's real settings.</summary>
     public static bool Persist { get; set; } = true;

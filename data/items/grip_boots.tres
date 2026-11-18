@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "grip_boots"
+DisplayName = "Grip Boots"
+Category = "armor"
+IconColor = Color(0.4, 0.3, 0.22, 1)
+Slot = "feet"
+Armor = 2.0
+Perk = "grip"
+PerkAmount = 0.35
+PerkText = "Climbing costs 35% less stamina; wet rock is no worse than dry"
+SellPrice = 10

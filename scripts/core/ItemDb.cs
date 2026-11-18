@@ -19,7 +19,10 @@ public static class ItemDb
         _loaded = true;
 
         foreach (var item in LoadAll<ItemDef>("res://data/items"))
+        {
+            item.BaseId = item.Id;
             Items[item.Id] = item;
+        }
 
         Recipes.AddRange(LoadAll<RecipeDef>("res://data/recipes").OrderBy(r => r.SortOrder));
         Buildings.AddRange(LoadAll<BuildingDef>("res://data/buildings").OrderBy(b => b.SortOrder));
@@ -27,7 +30,28 @@ public static class ItemDb
         GD.Print($"[ItemDb] {Items.Count} items, {Recipes.Count} recipes, {Buildings.Count} buildings");
     }
 
-    public static ItemDef Get(string id) => id != null && Items.TryGetValue(id, out var d) ? d : null;
+    private static readonly Dictionary<string, ItemDef> Variants = new();
+
+    /// <summary>An item by id. "base@enchant" ids (Gear) are enchanted copies of the base item,
+    /// made on first use and kept apart from <see cref="Items"/> (so traders don't list them).</summary>
+    public static ItemDef Get(string id)
+    {
+        if (id == null) return null;
+        if (Items.TryGetValue(id, out var d)) return d;
+        if (Variants.TryGetValue(id, out d)) return d;
+        var (baseId, enchant) = Gear.Split(id);
+        if (enchant == "" || !Items.TryGetValue(baseId, out var b) || !b.IsWearable || Gear.GetEnchantment(enchant) is not { } e) return null;
+        var v = (ItemDef)b.Duplicate();
+        v.Id = id;
+        v.BaseId = baseId;
+        v.Enchant = enchant;
+        v.DisplayName = $"{b.DisplayName} {e.Suffix}";
+        v.Icon = b.Icon == "" ? baseId : b.Icon;
+        v.BuyPrice = 0;
+        v.SellPrice = b.SellPrice + 10;
+        Variants[id] = v;
+        return v;
+    }
 
     public static string NameOf(string id) => Get(id)?.DisplayName ?? id;
 

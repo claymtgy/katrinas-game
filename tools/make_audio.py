@@ -466,6 +466,41 @@ def whirlwind():
     return fade(x)
 
 
+def harpy_screech():
+    """A raptor's rasping shriek, rising then breaking."""
+    sec = 0.7
+    n = int(sec * SR)
+    t = t_of(sec)
+    contour = np.interp(t, [0, 0.12, 0.45, 0.7], [1500, 2300, 2000, 1300])
+    rasp = 1 + 0.35 * np.sign(np.sin(2 * np.pi * 70 * t))
+    x = tone([(contour, 1.0), (contour * 1.5, 0.4), (contour * 2.02, 0.2)], sec) * rasp
+    hiss = band(noise(sec), 2500, 7000) * 0.35
+    e = np.clip(t / 0.03, 0, 1) * np.clip((sec - t) / 0.25, 0, 1)
+    return fade((x + hiss) * e)
+
+
+def raid_horn():
+    """A low war horn, two long blasts."""
+    sec = 2.4
+    n = int(sec * SR)
+    t = t_of(sec)
+    f = 110 * (1 + 0.006 * np.sin(2 * np.pi * 4.5 * t))
+    x = tone([(f, 1.0), (f * 2, 0.6), (f * 3, 0.35), (f * 4, 0.2), (f * 5, 0.1)], sec)
+    blasts = np.clip(t / 0.08, 0, 1) * np.clip((0.95 - t) / 0.15, 0, 1) + \
+        np.clip((t - 1.15) / 0.08, 0, 1) * np.clip((sec - t) / 0.3, 0, 1)
+    breath = band(noise(sec), 200, 1200) * 0.08
+    return fade(lowpass((x + breath) * blasts, 1600))
+
+
+def glider_open():
+    """Cloth snapping open in the wind."""
+    snap = band(noise(0.12), 600, 4000) * env(int(0.12 * SR), 0.002, 0.03)
+    w = whoosh(0.6, 200, 1200, 0.25) * 0.7
+    x = np.zeros(len(w))
+    x[: len(snap)] += snap
+    return fade(x + w)
+
+
 SOUNDS = {
     # loops
     "amb_wind": wind, "amb_rain": rain, "amb_birds": birds, "amb_crickets": crickets,
@@ -480,6 +515,8 @@ SOUNDS = {
     # class abilities
     "bow": bow, "arrow_hit": arrow_hit, "firebolt": firebolt, "explode": explode,
     "heal": heal, "vanish": vanish, "whirlwind": whirlwind,
+    # Falls Valley and raids
+    "harpy_screech": harpy_screech, "raid_horn": raid_horn, "glider_open": glider_open,
 }
 
 if __name__ == "__main__":

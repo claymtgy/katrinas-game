@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RecipeDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/RecipeDef.cs" id="1_recipe"]
+
+[resource]
+script = ExtResource("1_recipe")
+Id = "craft_feather_cloak"
+DisplayName = "Feather Cloak"
+Station = "workbench"
+Inputs = {"wolf_pelt": 1, "harpy_feather": 6}
+OutputItem = "feather_cloak"
+OutputCount = 1
+SortOrder = 16

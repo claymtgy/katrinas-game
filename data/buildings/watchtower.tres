@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Watchtower.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "watchtower"
+DisplayName = "Watchtower"
+Description = "A lookout on stilts. It looses arrows at raiders, wolves and harpies within 26 m."
+Scene = ExtResource("2_scene")
+Cost = {"wood": 16, "stone": 6}
+Footprint = Vector3(2.4, 6.2, 2.4)
+SortOrder = 9

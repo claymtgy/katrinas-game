@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "travel_cloak"
+DisplayName = "Traveller's Cloak"
+Category = "armor"
+IconColor = Color(0.24, 0.42, 0.3, 1)
+Slot = "cloak"
+Armor = 1.0
+Perk = "regen"
+PerkAmount = 0.15
+PerkText = "Stamina comes back 15% faster"
+WornColor = Color(0.24, 0.42, 0.3, 1)
+SellPrice = 6

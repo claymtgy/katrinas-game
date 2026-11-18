@@ -214,7 +214,7 @@ public partial class PlayerCombat : Node
     /// <summary>Local player: swing now (animation, stamina) and ask the server to resolve the hit.</summary>
     public void TryAttack(bool heavy)
     {
-        if (_cooldown > 0 || GuardUp || _player.Dodging) return;
+        if (_cooldown > 0 || GuardUp || _player.Dodging || _player.Mode != PlayerController.MoveMode.Normal) return;
         if (!_player.TrySpendStamina(heavy ? HeavyStamina : LightStamina))
         {
             Hud.Toast("Too tired to swing!");
@@ -249,7 +249,7 @@ public partial class PlayerCombat : Node
     {
         var def = ItemDb.Get(_player.Equipped);
         var cls = _player.Class;
-        float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier * cls.HeavyDamage : cls.LightDamage);
+        float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier * cls.HeavyDamage : cls.LightDamage) * Gear.MeleeDamageMult(_player);
         float reach = def?.Reach ?? FistReach;
         float cooldown = (def?.AttackCooldown ?? 0.4f) * (heavy ? 1.8f : 1f);
         return (damage, reach, heavy ? 0.38f : 0.2f, cooldown);
@@ -319,7 +319,12 @@ public partial class PlayerCombat : Node
                 if (Net.Instance.ServerDamagePlayer(target, damage, _player) == Net.HitResult.Parried)
                     Net.Instance.StaggerPlayer(_player, 1.0f);
             }
-            else health.TakeDamage(damage, _player);
+            else
+            {
+                health.TakeDamage(damage, _player);
+                // Leeching gear: living foes only (not trees, rocks or the dummy).
+                if (collider is Enemy && Gear.LeechShare(_player) > 0) _player.Health.Heal(damage * Gear.LeechShare(_player));
+            }
         }
         if (hits > 0) Net.Instance.HitMarkerTo(_player.PeerId);
         return hits;

@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 4;
+    public const int ProtocolVersion = 6;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -362,7 +362,7 @@ public partial class Net : Node
     private static GDict PlayerInfo(PlayerController p) => new()
     {
         ["id"] = p.PeerId, ["name"] = p.DisplayName, ["pos"] = p.GlobalPosition,
-        ["equipped"] = p.Equipped, ["sleeping"] = p.Sleeping, ["look"] = p.Look.ToDict(),
+        ["equipped"] = p.Equipped, ["sleeping"] = p.Sleeping, ["look"] = p.Look.ToDict(), ["worn"] = Gear.ToDict(p.Worn),
     };
 
     private void ApplySnapshot(GDict s)
@@ -394,6 +394,7 @@ public partial class Net : Node
             else p.SetLook(look);
             p.Equipped = info["equipped"].AsString();
             p.Sleeping = info["sleeping"].AsBool();
+            p.SetWorn(Gear.FromDict(info.TryGetValue("worn", out var wv) ? wv.AsGodotDictionary() : null));
         }
 
         Gs.SetHomeTier(s["home_tier"].AsInt32());
@@ -452,6 +453,7 @@ public partial class Net : Node
         {
             p.SpawnPoint = rec["spawn"].AsVector3();
             if (rec.TryGetValue("pack", out var pack)) p.Pack.ReplaceAll(pack.AsGodotDictionary());
+            if (rec.TryGetValue("worn", out var worn)) p.SetWorn(Gear.FromDict(worn.AsGodotDictionary()));
         }
         p.Pack.Changed += () => _packDirty.Add(id);
         GD.Print($"[Net] {name} (peer {id}) is in the world. {Gs.Players.Count}/{Config.MaxPlayers} players");
@@ -479,6 +481,7 @@ public partial class Net : Node
         var look = Appearance.FromDict(info.TryGetValue("look", out var lv) ? lv.AsGodotDictionary() : null);
         var p = SpawnPlayerNode(id, info["name"].AsString(), info["pos"].AsVector3(), look);
         p.Equipped = info["equipped"].AsString();
+        p.SetWorn(Gear.FromDict(info.TryGetValue("worn", out var wv) ? wv.AsGodotDictionary() : null));
         Hud.Toast($"{p.DisplayName} joined the game");
     }
 
@@ -501,34 +504,41 @@ public partial class Net : Node
         if (_stateTimer > 0) return;
         _stateTimer = StateSendInterval;
         var (yaw, pitch) = p.Rig.Look;
-        if (IsServer) RelayState(p.PeerId, p.GlobalPosition, yaw, pitch, p.Velocity, p.IsOnFloor());
-        else RpcId(1, MethodName.S_State, p.GlobalPosition, yaw, pitch, p.Velocity, p.IsOnFloor());
+        int mode = (int)p.Mode;
+        if (IsServer) RelayState(p.PeerId, p.GlobalPosition, yaw, pitch, p.Velocity, p.IsOnFloor(), mode);
+        else RpcId(1, MethodName.S_State, p.GlobalPosition, yaw, pitch, p.Velocity, p.IsOnFloor(), mode);
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered, TransferChannel = 1)]
-    private void S_State(Vector3 pos, float yaw, float pitch, Vector3 vel, bool floor)
+    private void S_State(Vector3 pos, float yaw, float pitch, Vector3 vel, bool floor, int mode)
     {
         int id = Sender;
         if (!_joined.Contains(id)) return;
-        Gs.GetPlayer(id)?.ApplyRemoteState(pos, yaw, pitch, vel, floor);
-        RelayState(id, pos, yaw, pitch, vel, floor);
+        Gs.GetPlayer(id)?.ApplyRemoteState(pos, yaw, pitch, vel, floor, mode);
+        RelayState(id, pos, yaw, pitch, vel, floor, mode);
     }
 
-    private void RelayState(int id, Vector3 pos, float yaw, float pitch, Vector3 vel, bool floor)
+    private void RelayState(int id, Vector3 pos, float yaw, float pitch, Vector3 vel, bool floor, int mode)
     {
         foreach (var peer in _joined)
-            if (peer != id) RpcId(peer, MethodName.C_State, id, pos, yaw, pitch, vel, floor);
+            if (peer != id) RpcId(peer, MethodName.C_State, id, pos, yaw, pitch, vel, floor, mode);
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered, TransferChannel = 1)]
-    private void C_State(int id, Vector3 pos, float yaw, float pitch, Vector3 vel, bool floor) =>
-        Gs.GetPlayer(id)?.ApplyRemoteState(pos, yaw, pitch, vel, floor);
+    private void C_State(int id, Vector3 pos, float yaw, float pitch, Vector3 vel, bool floor, int mode) =>
+        Gs.GetPlayer(id)?.ApplyRemoteState(pos, yaw, pitch, vel, floor, mode);
 
     // ================================================================== requests (any machine -> server)
 
     public void RequestBuild(string buildingId, Vector3 pos, float rotY) => ToServer(MethodName.S_Build, buildingId, pos, rotY);
     public void RequestCraft(string recipeId, Node station) => ToServer(MethodName.S_Craft, recipeId, station.GetPath());
     public void RequestEquip(string itemId) => ToServer(MethodName.S_Equip, itemId ?? "");
+    /// <summary>Put on a piece of armour from your pack (it swaps with what's in that slot).</summary>
+    public void RequestWear(string itemId) => ToServer(MethodName.S_Wear, itemId ?? "");
+    /// <summary>Take off whatever is in a slot (into your pack).</summary>
+    public void RequestTakeOff(string slot) => ToServer(MethodName.S_TakeOff, slot ?? "");
+    /// <summary>Enchant a piece you carry or wear, at a Rune Altar.</summary>
+    public void RequestEnchant(string itemId, string enchant, Node altar) => ToServer(MethodName.S_Enchant, itemId ?? "", enchant ?? "", altar.GetPath());
     public void RequestInteract(Node target) => ToServer(MethodName.S_Interact, target.GetPath());
     public void RequestWake() => ToServer(MethodName.S_Wake);
     public void RequestAttack(bool heavy, Vector3 aim) => ToServer(MethodName.S_Attack, heavy, aim);
@@ -616,6 +626,8 @@ public partial class Net : Node
     {
         var result = HitResult.Hit;
         if (Now < p.DodgeUntil) return HitResult.Dodged; // rolled clear
+        float raw = amount;
+        amount *= 1f - Gear.Reduction(p); // armour
         if (p.Blocking && source is Node3D s && p.Facing(s.GlobalPosition))
             result = Now - p.BlockStartedAt <= ParryWindow ? HitResult.Parried : HitResult.Blocked;
 
@@ -631,6 +643,14 @@ public partial class Net : Node
             case HitResult.Parried:
                 ToPeer(p.PeerId, MethodName.C_Guard, true, 0f);
                 break;
+        }
+        // Thorns: a melee attacker close by takes back a share of the blow.
+        if (result != HitResult.Parried && Gear.ThornsShare(p) > 0 && source is Node3D attacker && attacker != p
+            && attacker.GlobalPosition.DistanceTo(p.GlobalPosition) < 4.5f && Health.FindOn(attacker) is { IsDead: false } back)
+        {
+            float thorns = raw * Gear.ThornsShare(p);
+            if (attacker is PlayerController) { if (Pvp) back.TakeDamage(thorns, p); }
+            else back.TakeDamage(thorns, p);
         }
         if (result != HitResult.Hit)
         {
@@ -812,8 +832,95 @@ public partial class Net : Node
             SetEquipped(p, item.Id);
             count--;
         }
+        if (item != null && item.IsPersonal)
+        {
+            // Gear (the glider, armour) is personal: it goes into the crafter's pack.
+            Supplies.Give(p, item.Id, count);
+            ToastTo(p.PeerId, $"Crafted a {recipe.DisplayName}. It's in your pack.");
+            return;
+        }
         if (count > 0) Gs.Inventory.Add(recipe.OutputItem, count);
         ToastTo(p.PeerId, item != null && item.IsWeapon ? $"Crafted and equipped {recipe.DisplayName}" : $"Crafted {recipe.DisplayName}");
+    }
+
+    // ---------------------------------------------------------------- armour (Gear)
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Wear(string itemId)
+    {
+        var p = SenderPlayer();
+        var def = ItemDb.Get(itemId);
+        if (p == null || def == null || !def.IsWearable || p.Pack.Count(itemId) < 1) return;
+        var worn = new Dictionary<string, string>(p.Worn);
+        p.Pack.Remove(itemId, 1);
+        if (worn.TryGetValue(def.Slot, out var old)) p.Pack.Add(old, 1);
+        worn[def.Slot] = itemId;
+        ServerSetWorn(p, worn);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_TakeOff(string slot)
+    {
+        var p = SenderPlayer();
+        if (p == null || !p.Worn.TryGetValue(slot, out var id)) return;
+        var worn = new Dictionary<string, string>(p.Worn);
+        worn.Remove(slot);
+        p.Pack.Add(id, 1); // worn pieces always fit back
+        ServerSetWorn(p, worn);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Enchant(string itemId, string enchant, NodePath altarPath)
+    {
+        var p = SenderPlayer();
+        var altar = GetNodeOrNull<CraftingStation>(altarPath);
+        var def = ItemDb.Get(itemId);
+        if (p == null || def == null || !def.IsWearable || Gear.GetEnchantment(enchant) is not { } e) return;
+        if (altar == null || altar.StationId != Gear.AltarStation) return;
+        if (!InReach(p, altar)) { ToastTo(p.PeerId, "Get closer to the Rune Altar"); return; }
+        if (def.Enchant == enchant) { ToastTo(p.PeerId, $"It's already enchanted {e.Suffix}."); return; }
+        string slot = p.Worn.FirstOrDefault(kv => kv.Value == itemId).Key;
+        if (slot == null && p.Pack.Count(itemId) < 1) return;
+        var cost = new Dictionary<string, int> { [Gear.ShardId] = Gear.ShardCost, ["coin"] = Gear.CoinCost };
+        if (!Supplies.TryConsume(p, cost)) { ToastTo(p.PeerId, $"Enchanting costs {Gear.ShardCost} rune shards and {Gear.CoinCost} coins"); return; }
+        string made = Gear.Enchanted(itemId, enchant);
+        if (slot != null)
+        {
+            var worn = new Dictionary<string, string>(p.Worn) { [slot] = made };
+            ServerSetWorn(p, worn);
+        }
+        else
+        {
+            p.Pack.Remove(itemId, 1);
+            p.Pack.Add(made, 1);
+        }
+        ToastTo(p.PeerId, $"Enchanted: {ItemDb.NameOf(made)}");
+        EnchantFx(altar.GlobalPosition);
+    }
+
+    /// <summary>Server: change what a player wears, here and on every machine.</summary>
+    public void ServerSetWorn(PlayerController p, IReadOnlyDictionary<string, string> worn)
+    {
+        p.SetWorn(worn);
+        var d = Gear.ToDict(p.Worn);
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_Worn, p.PeerId, d);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Worn(int id, GDict worn) => Gs.GetPlayer(id)?.SetWorn(Gear.FromDict(worn));
+
+    private void EnchantFx(Vector3 at)
+    {
+        if (!IsDedicated) C_EnchantFx(at);
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_EnchantFx, at);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_EnchantFx(Vector3 at)
+    {
+        Sfx.At("heal", at, -4f);
+        Fx.Sparks(this, at + Vector3.Up * 1.1f, new Color(0.5f, 0.85f, 1f), 40, 3f, 0.5f, 1.2f);
+        Fx.Ring(this, at + Vector3.Up * 0.1f, new Color(0.5f, 0.85f, 1f), 1.8f, 0.7f);
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]

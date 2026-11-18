@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "wolf_charm"
+DisplayName = "Wolf-tooth Charm"
+Category = "armor"
+IconColor = Color(0.95, 0.92, 0.82, 1)
+Slot = "charm"
+Perk = "might"
+PerkAmount = 0.1
+PerkText = "Melee damage +10%"
+SellPrice = 6

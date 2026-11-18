@@ -65,6 +65,44 @@ public partial class GameState : Node
     /// <summary>Blossom sanctuaries' light: enemies won't enter or hunt inside (center, radius).</summary>
     public readonly List<(Vector3 Center, float Radius)> SafeZones = new();
 
+    /// <summary>Group of static bodies a player can climb (walk into them).</summary>
+    public const string ClimbGroup = "climbable";
+
+    /// <summary>Waterfall mist columns that lift a glider: base (on the ground), radius, top height.</summary>
+    public readonly List<(Vector3 Base, float Radius, float Top)> Updrafts = new();
+
+    /// <summary>River legs whose current pushes anyone wading in them: from, to (flow direction), half width, m/s.</summary>
+    public readonly List<(Vector3 From, Vector3 To, float HalfWidth, float Speed)> Currents = new();
+
+    /// <summary>The river's push at a point (zero out of the water). widthOverride: test a wider band.</summary>
+    public Vector3 CurrentAt(Vector3 pos, float widthOverride = -1f)
+    {
+        foreach (var c in Currents)
+        {
+            if (pos.Y > c.From.Y + 1.2f) continue;
+            var d = new Vector3(c.To.X - c.From.X, 0, c.To.Z - c.From.Z);
+            float len = d.Length();
+            if (len < 0.01f) continue;
+            var dir = d / len;
+            var rel = new Vector3(pos.X - c.From.X, 0, pos.Z - c.From.Z);
+            float along = rel.Dot(dir);
+            float half = widthOverride > 0 ? widthOverride : c.HalfWidth;
+            if (along < -half || along > len + half) continue;
+            if (Mathf.Abs(rel.Dot(new Vector3(-dir.Z, 0, dir.X))) > half) continue;
+            return dir * c.Speed;
+        }
+        return Vector3.Zero;
+    }
+
+    /// <summary>Top of the updraft this point is in, or -1.</summary>
+    public float UpdraftAt(Vector3 pos)
+    {
+        foreach (var u in Updrafts)
+            if (new Vector2(pos.X - u.Base.X, pos.Z - u.Base.Z).Length() < u.Radius && pos.Y < u.Top + 4f && pos.Y > u.Base.Y - 2f)
+                return u.Top;
+        return -1f;
+    }
+
     public bool InSafeZone(Vector3 pos) =>
         SafeZones.Any(z => new Vector2(pos.X - z.Center.X, pos.Z - z.Center.Z).Length() < z.Radius);
 
@@ -78,6 +116,8 @@ public partial class GameState : Node
         public Vector3 Position;
         public float RotationY;
         public Node3D Node;
+        /// <summary>Server: damage taken from raiders since dawn (see Wildlife.BuildingHp).</summary>
+        public float Damage;
 
         /// <summary>Saved / replicated state of buildings that have some (farm plots).</summary>
         public Variant State => Node is INetState s && GodotObject.IsInstanceValid(Node) ? s.GetState() : default;
@@ -124,6 +164,8 @@ public partial class GameState : Node
         PlacedBuildings.Clear();
         PlayerRecords.Clear();
         SafeZones.Clear();
+        Updrafts.Clear();
+        Currents.Clear();
         Inventory.Clear();
         HomeTier = 1;
         ClaimRadius = 30f;
@@ -234,7 +276,7 @@ public partial class GameState : Node
 
     /// <summary>Server: remember a player's position and shrine for when they rejoin.</summary>
     public void RememberPlayer(PlayerController p) =>
-        PlayerRecords[p.DisplayName] = new GDict { ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary() };
+        PlayerRecords[p.DisplayName] = new GDict { ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary(), ["worn"] = Gear.ToDict(p.Worn) };
 
     public void SaveGame(bool silent = false)
     {
@@ -268,6 +310,7 @@ public partial class GameState : Node
                 ["pos"] = new GArray { pos.X, pos.Y, pos.Z },
                 ["spawn"] = new GArray { spawn.X, spawn.Y, spawn.Z },
                 ["pack"] = kv.Value.TryGetValue("pack", out var pack) ? pack : new GDict(),
+                ["worn"] = kv.Value.TryGetValue("worn", out var worn) ? worn : new GDict(),
             };
         }
 
@@ -281,6 +324,8 @@ public partial class GameState : Node
             ["players"] = players,
             ["home_tier"] = HomeTier,
             ["camps"] = Wildlife.Instance?.SaveCamps() ?? new GArray(),
+            ["roosts"] = Wildlife.Instance?.SaveRoosts() ?? new GArray(),
+            ["raids"] = Wildlife.Instance?.SaveRaids() ?? new GDict(),
         };
 
         DirAccess.MakeDirRecursiveAbsolute(SavePath.GetBaseDir());
@@ -325,6 +370,8 @@ public partial class GameState : Node
 
         SetHomeTier(data.TryGetValue("home_tier", out var tier) ? tier.AsInt32() : 1);
         Wildlife.Instance?.LoadCamps(data.TryGetValue("camps", out var camps) ? camps.AsGodotArray() : null);
+        Wildlife.Instance?.LoadRoosts(data.TryGetValue("roosts", out var roosts) ? roosts.AsGodotArray() : null);
+        Wildlife.Instance?.LoadRaids(data.TryGetValue("raids", out var raids) ? raids.AsGodotDictionary() : null);
 
         PlayerRecords.Clear();
         if (data.TryGetValue("players", out var pv))
@@ -335,6 +382,7 @@ public partial class GameState : Node
                 {
                     ["pos"] = ToVec(rec["pos"]), ["spawn"] = ToVec(rec["spawn"]),
                     ["pack"] = rec.TryGetValue("pack", out var pack) ? pack.AsGodotDictionary() : new GDict(),
+                    ["worn"] = rec.TryGetValue("worn", out var worn) ? worn.AsGodotDictionary() : new GDict(),
                 };
             }
         else if (data.TryGetValue("player", out var legacy)) // version 1: one player
@@ -346,6 +394,7 @@ public partial class GameState : Node
             {
                 p.SpawnPoint = rec["spawn"].AsVector3();
                 p.Pack.ReplaceAll(rec.TryGetValue("pack", out var pack) ? pack.AsGodotDictionary() : new GDict());
+                p.SetWorn(Gear.FromDict(rec.TryGetValue("worn", out var worn) ? worn.AsGodotDictionary() : null));
                 Net.Instance.ServerTeleport(p, rec["pos"].AsVector3());
             }
 
@@ -378,6 +427,7 @@ public partial class GameState : Node
         AddKey("save_game", Key.F5);
         AddKey("load_game", Key.F9);
         AddKey("player_list", Key.Tab);
+        AddKey("inventory", Key.I);
         AddMouse("attack", MouseButton.Left);
         AddKey("heavy_attack", Key.Q);
         AddMouse("heavy_attack", MouseButton.Middle);

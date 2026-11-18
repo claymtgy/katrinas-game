@@ -81,11 +81,12 @@ public partial class Net
 
     // ---------------------------------------------------------------- projectiles
 
-    private void SpawnProjectile(PlayerController shooter, string kind, Vector3 origin, Vector3 velocity)
+    /// <summary>Server: fly a projectile everywhere. shooter null = a watchtower (never hurts players).</summary>
+    public void SpawnProjectile(PlayerController shooter, string kind, Vector3 origin, Vector3 velocity)
     {
         int id = _nextProjectileId++;
         Projectile.Spawn(GetTree().CurrentScene, id, kind, origin, velocity, shooter, server: true);
-        foreach (var peer in _joined) RpcId(peer, MethodName.C_Projectile, id, kind, origin, velocity, shooter.PeerId);
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_Projectile, id, kind, origin, velocity, shooter?.PeerId ?? 0);
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority)]

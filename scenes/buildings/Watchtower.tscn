@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/build/Watchtower.cs" id="1_tower"]
+
+[node name="Watchtower" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_tower")

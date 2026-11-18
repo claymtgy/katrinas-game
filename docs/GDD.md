@@ -75,7 +75,66 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Start: wolves (packs at night), bandit scouts.
   - Mid: bandit camps (a leader drops a blueprint), boars, cliff harpies.
   - Late: fire-touched creatures, magma golems (volcano).
-- **Raids:** bandits sometimes attack your base. Walls and towers matter.
+- **Raids (built):** bandits sometimes march on your base at dusk. Walls and towers matter.
+  - **When:** from day 3, once you have at least 3 buildings. Each dusk there's a 45% chance, at least 2 days apart, and one is certain after 4 days without. A horn sounds and everyone gets a warning.
+  - **Who:** raiders, bandits carrying torches (55 health, 10 damage). There are 3 for one player, and more with more players (`Difficulty.PackSize`). They gather on the vale road and march north.
+  - **What they do:** they fight players who come within 11 m. Otherwise they go for the nearest building, chests first, because they want the stockpile. Each blow on a chest steals up to 4 items (12 coins) from the stockpile. Buildings take damage and are wrecked when it runs out, with no refund. Hit points: palisade 150, watchtower 300, well 140, storage chest 120, workbench 90, campfire 60, plots 50, bedroll 40.
+  - **Walls:** raiders prefer anything but walls. When a wall blocks their way (they stop making progress), they hack it down.
+  - **Watchtower (built):** 16 wood and 6 stone, on a 2.4 m footprint. The server looses an arrow every 1.3 s at the nearest hostile it can see within 26 m: raiders, wolves or harpies. It leads moving targets and allows for drop. Tower arrows never hurt players, even with PVP on. Its kills' loot goes into the stockpile.
+  - **Ending a raid:** killing a raider returns what it stole to the stockpile, plus its coins. When all of them are dead the raid is beaten off. Survivors slink off in the morning with their loot.
+  - **Repairs:** at dawn every damaged building is patched up for free.
+  - Code: `Wildlife` (`MaybeRaid`, `StartRaid`, `RaidStrike`), `Bandit` (raider objective), `Watchtower`.
+
+### Armour, gear and enchantments (built: the system and tiers 0–1; later tiers planned)
+- **Why:** gear is the long-term thing you work toward between base upgrades. Every zone's hazard has an answer you can make (wet rock → grip boots, long falls → the feather cloak, heat → heat-ward armour), so exploring feeds crafting, and crafting opens up exploring.
+- **Slots (6):** Head, Body, Hands, Feet, Cloak, Charm. Weapons stay on the hotbar (1–5) as before.
+- **Personal:** armour is crafted into the crafter's pack, stays there when you empty your pack at a chest, and is never lost on defeat. What you wear is saved with your character in the world save, like your pack.
+- **Wearing it:** press **I** (inventory) to open your character sheet. Click a piece in your pack to put it on (it swaps with what's in that slot), and click a slot to take it off. Worn pieces don't count toward pack load.
+- **Armour value:** each piece has armour points. Total armour **A** cuts damage from every hit (enemies, PVP, raiders, harpies; not falls) by **A / (A + 40)**: 13 armour (a leather set) takes 25% off, 26 takes 39% off, 60 (late game) takes 60% off. Blocking and parrying work as before, on what's left.
+- **Weight:** metal pieces slow stamina regeneration a little (−5% each), so a Rogue or Wizard may prefer leather. No durability: gear never wears out or needs repairing (it's a cosy co-op game, not a chore list).
+- **Looks:** body armour recolours your outfit and trim to its own colours. Head armour puts on a helmet (the Knight's own helm; on the Rogue body, a cap), and a cloak puts your cape on in its colour. Everyone sees it.
+
+**Built pieces (crafted at the workbench):**
+
+| Piece | Slot | Armour | Special | Recipe |
+|---|---|---|---|---|
+| Leather Cap | Head | 3 | — | 2 wolf pelts |
+| Leather Jerkin | Body | 6 | — | 4 wolf pelts, 2 wood |
+| Leather Gloves | Hands | 2 | — | 1 wolf pelt |
+| Leather Boots | Feet | 2 | — | 2 wolf pelts |
+| Grip Boots | Feet | 2 | Climbing costs 35% less stamina; wet rock is no worse than dry | 2 wolf pelts, 3 harpy feathers, 2 stone |
+| Traveller's Cloak | Cloak | 1 | Stamina comes back 15% faster | 3 wolf pelts, 2 wheat |
+| Feather Cloak | Cloak | 1 | Fall damage −60% | 1 wolf pelt, 6 harpy feathers |
+| Iron Helm | Head | 6 | Heavy (−5% stamina regen) | 8 iron nails, 1 wolf pelt |
+| Studded Jerkin | Body | 10 | Heavy (−5% stamina regen) | 4 wolf pelts, 10 iron nails |
+| Wolf-tooth Charm | Charm | 0 | Melee damage +10% | 2 wolf pelts, 15 coins |
+| Blossom Charm | Charm | 0 | +15 max health | Bought from Marta in Ashby (60 coins) |
+
+**Enchantments (built):**
+- Built at a **Rune Altar** (build mode: 14 stone, 4 wood). Each enchantment costs **2 rune shards + 10 coins**.
+- **Rune shards** drop from raiders (1 each), the bandit captain (3) and sometimes harpies (1 in 3). Marta sells them for 30 coins and buys them for 8.
+- Each piece holds **one** enchantment. Enchanting it again replaces the old one. An enchanted piece is a separate item: "Leather Cap of Thorns" (id `leather_cap@thorns`). That keeps packs, saving and the network unchanged.
+- Enchantments add up across pieces:
+
+| Enchantment | Effect (per piece) |
+|---|---|
+| of Warding | +4 armour |
+| of Vigor | +12 max health |
+| of Swiftness | +5% move speed |
+| of the Feather | −30% fall damage |
+| of Thorns | melee attackers take 20% of the damage they dealt you |
+| of Leeching | heal 6% of the melee damage you deal |
+
+**Planned (later tiers):**
+- **Tier 2, bronze:** Bronze Cap and Scale Shirt (the smelter).
+- **Tier 3, iron:** a Chain Mail set and a **Shield** for a new Off-hand slot: blocks cost less stamina and the parry window grows.
+- **Tier 4, steel:** Plate (armour 14 for the body, heavy).
+- **Tier 5, ember:** **Heat-ward** armour and cloak: the volcano's heat meter rises more slowly.
+- **Furs** against the night mist (if it starts to sting), from boar or bear hides.
+- **Set bonuses**, such as 4 leather pieces giving +10% stamina regeneration.
+- **Dyes** at a loom, to recolour armour.
+- Unique **named pieces** from bosses (the bandit captain's helm, the Ember Warden's crown).
+- Code: `Gear` (slots, stats, enchantments), `ItemDef` (armour fields), `Net.S_Equip` and `S_Enchant`, `Hud` character sheet, `CharacterModel` (looks).
 
 ## 7. Camera — first / third person
 - Toggle with **V**, at any time.
@@ -89,23 +148,38 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Colours:** skin (7 tones plus a pale green), hair, outfit (the Knight's cape and cloth trim), and trim (the Wanderer's trousers and gloves, the Knight's armour). Each has 10–11 presets, and "–" keeps the model's own colour.
 - **Gear:** cape on or off, and a helmet for the Knight. **Height:** 90–110 %. **Randomise** rolls a whole look.
 - **How it works:** the KayKit models take every colour from an 8 × 4 grid of gradient swatches in one texture. The character shader recolours the swatches each slot uses (`Appearance.Slots`), keeping each swatch's light-to-dark gradient, so a recoloured part still shades like the original. Each painted player gets its own materials; unpainted models still share theirs.
-- **Where it lives:** your look belongs to you, not to the world. It's kept in `user://settings.cfg` (`[look]`), sent in the join hello (protocol 4), and echoed to everyone. Changing it in game rebuilds your body on every screen, and your held weapon moves to the new hand. The server cleans up looks it receives: unknown bodies, bad colours and out-of-range heights fall back to defaults.
+- **Where it lives:** your look belongs to you, not to the world. It's kept in `user://settings.cfg` (`[look]`), sent in the join hello (since protocol 4), and echoed to everyone. Changing it in game rebuilds your body on every screen, and your held weapon moves to the new hand. The server cleans up looks it receives: unknown bodies, bad colours and out-of-range heights fall back to defaults.
 
 ## 8. Traversal (verticality)
-- **Now:** walk, sprint (stamina), jump, fall damage.
+- **Built:** walk, sprint (stamina), jump, fall damage, dodge roll, climbing, the glider, waterfall updrafts, river currents.
+- **Climbing (built):**
+  - Climbable rock is pale and rough, with dark handholds. Walk into it (hold W) to grab on.
+  - On the face, W and S move you up and down and A and D move you sideways. Space leaps off.
+  - It costs stamina: 7 a second while moving, 2.5 while hanging still, and stamina doesn't come back while you climb. **Wet rock** (rain) costs 1.6 times as much. At zero your grip fails and you fall.
+  - At the top you haul yourself over the edge (mantle).
+  - You can't attack or use abilities while climbing.
+  - Animation: KayKit has no climbing clip, so `ClimbAnimation` builds two from the skeleton at load: hand over hand with the opposite knee drawn up (played backwards on the way down), and a breathing hang.
+  - Code: `PlayerController.ClimbStep`. Climbable bodies are in the `climbable` group.
+- **Glider (built):**
+  - Crafted at the workbench from 6 wood, 2 wolf pelts and 4 harpy feathers.
+  - It's personal gear: it goes into the crafter's pack, stays there when you empty your pack at a chest, and isn't lost on defeat.
+  - Press **Space in the air** to open it, and Space again to fold it. It also folds when you land.
+  - It sinks at 2.2 m/s and flies at 9 m/s in the direction you look. W speeds up, S slows down, A and D bank.
+  - Landing under the glider does no fall damage.
+  - Without a glider, a long fall shows a hint once.
+- **Waterfall updrafts (built):** mist columns at waterfall bases (the Great Falls in Falls Valley, and the pool below the home west falls) lift a glider at 8 m/s up to their top (36 m and 26 m). Inside a column you hang and turn instead of racing through it.
+- **River currents (built):** wading in the Falls Valley river slows you and carries you downstream at 3.2 m/s, toward the cliff edge.
+- **Co-op:** everyone sees climbing and gliding. The movement state carries a mode (normal, climb or glide), (protocol 5). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot).
 - **Planned:**
-  - **Climbing** marked rock faces (lighter/rougher texture). It drains stamina, and you fall if you run out.
-  - **Ledge grab** and mantle.
-  - **Glider cloth** (mid-game, crafted at the loom) for cliff dives.
-  - **Waterfall updrafts:** mist columns at waterfall bases lift a glider, which makes waterfalls natural elevators.
   - **Swimming** in pools. Waterfalls can't be climbed without the late-game Grapple Hook.
   - **Fast travel** between attuned blossom sanctuaries.
+  - **Grip boots** (less drain on wet rock).
 
 ## 9. Hazards and progression
 | Zone | Hazards | Counter |
 |---|---|---|
 | Home Cliffs (start) | Falls, night mist (slow stamina regen), wolves | Light, shelter, food |
-| Falls Valley | Slippery wet rock, river currents, harpies | Grip boots, glider |
+| Falls Valley (built) | Slippery wet rock (rain), river currents toward the cliff, harpies | Stamina, the glider, arrows and parries (grip boots planned) |
 | Forest Road / Ashby | Bandit camps, raids | Walls, better swords |
 | Volcano (late) | **Heat meter** (rises near lava and drains health when full), lava flows, ash storms, emissive lava falls | Heat-ward cloak, blossom charms, cool springs |
 
@@ -123,6 +197,25 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Server option:** `enemies = false` turns hostile creatures off (a peaceful building server).
 - **Body:** a low-poly faceted wolf built in code (tapered 5- and 6-sided segments, hind legs with a backward hock, bushy tail, glowing eyes), with the character toon shader and outline. It is animated procedurally: trot, gallop, idle (breathing, looking around, sniffing) and the night howl.
 - **Pathing (built):** enemies follow a navmesh. The server bakes it at startup from the world's static colliders (terrain, rocks, trees, the shack, Ashby, the camp, placed buildings) and bakes again 1.5 s after a building goes up or comes down or the home is upgraded. Paths are re-asked twice a second; within 2.5 m of their goal enemies go straight at it, and a short feeler ray still nudges them around moving things. See `WorldNav` and `Enemy.Steer`.
+
+### Falls Valley (built)
+- **Where:** east of the home plateau, through a pass in the east wall (around z 34–51). A sign at the pass explains it.
+- **Layout:**
+  - Tall cliffs on the east (44–62 m) and to the south. The valley's north end drops into the cloud sea.
+  - The **Great Falls** pour off the east cliff into a plunge pool, and its mist is an updraft.
+  - A river runs west from the pool, then north off the cliff, where it spills as a second waterfall. Stepping stones cross it on the way from the pass.
+  - The **mesa**: 28 × 28 m and 16 m high, with pale climbing faces on its west and south sides. The **Falls Blossom** sanctuary sits on top: pray there to set your respawn point and heal, and enemies keep out.
+  - A **harpy roost**: a stick nest on a rock spire.
+  - Trees, rocks and foliage, so you can gather there.
+- The valley is built last, from its own random numbers, so the home plateau and the vale come out exactly as before.
+- **Harpies (built):**
+  - Small flying predators: 32 health and a 9-damage claw. There are 3 per roost for one player, more with more players. They never get tougher.
+  - They circle about 11 m over the roost. When they spot you (26 m), they wheel overhead, out of reach, and swoop talons-first with a screech. After the strike they beat back up and come round again every 2.4 s.
+  - Arrows and firebolts reach them anywhere. A sword only reaches them during the swoop.
+  - **Parry the swoop** and the harpy tumbles to the ground, stunned for 1.6 s from when it lands. Finish it there.
+  - Each drops **2 harpy feathers** (for the glider; Marta buys them for 5). A dead harpy falls out of the sky.
+  - A cleared roost fills again the next day. Roost state is saved.
+  - The body is a low-poly faceted raptor built in code (`Harpy`), with flapping two-part wings, talons and glowing eyes.
 
 ### Bandit camp (built)
 - **Where:** off the road to Ashby, east of the track, about halfway down the vale (38, 0, 140). Tents, a fire, a stake fence with its mouth toward the road.
@@ -147,7 +240,8 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
                 [HOME CLIFFS — start]
 ```
 - Each zone is a **separate scene**, joined by road or trigger connectors and loaded in the background. New zones (cities, mines, the volcano) are added by dropping in a scene and a connector, with no core code changes.
-- **Home Cliffs layout:** a plateau of about 120 × 120 m. The shack and the sacred tree are on the north cliff edge, over a cloud sea. High rock walls stand to the east and west, with waterfalls. A road leads south toward Ashby, about a 10-minute walk.
+- **Home Cliffs layout:** a plateau of about 120 × 120 m. The shack and the sacred tree are on the north cliff edge, over a cloud sea. High rock walls stand to the east and west, with waterfalls. A road leads south toward Ashby, about a 10-minute walk. A pass through the east wall leads to **Falls Valley** (see §9).
+- For now every zone is part of one generated scene (`HomeCliffs` and its partial files: `.Ashby`, `.Falls`, `.Volcano`). Splitting them into streamed scenes comes later.
 
 ## 12. Art & tech direction (from the visual brief)
 - **Style:** painterly, angular hand-sculpted shapes, very little surface noise, strong color blocking. Think Ori × BotW × Journey.
@@ -187,6 +281,18 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - **Particles:** drifting petals, waterfall mist, embers and ash.
   - Later: a toon ramp shader for rock and characters.
 
+### UI (built: the medieval kit)
+- **Look:** oak-plank boards in an **ornate gold frame** (corner filigree and garnets), walnut plank buttons with gold rims, recessed leather item slots, parchment tooltips and notes, a deep red **title plate**, and a gold flourish rule between sections. Text is a classic serif (Palatino Linotype, which ships with Windows; drop `title.ttf` / `body.ttf` into `assets/ui/fonts` to bundle another), parchment-coloured with a dark outline over the world.
+- **Art:** painted from code by `tools/make_ui.py` (numpy only): anti-aliased signed-distance shapes, value-noise wood grain, and gold shaded from a height field like embossed metal. It writes the 9-slice kit and a 64 px **icon for every item**. Re-run it after adding items. Enchanted pieces show their base icon with a sparkle.
+- **Theme:** one Godot `Theme` built in `UiTheme` and given to the HUD, the main menu and the character creator. It has type variations for titles, headings, small text, plates, parchment, insets and slots.
+- **HUD:**
+  - Framed health and stamina bars; a pale trail shows recent damage.
+  - Class and ability above the bars; the day and time on a plate.
+  - Pack and stockpile as icon grids (the stockpile fades when you're away from home).
+  - A five-slot weapon hotbar with key numbers; the held weapon glows.
+  - Key-cap prompts ("E" Sleep), parchment toasts that fade in and out, and a build-mode plate.
+- **Boards:** crafting, trading and enchanting share one framed board. Each row shows the item's icon, a note, its cost as icons (red when you're short) and a button. The **character sheet (I)** has a paper doll of the six armour slots, a parchment stat card and the pack. There are also the Esc menu and the help board (F1; a small "F1 Controls & help" plate shows at the start instead of the old wall of text). Boards pop in with a quick scale and fade.
+
 ## 13. Controls (current greybox)
 | Action | Key |
 |---|---|
@@ -197,6 +303,8 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Light / Heavy attack | LMB / Q or middle mouse |
 | Block (time it to parry) | RMB (hold) |
 | Class ability | R or mouse button 4 |
+| Climb (walk into pale rock) / leap off | W into the rock / Space |
+| Open / fold the glider (in the air) | Space |
 | Interact (stations, beds, plots, wells, chests, trader, signs) | E |
 | Eat | F |
 | Weapon slots | 1–5 |
@@ -204,6 +312,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Save / Load (host only) | F5 / F9 |
 | Player list | Tab (hold) |
 | Help | F1 |
+| Character sheet (armour, stats, pack) | I |
 | Release mouse / close menu | Esc |
 
 ## 14. Roadmap
@@ -211,7 +320,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 2. **Multiplayer foundation (done):** host/join, dedicated server, shared base, sleep vote, PVP toggle, difficulty scaling hooks (§16). Every later feature is built multiplayer-first.
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
-5. **Falls Valley:** climbing, glider, updrafts, the second sanctuary.
+5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Next: grip boots, swimming, fast travel between sanctuaries.
 6. **Volcano:** heat system, lava hazards, Ember Ore, the Sacred Forge.
 7. **Cities and workers:** automation and the regional economy.
 
@@ -253,6 +362,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
 | Time of day, the day count | Respawn shrine |
 | Resource nodes (a felled tree is felled for all) | Camera view (1st/3rd person) |
 | | Your look and class (body, colours, gear, height): kept in your own settings, not the world save |
+| | Your glider (personal gear: it stays in your pack) |
 
 - **Packs (built):**
   - Chopping, mining, cutting grain, wolf pelts, bandit coins and the blueprint, water from a well, and anything bought from Marta go into **your own pack**. Empty it into the shared stockpile at a **storage chest** (one by the shack; build more).

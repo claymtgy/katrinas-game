@@ -364,8 +364,8 @@ public partial class HomeCliffs
         parent.AddChild(bed);
         bed.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.0f, 0.5f, 2.0f) }, Position = new Vector3(0, 0.25f, 0) });
         Visual(new BoxMesh { Size = new Vector3(1.0f, 0.4f, 2.0f) }, StyleMaterials.Toon(Wood), new Vector3(0, 0.2f, 0), Vector3.Zero, bed);
-        Visual(new BoxMesh { Size = new Vector3(0.9f, 0.15f, 1.5f) }, Mat(new Color(0.55f, 0.25f, 0.3f)), new Vector3(0, 0.47f, 0.2f), Vector3.Zero, bed);
-        Visual(new BoxMesh { Size = new Vector3(0.7f, 0.15f, 0.4f) }, Mat(new Color(0.9f, 0.85f, 0.78f)), new Vector3(0, 0.47f, -0.7f), Vector3.Zero, bed);
+        Visual(new BoxMesh { Size = new Vector3(0.9f, 0.14f, 1.38f) }, Mat(new Color(0.55f, 0.25f, 0.3f)), new Vector3(0, 0.465f, 0.26f), Vector3.Zero, bed);
+        Visual(new BoxMesh { Size = new Vector3(0.7f, 0.18f, 0.38f) }, Mat(new Color(0.9f, 0.85f, 0.78f)), new Vector3(0, 0.49f, -0.7f), Vector3.Zero, bed);
     }
 
     private void BuildUpgradeBoard()

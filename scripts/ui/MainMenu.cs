@@ -118,23 +118,37 @@ public partial class MainMenu : Control
     private void BuildUi()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(new ColorRect { Color = new Color(0.05f, 0.04f, 0.1f), AnchorRight = 1, AnchorBottom = 1 });
-        var glow = new ColorRect { Color = new Color(0.98f, 0.46f, 0.2f, 0.18f), AnchorTop = 0.62f, AnchorRight = 1, AnchorBottom = 1 };
-        AddChild(glow);
+        Theme = UiTheme.Theme;
+        // Dusk: deep plum at the top warming to an ember glow below.
+        var sky = new Gradient();
+        sky.SetColor(0, new Color(0.07f, 0.045f, 0.09f));
+        sky.SetColor(1, new Color(0.32f, 0.12f, 0.06f));
+        sky.AddPoint(0.6f, new Color(0.14f, 0.06f, 0.08f));
+        AddChild(new TextureRect
+        {
+            Texture = new GradientTexture2D { Gradient = sky, FillFrom = new Vector2(0, 0), FillTo = new Vector2(0, 1), Width = 8, Height = 256 },
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.Scale, AnchorRight = 1, AnchorBottom = 1,
+        });
 
         var center = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
         AddChild(center);
-        var col = new VBoxContainer { CustomMinimumSize = new Vector2(560, 0) };
-        col.AddThemeConstantOverride("separation", 12);
-        center.AddChild(col);
-
-        var title = Label("Ember & Blossom", 56, Gold);
-        title.HorizontalAlignment = HorizontalAlignment.Center;
-        col.AddChild(title);
+        var outer = new VBoxContainer();
+        outer.AddThemeConstantOverride("separation", 10);
+        center.AddChild(outer);
+        var title = new Label { Text = "Ember & Blossom", ThemeTypeVariation = "Title", HorizontalAlignment = HorizontalAlignment.Center };
+        title.AddThemeFontSizeOverride("font_size", 64);
+        title.AddThemeConstantOverride("outline_size", 10);
+        outer.AddChild(title);
         var sub = Label("A cliffside base-building adventure · alone or with up to 3 friends", 17, Blush);
         sub.HorizontalAlignment = HorizontalAlignment.Center;
-        col.AddChild(sub);
-        col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 12) });
+        outer.AddChild(sub);
+        var divider = UiTheme.Divider(520);
+        outer.AddChild(divider);
+        var board = new PanelContainer();
+        outer.AddChild(board);
+        var col = new VBoxContainer { CustomMinimumSize = new Vector2(580, 0) };
+        col.AddThemeConstantOverride("separation", 10);
+        board.AddChild(col);
 
         _name = Field(col, "Your name", "Player");
         var looks = new Button { Text = "Customise character…", CustomMinimumSize = new Vector2(0, 36) };
@@ -275,11 +289,13 @@ public partial class MainMenu : Control
         return l;
     }
 
-    private static Label Section(string text)
+    private static Control Section(string text)
     {
-        var l = Label(text, 20, Gold);
-        l.AddThemeConstantOverride("outline_size", 4);
-        return l;
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 0);
+        col.AddChild(new Label { Text = text, ThemeTypeVariation = "Heading" });
+        col.AddChild(UiTheme.Divider(540));
+        return col;
     }
 
     private static LineEdit Field(Container parent, string label, string value)

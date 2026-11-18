@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "blossom_charm"
+DisplayName = "Blossom Charm"
+Category = "armor"
+IconColor = Color(1.0, 0.6, 0.75, 1)
+Slot = "charm"
+Perk = "vigor"
+PerkAmount = 15.0
+PerkText = "+15 max health"
+BuyPrice = 60
+SellPrice = 20

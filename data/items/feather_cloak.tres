@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "feather_cloak"
+DisplayName = "Feather Cloak"
+Category = "armor"
+IconColor = Color(0.55, 0.6, 0.75, 1)
+Slot = "cloak"
+Armor = 1.0
+Perk = "feather"
+PerkAmount = 0.6
+PerkText = "Fall damage −60%"
+WornColor = Color(0.55, 0.6, 0.75, 1)
+SellPrice = 12

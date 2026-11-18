@@ -28,6 +28,17 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float DodgeCost { get; set; } = 22f;
     [Export] public float DodgeCooldown { get; set; } = 0.55f;
 
+    [ExportGroup("Climb & glide")]
+    [Export] public float ClimbSpeed { get; set; } = 2.4f;
+    /// <summary>Stamina per second while climbing / just hanging on.</summary>
+    [Export] public float ClimbCost { get; set; } = 7f;
+    [Export] public float HangCost { get; set; } = 2.5f;
+    /// <summary>Wet rock (rain) drains grip this much faster (GDD §9).</summary>
+    [Export] public float WetGripCost { get; set; } = 1.6f;
+    [Export] public float GlideSpeed { get; set; } = 9f;
+    [Export] public float GlideFall { get; set; } = 2.2f;
+    [Export] public float UpdraftLift { get; set; } = 8f;
+
     [ExportGroup("Falling")]
     /// <summary>Landing speeds above this (m/s) hurt.</summary>
     [Export] public float SafeFallSpeed { get; set; } = 12f;
@@ -60,11 +71,27 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>How this player looks (set before spawning, then via <see cref="SetLook"/>).</summary>
     public Appearance Look { get; set; } = new();
 
+    /// <summary>Worn gear: slot -> item id (see Gear). The server decides; every machine mirrors it.</summary>
+    public readonly System.Collections.Generic.Dictionary<string, string> Worn = new();
+    /// <summary>Bumped whenever <see cref="Worn"/> changes (cheap UI refresh checks).</summary>
+    public int WornVersion { get; private set; }
+
+    /// <summary>Every machine: put on this set of gear (looks, max health).</summary>
+    public void SetWorn(System.Collections.Generic.IReadOnlyDictionary<string, string> worn)
+    {
+        Worn.Clear();
+        foreach (var kv in worn) Worn[kv.Key] = kv.Value;
+        WornVersion++;
+        Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetLook(Gear.Dress(Look, Worn));
+        if (Health != null && BaseMaxHealth > 0) UpdateMaxHealth();
+        if (Vanished) SetVanished(true);
+    }
+
     /// <summary>Every machine: show a new look (the server decides; see Net.RequestLook).</summary>
     public void SetLook(Appearance look)
     {
         Look = look.Clone();
-        Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetLook(Look);
+        Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetLook(Gear.Dress(Look, Worn));
         if (Health != null && BaseMaxHealth > 0) UpdateMaxHealth();
         // The server may have kept our old class (changed away from home): remember what stuck.
         if (IsLocal && Appearance.Local.Class != Look.Class)
@@ -94,6 +121,163 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>The class ability (R).</summary>
     public PlayerAbility Ability { get; private set; }
     public Interactor Interactor { get; private set; }
+
+    // ---------------------------------------------------------------- climbing / gliding
+
+    public enum MoveMode { Normal = 0, Climb = 1, Glide = 2 }
+    /// <summary>Walking, on a rock face, or under the glider (remote players: what they last sent).</summary>
+    public MoveMode Mode { get; private set; }
+    public bool Climbing => Mode == MoveMode.Climb;
+    public bool Gliding => Mode == MoveMode.Glide;
+    /// <summary>A glider in your pack lets you open it in the air (Space).</summary>
+    public bool HasGlider => Pack.Count("glider") > 0;
+
+    private Vector3 _climbNormal, _mantleDir;
+    private float _regrabIn, _mantleTime, _airTime, _climbStep;
+    private bool _gliderHinted;
+    private Node3D _gliderVisual;
+
+    private void SetMode(MoveMode mode)
+    {
+        if (mode == Mode) return;
+        var old = Mode;
+        Mode = mode;
+        if (mode == MoveMode.Glide || old == MoveMode.Glide)
+        {
+            ShowGlider(mode == MoveMode.Glide);
+            if (!Net.Instance.IsDedicated)
+                Sfx.At(mode == MoveMode.Glide ? "glider_open" : "dodge", GlobalPosition + Vector3.Up * 2f, IsLocal ? -2f : -6f, 0.08f);
+        }
+    }
+
+    /// <summary>The cloth wing over your head while gliding.</summary>
+    private void ShowGlider(bool on)
+    {
+        if (Net.Instance.IsDedicated) return;
+        if (_gliderVisual == null && on)
+        {
+            _gliderVisual = new Node3D { Name = "Glider", Position = new Vector3(0, 2.25f, 0.1f) };
+            var cloth = StyleMaterials.Toon(new Color(0.82f, 0.32f, 0.28f), 0.3f);
+            var trim = StyleMaterials.Toon(new Color(0.95f, 0.88f, 0.72f), 0.3f);
+            cloth.CullMode = BaseMaterial3D.CullModeEnum.Disabled;
+            foreach (float side in new[] { -1f, 1f })
+            {
+                _gliderVisual.AddChild(new MeshInstance3D
+                {
+                    Mesh = new PrismMesh { Size = new Vector3(1.6f, 0.04f, 1.3f), LeftToRight = side > 0 ? 0f : 1f },
+                    MaterialOverride = cloth, Position = new Vector3(side * 0.82f, 0.08f, 0), Rotation = new Vector3(0, 0, side * 0.12f),
+                });
+                _gliderVisual.AddChild(new MeshInstance3D
+                {
+                    Mesh = new BoxMesh { Size = new Vector3(1.5f, 0.05f, 0.08f) }, MaterialOverride = trim,
+                    Position = new Vector3(side * 0.8f, 0.12f, -0.62f), Rotation = new Vector3(0, 0, side * 0.12f),
+                });
+            }
+            _gliderVisual.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.05f, 0.05f, 1.4f) }, MaterialOverride = trim });
+            foreach (float side in new[] { -0.25f, 0.25f })
+                _gliderVisual.AddChild(new MeshInstance3D
+                {
+                    Mesh = new CylinderMesh { TopRadius = 0.015f, BottomRadius = 0.015f, Height = 0.75f, RadialSegments = 4 },
+                    MaterialOverride = trim, Position = new Vector3(side, -0.37f, 0),
+                });
+            Body.AddChild(_gliderVisual);
+        }
+        if (_gliderVisual != null) _gliderVisual.Visible = on;
+    }
+
+    /// <summary>A climbable face straight ahead of the chest (walking into pale rock).</summary>
+    private bool TryGrab(Vector3 forward)
+    {
+        if (forward.LengthSquared() < 0.01f) return false;
+        var hit = Probe(GlobalPosition + Vector3.Up * 1.1f, forward, 0.9f);
+        if (hit == null) return false;
+        _climbNormal = hit.Value;
+        return true;
+    }
+
+    /// <summary>Ray against climbable rock; returns its (flattened) normal.</summary>
+    private Vector3? Probe(Vector3 from, Vector3 dir, float length)
+    {
+        var query = PhysicsRayQueryParameters3D.Create(from, from + dir * length, GameState.LayerWorld, new Godot.Collections.Array<Rid> { GetRid() });
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
+        if (hit.Count == 0 || hit["collider"].AsGodotObject() is not Node n || !n.IsInGroup(GameState.ClimbGroup)) return null;
+        var normal = hit["normal"].AsVector3();
+        if (Mathf.Abs(normal.Y) > 0.4f) return null;
+        return new Vector3(normal.X, 0, normal.Z).Normalized();
+    }
+
+    private void LetGo(float regrab = 0.4f)
+    {
+        SetMode(MoveMode.Normal);
+        _regrabIn = regrab;
+    }
+
+    /// <summary>Local player on a rock face: W/S up and down, A/D sideways, Space to leap off.
+    /// Drains stamina (faster on wet rock); at zero your grip fails. Over the top you mantle.</summary>
+    private Vector3 ClimbStep(float dt, Vector2 input, bool blocked)
+    {
+        var n = _climbNormal;
+        var right = (-n).Cross(Vector3.Up);
+        if (blocked) input = Vector2.Zero;
+        float up = -input.Y, lateral = input.X;
+        bool moving = Mathf.Abs(up) > 0.1f || Mathf.Abs(lateral) > 0.1f;
+        var (gripCost, dryGrip) = Gear.Climb(this); // grip boots
+        float wet = GameState.Instance.Raining && !dryGrip ? WetGripCost : 1f;
+        Stamina = Mathf.Max(0f, Stamina - (moving ? ClimbCost : HangCost) * wet * gripCost * dt);
+        _regenDelay = 0.6f;
+        _airVelocityY = 0;
+        if (Stamina <= 0f)
+        {
+            LetGo(1.2f);
+            Hud.Toast(GameState.Instance.Raining ? "The wet rock slips from your grip!" : "Your grip fails!");
+            return n * 1.5f;
+        }
+        if (!blocked && Input.IsActionJustPressed("jump") && TrySpendStamina(JumpCost))
+        {
+            LetGo(0.6f);
+            return n * 4.5f + Vector3.Up * 4f;
+        }
+        if (IsOnFloor() && up < -0.5f) { LetGo(0.6f); return Vector3.Zero; }
+
+        var chest = Probe(GlobalPosition + Vector3.Up * 1.1f, -n, 1.2f);
+        if (chest != null) _climbNormal = n = chest.Value;
+        else
+        {
+            var feet = Probe(GlobalPosition + Vector3.Up * 0.25f, -n, 1.2f);
+            if (feet == null) { LetGo(); return Vector3.Zero; }      // slid off the side
+            if (up > 0.1f)
+            {
+                // Over the top: haul yourself up and onto the ledge.
+                LetGo(0.8f);
+                _mantleTime = 0.45f;
+                _mantleDir = -n;
+                return Vector3.Up * 5.4f - n * 2.5f;
+            }
+            up = Mathf.Min(up, 0f);
+        }
+        if (moving)
+        {
+            _climbStep -= dt;
+            if (_climbStep <= 0) { _climbStep = 0.45f; Sfx.At("step", GlobalPosition + Vector3.Up, -10f, 0.15f); }
+        }
+        right = (-n).Cross(Vector3.Up);
+        return (Vector3.Up * up + right * lateral) * ClimbSpeed - n;
+    }
+
+    /// <summary>Local player under the glider: a slow sink, steered with the camera; an updraft
+    /// (waterfall mist) lifts you to its top.</summary>
+    private Vector3 GlideStep(Vector3 v, float dt, Vector2 input, Vector3 forward, Vector3 right)
+    {
+        float top = GameState.Instance.UpdraftAt(GlobalPosition);
+        bool lifting = top > 0 && GlobalPosition.Y < top;
+        // In the mist column you hang and turn rather than race through it.
+        float speed = GlideSpeed * (input.Y < -0.3f ? 1.2f : input.Y > 0.3f ? 0.6f : 1f) * (lifting ? 0.35f : 1f);
+        var heading = (forward + right * input.X * 0.6f).Normalized();
+        var h = new Vector3(v.X, 0, v.Z).Lerp(heading * speed, Mathf.Min(1f, 1.8f * dt));
+        float targetY = lifting ? UpdraftLift : -GlideFall;
+        float vy = Mathf.Lerp(v.Y, targetY, Mathf.Min(1f, (lifting ? 1.5f : 3f) * dt));
+        return new Vector3(h.X, vy, h.Z);
+    }
 
     /// <summary>On the ground (remote players use the last state they sent).</summary>
     public bool Grounded => IsLocal ? IsOnFloor() : _remoteFloor;
@@ -220,7 +404,7 @@ public partial class PlayerController : CharacterBody3D
         UpdateMaxHealth();
     }
 
-    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + Class.BonusHealth + BuffAmount(BuffVigor));
+    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + Class.BonusHealth + BuffAmount(BuffVigor) + Gear.MaxHealthBonus(this));
 
     // ---------------------------------------------------------------- class
 
@@ -282,7 +466,7 @@ public partial class PlayerController : CharacterBody3D
     public bool TryDodge(Vector2 input)
     {
         var gs = GameState.Instance;
-        if (gs.UiOpen || Sleeping || Health.IsDead || !IsOnFloor() || _dodgeTime > 0 || _dodgeCooldown > 0) return false;
+        if (gs.UiOpen || Sleeping || Health.IsDead || !IsOnFloor() || _dodgeTime > 0 || _dodgeCooldown > 0 || Mode != MoveMode.Normal) return false;
         if (!TrySpendStamina(DodgeCost * Class.DodgeCost)) { Hud.Toast("Too tired to roll!"); return false; }
         var basis = Rig.GlobalTransform.Basis;
         var forward = new Vector3(-basis.Z.X, 0, -basis.Z.Z).Normalized();
@@ -343,12 +527,23 @@ public partial class PlayerController : CharacterBody3D
         _airVelocityY = 0;
         _fellOut = false;
         _wasOnFloor = true;
+        _mantleTime = 0;
+        if (IsLocal) SetMode(MoveMode.Normal);
+    }
+
+    /// <summary>Scripted tests: open the glider now (as if Space was pressed in the air).</summary>
+    public bool TryGlide()
+    {
+        if (IsOnFloor() || Mode != MoveMode.Normal || !HasGlider) return false;
+        SetMode(MoveMode.Glide);
+        return true;
     }
 
     /// <summary>Remote player: the latest state from its owner.</summary>
-    public void ApplyRemoteState(Vector3 pos, float yaw, float pitch, Vector3 velocity, bool onFloor)
+    public void ApplyRemoteState(Vector3 pos, float yaw, float pitch, Vector3 velocity, bool onFloor, int mode = 0)
     {
         if (IsLocal) return;
+        SetMode((MoveMode)Mathf.Clamp(mode, 0, 2));
         _targetPos = pos;
         _targetYaw = yaw;
         _targetPitch = pitch;
@@ -374,8 +569,11 @@ public partial class PlayerController : CharacterBody3D
         bool onFloor = IsOnFloor();
         var v = Velocity;
         if (!Sleeping) _wakeRequested = false;
+        if (_regrabIn > 0) _regrabIn -= dt;
+        _airTime = onFloor ? 0f : _airTime + dt;
+        if ((Health.IsDead || Sleeping) && Mode != MoveMode.Normal) SetMode(MoveMode.Normal);
 
-        if (!onFloor) v.Y -= _gravity * dt;
+        if (!onFloor && Mode == MoveMode.Normal) v.Y -= _gravity * dt;
 
         // Camera-relative movement on the ground plane.
         Vector2 input = gs.UiOpen ? Vector2.Zero : Input.GetVector("move_left", "move_right", "move_forward", "move_back");
@@ -395,6 +593,14 @@ public partial class PlayerController : CharacterBody3D
         var dir = right * input.X - forward * input.Y;
         if (dir.LengthSquared() > 1f) dir = dir.Normalized();
 
+        if (Mode == MoveMode.Climb)
+        {
+            Velocity = ClimbStep(dt, input, blocked);
+            MoveAndSlide();
+            FinishLocalStep(dt, false);
+            return;
+        }
+
         if (!blocked && Input.IsActionJustPressed("dodge")) TryDodge(input);
         if (_dodgeCooldown > 0) _dodgeCooldown -= dt;
 
@@ -407,8 +613,18 @@ public partial class PlayerController : CharacterBody3D
             _regenDelay = 0.6f;
         }
 
-        var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f)) * Class.MoveSpeed;
+        var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f)) * Class.MoveSpeed * Gear.MoveSpeedMult(this);
         float accel = Mathf.Min(1f, (onFloor ? GroundAcceleration : AirAcceleration) * dt);
+        // Wading in the river: slower, and the current carries you (GDD §9).
+        var flow = onFloor ? gs.CurrentAt(GlobalPosition) : Vector3.Zero;
+        if (flow != Vector3.Zero) target = target * 0.7f + flow;
+        // Hauling yourself over a ledge you just climbed.
+        if (_mantleTime > 0)
+        {
+            _mantleTime -= dt;
+            target = _mantleDir * 2.5f;
+            accel = 1f;
+        }
         if (_dodgeTime > 0)
         {
             // The roll: a burst that eases off toward the end.
@@ -417,11 +633,37 @@ public partial class PlayerController : CharacterBody3D
             target = _dodgeDir * DodgeSpeed * (0.45f + 0.55f * k);
             accel = 1f;
         }
+        if (Mode == MoveMode.Glide) accel = 0f; // the glider steers itself (GlideStep)
         v.X = Mathf.Lerp(v.X, target.X, accel);
         v.Z = Mathf.Lerp(v.Z, target.Z, accel);
 
         if (onFloor && !blocked && _dodgeTime <= 0 && Input.IsActionJustPressed("jump") && TrySpendStamina(JumpCost))
             v.Y = JumpVelocity;
+        else if (!onFloor && !blocked && Input.IsActionJustPressed("jump"))
+        {
+            // Space in the air opens (or folds) the glider.
+            if (Mode == MoveMode.Glide) SetMode(MoveMode.Normal);
+            else if (_airTime > 0.2f && _dodgeTime <= 0)
+            {
+                if (HasGlider) SetMode(MoveMode.Glide);
+                else if (v.Y < -6f && !_gliderHinted)
+                {
+                    _gliderHinted = true;
+                    Hud.Toast("A glider would catch you. Craft one at the workbench (harpy feathers).");
+                }
+            }
+        }
+        if (Mode == MoveMode.Glide)
+        {
+            if (onFloor) SetMode(MoveMode.Normal);
+            else v = GlideStep(v, dt, input, forward, right);
+        }
+        else if (!blocked && input.Y < -0.5f && _regrabIn <= 0 && _dodgeTime <= 0 && _mantleTime <= 0 && !guarding && Stamina > 5f && TryGrab(forward))
+        {
+            SetMode(MoveMode.Climb);
+            v = Vector3.Zero;
+            _airVelocityY = 0;
+        }
 
         if (!onFloor) _airVelocityY = v.Y;
         Velocity = v;
@@ -431,18 +673,31 @@ public partial class PlayerController : CharacterBody3D
         onFloor = IsOnFloor();
         if (onFloor && !_wasOnFloor && -_airVelocityY > SafeFallSpeed)
         {
-            float dmg = (-_airVelocityY - SafeFallSpeed) * FallDamagePerSpeed;
-            Net.Instance.ReportFallDamage(dmg);
-            Hud.Toast($"Ouch! Fall damage -{dmg:0}");
+            float dmg = (-_airVelocityY - SafeFallSpeed) * FallDamagePerSpeed * Gear.FallDamageMult(this);
+            if (dmg >= 1f)
+            {
+                Net.Instance.ReportFallDamage(dmg);
+                Hud.Toast($"Ouch! Fall damage -{dmg:0}");
+            }
         }
         if (onFloor) _airVelocityY = 0;
         _wasOnFloor = onFloor;
+        FinishLocalStep(dt, guarding);
+    }
 
-        // Stamina regen.
+    /// <summary>Local player, end of every physics step: stamina regen, facing, falling out, sending.</summary>
+    private void FinishLocalStep(float dt, bool guarding)
+    {
         if (_regenDelay > 0) _regenDelay -= dt;
-        else Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * Class.StaminaRegen * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
+        else if (Mode != MoveMode.Climb)
+            Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * Class.StaminaRegen * Gear.StaminaRegenMult(this) * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
 
-        FaceCamera(Rig.Rotation.Y, dt);
+        if (Mode == MoveMode.Climb)
+        {
+            FaceCamera(Mathf.Atan2(_climbNormal.X, _climbNormal.Z), dt);
+            _wasOnFloor = IsOnFloor();
+        }
+        else FaceCamera(Rig.Rotation.Y, dt);
 
         if (GlobalPosition.Y < KillHeight && !_fellOut)
         {

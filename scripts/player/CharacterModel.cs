@@ -66,6 +66,7 @@ public partial class CharacterModel : Node3D
         {
             foreach (var name in LoopAnims)
                 if (_anim.HasAnimation(name)) _anim.GetAnimation(name).LoopMode = Animation.LoopModeEnum.Linear;
+            ClimbAnimation.Ensure(_anim, _model);
             Play("Idle", 0);
         }
         else GD.PushWarning("[CharacterModel] No AnimationPlayer in hero model");
@@ -77,8 +78,44 @@ public partial class CharacterModel : Node3D
             RightHandSlot = attach;
             foreach (var child in held) child.Reparent(attach, false);
         }
+        DressGear(_model, Look);
         if (_fade > 0) SetFade(_fade);
         Rebuilt?.Invoke();
+    }
+
+    /// <summary>Worn gear the model has no part for (Gear.Dress): a cap on the Rogue's head, and a
+    /// cloak's colour on the cape.</summary>
+    public static void DressGear(Node3D model, Appearance look)
+    {
+        if (look.CapeColor != "" && Color.HtmlIsValid(look.CapeColor))
+            foreach (var node in model.FindChildren("*_Cape", "MeshInstance3D", true, false))
+            {
+                var cape = (MeshInstance3D)node;
+                var cloth = StyleMaterials.Toon(Color.FromHtml(look.CapeColor), 0.2f);
+                cloth.NextPass = StyleMaterials.Outline;
+                for (int i = 0; i < cape.Mesh.GetSurfaceCount(); i++) cape.SetSurfaceOverrideMaterial(i, cloth);
+            }
+        if (look.HeadGear == "" || !Color.HtmlIsValid(look.HeadGear)) return;
+        if (model.FindChild("Skeleton3D", true, false) is not Skeleton3D sk || sk.FindBone("head") < 0) return;
+        if (model.FindChild("*_Head", true, false) is not MeshInstance3D headMesh) return;
+        // Fit a dome over the top of the head, in the head bone's space (so it follows the head).
+        var box = headMesh.GetAabb();
+        float r = Mathf.Max(box.Size.X, box.Size.Z) * 0.56f;
+        var top = new Vector3(box.GetCenter().X, box.End.Y - box.Size.Y * 0.36f, box.GetCenter().Z);
+        var bone = sk.GetBoneGlobalRest(sk.FindBone("head"));
+        var attach = new BoneAttachment3D { Name = "HeadGear", BoneName = "head" };
+        sk.AddChild(attach);
+        var color = Color.FromHtml(look.HeadGear);
+        var mat = StyleMaterials.Toon(color, 0.35f);
+        mat.NextPass = StyleMaterials.Outline;
+        var cap = new Node3D { Transform = new Transform3D(bone.Basis.Inverse(), bone.AffineInverse() * top) };
+        attach.AddChild(cap);
+        cap.AddChild(new MeshInstance3D { Mesh = new SphereMesh { Radius = r, Height = r, IsHemisphere = true, RadialSegments = 16, Rings = 6 }, MaterialOverride = mat });
+        cap.AddChild(new MeshInstance3D
+        {
+            Mesh = new CylinderMesh { TopRadius = r * 1.06f, BottomRadius = r * 1.1f, Height = r * 0.14f, RadialSegments = 16 },
+            MaterialOverride = StyleMaterials.Toon(color.Darkened(0.25f), 0.2f), Position = new Vector3(0, r * 0.03f, 0),
+        });
     }
 
     private float _fade;
@@ -149,12 +186,15 @@ public partial class CharacterModel : Node3D
     }
 
     public bool HasAnimation(string name) => _anim?.HasAnimation(name) ?? false;
+    /// <summary>The clip playing now ("" if none).</summary>
+    public string CurrentAnimation => _anim?.CurrentAnimation ?? "";
 
     private void Play(string name, double blend = 0.2, float speed = 1f)
     {
         if (_anim == null || !_anim.HasAnimation(name)) return;
-        if (_current == name && _anim.IsPlaying()) return;
-        _current = name;
+        string key = speed < 0 ? name + "<" : name; // a clip played backwards counts as a different one
+        if (_current == key && _anim.IsPlaying()) return;
+        _current = key;
         _anim.Play(name, blend, speed);
     }
 
@@ -190,6 +230,13 @@ public partial class CharacterModel : Node3D
         Footsteps(speed, (float)delta);
         bool armed = _player.Equipped != "";
         if (_player.Sleeping && HasAnimation("Lie_Idle")) Play("Lie_Idle", 0.4);
+        else if (_player.Climbing)
+        {
+            // Hand over hand while moving on the face (backwards on the way down), holding on otherwise.
+            float climb = v.Length();
+            if (climb > 0.4f) Play(ClimbAnimation.Climb, 0.15, Mathf.Clamp(climb / 2.4f, 0.7f, 1.4f) * (v.Y < -0.3f ? -1f : 1f));
+            else Play(ClimbAnimation.Hang, 0.25);
+        }
         else if (_player.GuardShown && HasAnimation("Blocking")) Play("Blocking", 0.12);
         else if (!_player.Grounded) Play("Jump_Idle", 0.15);
         else if (speed > 6f) Play("Running_A", 0.2);

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "studded_jerkin"
+DisplayName = "Studded Jerkin"
+Category = "armor"
+IconColor = Color(0.45, 0.28, 0.16, 1)
+Slot = "body"
+Armor = 10.0
+Heavy = true
+WornColor = Color(0.38, 0.24, 0.13, 1)
+WornTrim = Color(0.62, 0.64, 0.7, 1)
+SellPrice = 14

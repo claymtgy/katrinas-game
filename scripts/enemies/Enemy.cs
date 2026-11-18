@@ -42,11 +42,18 @@ public abstract partial class Enemy : CharacterBody3D
     protected virtual float HitStagger => 0.35f;
     protected virtual float HitKnockback => 5f;
     protected virtual float WanderRadius => 6f;
+    /// <summary>Where this enemy is kept (the plateau and vale, or Falls Valley).</summary>
+    protected virtual Rect2 Bounds => Wildlife.HomeBounds;
+    /// <summary>Server: time to run off (wolves at dawn; raiders in the morning).</summary>
+    protected virtual bool ShouldFlee => FleesByDay && Wildlife.IsDay(GameState.Instance.TimeOfDay);
 
     // ---- server AI
     protected float StateTime;
-    private float _attackCooldown, _gravity, _staggerFor;
-    private Vector3 _wanderTo, _knockback;
+    protected float AttackCooldownLeft, Gravity, StaggerFor;
+    protected Vector3 Knockback;
+    /// <summary>Raiders: the building or chest they're going for (null = none).</summary>
+    public Node3D ObjectiveNode { get; protected set; }
+    private Vector3 _wanderTo;
     private bool _hasWander;
     // ---- path following (WorldNav)
     private Vector3[] _path = System.Array.Empty<Vector3>();
@@ -80,7 +87,7 @@ public abstract partial class Enemy : CharacterBody3D
 
     public override void _Ready()
     {
-        _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
+        Gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
         Rng.Seed = (ulong)NetId * 7919;
         LastPos = GlobalPosition;
         _netPos = GlobalPosition;
@@ -140,16 +147,23 @@ public abstract partial class Enemy : CharacterBody3D
     {
         if (Current == State.Dead) return;
         Enter(State.Stagger);
-        _staggerFor = seconds;
+        StaggerFor = seconds;
         Wildlife.Instance.BroadcastAnim(this, Wildlife.AnimStun);
     }
 
-    private void Think(float dt)
+    /// <summary>Server, prowling with no one to fight: go for something else (raiders head for
+    /// your buildings). Return true when handled.</summary>
+    protected virtual bool Objective(float dt, Vector3 pos, ref Vector3 desired, ref float speed, ref float? faceYaw) => false;
+
+    /// <summary>Server: the windup ended with no player targeted: hit the objective.</summary>
+    protected virtual void StrikeObjective() { }
+
+    protected virtual void Think(float dt)
     {
         var wildlife = Wildlife.Instance;
         StateTime += dt;
-        _attackCooldown -= dt;
-        if (FleesByDay && Current != State.Flee && Wildlife.IsDay(GameState.Instance.TimeOfDay)) Enter(State.Flee);
+        AttackCooldownLeft -= dt;
+        if (Current != State.Flee && ShouldFlee) Enter(State.Flee);
 
         Vector3 pos = GlobalPosition;
         Vector3 desired = Vector3.Zero;
@@ -168,6 +182,7 @@ public abstract partial class Enemy : CharacterBody3D
                     Enter(State.Chase);
                     break;
                 }
+                if (Objective(dt, pos, ref desired, ref speed, ref faceYaw)) break;
                 // Roam around the group's anchor (packs creep toward the base; camps stay put).
                 var anchor = wildlife.GroupAnchor(Group, pos);
                 if (!_hasWander || Flat(pos - _wanderTo).Length() < 1f || StateTime > 6f)
@@ -185,7 +200,7 @@ public abstract partial class Enemy : CharacterBody3D
                 if (!CanHunt(Target)) { Target = null; Enter(State.Prowl); break; }
                 var to = Flat(Target.GlobalPosition - pos);
                 float dist = to.Length();
-                if (dist < AttackRange && _attackCooldown <= 0)
+                if (dist < AttackRange && AttackCooldownLeft <= 0)
                 {
                     Enter(State.Windup);
                     wildlife.BroadcastAnim(this, Wildlife.AnimAttack);
@@ -199,13 +214,15 @@ public abstract partial class Enemy : CharacterBody3D
             }
             case State.Windup:
             {
-                if (Target != null && IsInstanceValid(Target)) faceYaw = YawOf(Flat(Target.GlobalPosition - pos));
+                if (Target != null && IsInstanceValid(Target) && Target.IsInsideTree()) faceYaw = YawOf(Flat(Target.GlobalPosition - pos));
+                else if (ObjectiveNode != null && IsInstanceValid(ObjectiveNode) && ObjectiveNode.IsInsideTree()) faceYaw = YawOf(Flat(ObjectiveNode.GlobalPosition - pos));
                 if (StateTime >= AttackWindup)
                 {
-                    _attackCooldown = AttackCooldown;
+                    AttackCooldownLeft = AttackCooldown;
                     Enter(State.Recover);
                     if (CanHunt(Target) && Flat(Target.GlobalPosition - pos).Length() < AttackReach)
                         wildlife.Strike(this, Target); // may stun us (parry): do it last
+                    else if (Target == null) StrikeObjective();
                 }
                 break;
             }
@@ -215,7 +232,7 @@ public abstract partial class Enemy : CharacterBody3D
                 if (StateTime > 0.5f) Enter(Target != null ? State.Chase : State.Prowl);
                 break;
             case State.Stagger:
-                if (StateTime > Mathf.Max(_staggerFor, 0.05f)) { _staggerFor = 0; Enter(Target != null ? State.Chase : State.Prowl); }
+                if (StateTime > Mathf.Max(StaggerFor, 0.05f)) { StaggerFor = 0; Enter(Target != null ? State.Chase : State.Prowl); }
                 break;
             case State.Flee:
             {
@@ -232,16 +249,16 @@ public abstract partial class Enemy : CharacterBody3D
         if (desired.LengthSquared() > 1f) desired = desired.Normalized();
 
         var v = Velocity;
-        var target = desired * speed + _knockback;
+        var target = desired * speed + Knockback;
         float accel = Mathf.Min(1f, 8f * dt);
         v.X = Mathf.Lerp(v.X, target.X, accel);
         v.Z = Mathf.Lerp(v.Z, target.Z, accel);
-        v.Y = IsOnFloor() ? -0.5f : v.Y - _gravity * dt;
-        _knockback = _knockback.Lerp(Vector3.Zero, Mathf.Min(1f, 6f * dt));
+        v.Y = IsOnFloor() ? -0.5f : v.Y - Gravity * dt;
+        Knockback = Knockback.Lerp(Vector3.Zero, Mathf.Min(1f, 6f * dt));
         Velocity = v;
         MoveAndSlide();
 
-        GlobalPosition = Wildlife.ClampToWorld(GlobalPosition);
+        GlobalPosition = Wildlife.ClampTo(GlobalPosition, Bounds);
 
         float flatSpeed = Flat(Velocity).Length();
         if (faceYaw == null && flatSpeed > 0.4f) faceYaw = YawOf(Flat(Velocity));
@@ -282,7 +299,7 @@ public abstract partial class Enemy : CharacterBody3D
     }
 
     /// <summary>Hostiles won't enter a sanctuary (blossom shrine, the village).</summary>
-    private static Vector3 SafeZonePush(Vector3 pos)
+    protected static Vector3 SafeZonePush(Vector3 pos)
     {
         foreach (var (center, radius) in GameState.Instance.SafeZones)
         {
@@ -297,8 +314,8 @@ public abstract partial class Enemy : CharacterBody3D
         if (!Net.Instance.IsDedicated) FlashHit();
         if (!Net.Instance.IsServer || Health.IsDead) return;
         // Server: flinch away from the hit and go for whoever did it.
-        if (source is Node3D s) _knockback = Flat(GlobalPosition - s.GlobalPosition).Normalized() * HitKnockback;
-        if (Current != State.Stagger || _staggerFor <= HitStagger) { Enter(State.Stagger); _staggerFor = HitStagger; }
+        if (source is Node3D s) Knockback = Flat(GlobalPosition - s.GlobalPosition).Normalized() * HitKnockback;
+        if (Current != State.Stagger || StaggerFor <= HitStagger) { Enter(State.Stagger); StaggerFor = HitStagger; }
         if (source is PlayerController p)
         {
             Target = p;
@@ -356,6 +373,8 @@ public abstract partial class Enemy : CharacterBody3D
         "wolf" => Wolf.Create(netId, group, pos, yaw, maxHealth, damage),
         "bandit" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: false),
         "captain" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: true),
+        "raider" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: false, raider: true),
+        "harpy" => Harpy.Create(netId, group, pos, yaw, maxHealth, damage),
         _ => null,
     };
 }

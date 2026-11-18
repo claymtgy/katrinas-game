@@ -23,7 +23,7 @@ public static class Supplies
     private const float HomeMargin = 6f;
 
     /// <summary>Never refused for being heavy (quest items).</summary>
-    private static readonly HashSet<string> AlwaysFits = new() { "coin", "cottage_blueprint" };
+    private static readonly HashSet<string> AlwaysFits = new() { "coin", "cottage_blueprint", "glider" };
 
     private static GameState Gs => GameState.Instance;
 
@@ -73,23 +73,25 @@ public static class Supplies
             Gs.Inventory.Add(id, amount);
             return amount;
         }
-        int fits = AlwaysFits.Contains(id) ? amount : Mathf.Clamp(PackCapacity - p.Pack.Load, 0, amount);
+        int fits = AlwaysFits.Contains(id) || (ItemDb.Get(id)?.IsPersonal ?? false) ? amount : Mathf.Clamp(PackCapacity - p.Pack.Load, 0, amount);
         if (fits > 0) p.Pack.Add(id, fits);
         if (fits < amount)
             Net.Instance.ToastTo(p.PeerId, $"Your pack is full ({PackCapacity}). Empty it into a storage chest at home.");
         return fits;
     }
 
-    /// <summary>Server: move everything in the pack into the shared stockpile.</summary>
+    /// <summary>Server: move everything in the pack into the shared stockpile (personal gear, like
+    /// the glider and armour, stays with you).</summary>
     public static int Deposit(PlayerController p)
     {
         int moved = 0;
         foreach (var kv in p.Pack.Items.ToList())
         {
+            if (ItemDb.Get(kv.Key)?.IsPersonal ?? false) continue;
             Gs.Inventory.Add(kv.Key, kv.Value);
+            p.Pack.Remove(kv.Key, kv.Value);
             moved += kv.Value;
         }
-        p.Pack.Clear();
         return moved;
     }
 
@@ -99,6 +101,7 @@ public static class Supplies
         int lost = 0;
         foreach (var kv in p.Pack.Items.ToList())
         {
+            if (ItemDb.Get(kv.Key)?.IsPersonal ?? false) continue; // your own gear is never lost
             int n = (int)(kv.Value * LossOnDeath);
             if (n <= 0) continue;
             p.Pack.Remove(kv.Key, n);

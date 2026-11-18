@@ -1,122 +1,67 @@
+using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Godot;
 
 namespace KatrinasGame;
 
-/// <summary>All on-screen UI, built in code: bars, inventory, hotbar, prompt, build info,
-/// toasts, crosshair/hit marker, crafting menu, help overlay, and the co-op bits: session status,
-/// player list (Tab), sleep vote banner and the Esc game menu.</summary>
+/// <summary>All on-screen UI, built in code in the medieval kit (<see cref="UiTheme"/>): framed
+/// health and stamina bars, the day plate, pack and stockpile grids, the weapon hotbar, key-cap
+/// prompts, parchment toasts, the help board (F1), the crafting / trade / enchanting board, the
+/// character sheet (I: armour and pack), and the co-op bits (session line, player list on Tab,
+/// sleep banner, the Esc menu).</summary>
 public partial class Hud : CanvasLayer
 {
     public static Hud Instance { get; private set; }
 
-    private static readonly Color Gold = new(1f, 0.82f, 0.45f);
-    private static readonly Color Blush = new(1f, 0.7f, 0.78f);
+    private static readonly Color Blush = new(1f, 0.72f, 0.8f);
+    private const int GridMax = 18;
 
-    private ProgressBar _health, _stamina;
-    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help, _session, _sleep, _playerList, _buffs, _ability;
-    private int _packVersion = -1;
-    private PanelContainer _gameMenu;
+    private Control _root;
+    private FramedBar _health, _stamina;
+    private Label _clock, _session, _buffs, _ability, _prompt, _buildInfo, _crosshair, _sleep, _playerListText;
+    private Control _promptRow, _buildPlate, _sleepPlate, _helpHint;
+    private PanelContainer _playerList, _help, _gameMenu, _craftPanel, _sheet;
     private VBoxContainer _toasts;
-    private PanelContainer _craftPanel;
+    private readonly List<ItemSlot> _hotbar = new();
+    private GridContainer _packGrid, _stockGrid;
+    private Label _packTitle, _stockTitle, _packMore, _stockMore;
+    private int _packVersion = -1;
+    private bool _inventoryDirty = true;
+    private float _hitFlash;
+
+    // crafting / trade / enchanting board
     private VBoxContainer _craftList;
-    private Label _craftTitle;
+    private Label _craftTitle, _craftFooter;
     private CraftingStation _station;
     private Trader _trader;
-    private float _hitFlash;
-    private bool _inventoryDirty = true;
+    private string _enchantPick = "";
+
+    // character sheet
+    private readonly Dictionary<string, ItemSlot> _wornSlots = new();
+    private GridContainer _sheetPack;
+    private VBoxContainer _sheetStats;
+    private Label _sheetName;
+    private int _sheetVersion = -1;
 
     public override void _Ready()
     {
         if (Net.Instance.IsDedicated) return; // Main frees us; a server has no screen
         Instance = this;
-        var root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
-        AddChild(root);
-        root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Theme = UiTheme.Theme };
+        AddChild(_root);
+        _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
-        // Bars — bottom left.
-        var bars = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        Place(root, bars, 0, 1, 0, 1, 24, -84, 324, -24);
-        _health = MakeBar(new Color(0.85f, 0.25f, 0.3f));
-        _stamina = MakeBar(new Color(0.95f, 0.75f, 0.3f));
-        bars.AddChild(_health);
-        bars.AddChild(_stamina);
+        BuildVitals();
+        BuildClock();
+        BuildInventory();
+        BuildHotbar();
+        BuildCentre();
+        BuildHelp();
+        BuildPlayerList();
+        BuildCraftPanel();
+        BuildGameMenu();
+        BuildSheet();
 
-        // Food buffs — just above the bars.
-        _buffs = MakeLabel(15);
-        _buffs.Modulate = Gold;
-        Place(root, _buffs, 0, 1, 0, 1, 24, -132, 600, -88);
-        // Class and ability, right of the bars.
-        _ability = MakeLabel(17);
-        Place(root, _ability, 0, 1, 0, 1, 340, -86, 900, -40);
-
-        // Inventory — top right.
-        _inventory = MakeLabel(17, HorizontalAlignment.Right);
-        Place(root, _inventory, 1, 0, 1, 0, -360, 20, -24, 700);
-
-        // Clock — top left.
-        _clock = MakeLabel(18);
-        _clock.Modulate = Gold;
-        Place(root, _clock, 0, 0, 0, 0, 24, 20, 400, 50);
-
-        // Session status — under the clock.
-        _session = MakeLabel(15);
-        _session.Modulate = Blush;
-        Place(root, _session, 0, 0, 0, 0, 24, 46, 600, 70);
-
-        // Sleep vote — top centre.
-        _sleep = MakeLabel(20, HorizontalAlignment.Center);
-        _sleep.Modulate = Gold;
-        Place(root, _sleep, 0.5f, 0, 0.5f, 0, -500, 60, 500, 120);
-
-        // Player list (hold Tab) — centre.
-        _playerList = MakeLabel(20, HorizontalAlignment.Center);
-        _playerList.Visible = false;
-        Place(root, _playerList, 0.5f, 0.5f, 0.5f, 0.5f, -300, -220, 300, -40);
-
-        // Hotbar — bottom centre.
-        _hotbar = MakeLabel(18, HorizontalAlignment.Center);
-        Place(root, _hotbar, 0.5f, 1, 0.5f, 1, -500, -50, 500, -20);
-
-        // Interact prompt and build info — below centre.
-        _prompt = MakeLabel(22, HorizontalAlignment.Center);
-        Place(root, _prompt, 0.5f, 0.5f, 0.5f, 0.5f, -400, 40, 400, 72);
-        _buildInfo = MakeLabel(18, HorizontalAlignment.Center);
-        _buildInfo.Modulate = Gold;
-        Place(root, _buildInfo, 0.5f, 1, 0.5f, 1, -600, -140, 600, -60);
-
-        // Crosshair.
-        _crosshair = MakeLabel(22, HorizontalAlignment.Center);
-        _crosshair.Text = "·";
-        _crosshair.VerticalAlignment = VerticalAlignment.Center;
-        Place(root, _crosshair, 0.5f, 0.5f, 0.5f, 0.5f, -20, -16, 20, 16);
-
-        // Toasts — left middle.
-        _toasts = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        Place(root, _toasts, 0, 0.5f, 0, 0.5f, 24, -60, 700, 200);
-
-        // Help overlay.
-        _help = MakeLabel(17);
-        _help.Text =
-            "CONTROLS   (F1 to toggle)\n" +
-            "WASD move · Shift sprint · Space jump · Ctrl / C dodge roll · R class ability · Mouse look\n" +
-            "V  first / third person\n" +
-            "LMB light attack · Q / MMB heavy attack · hold RMB block (just in time = parry) · 1-5 weapons\n" +
-            "E  interact (workbench, campfire, bed, plots, wells, chest, trader, signs) · F eat\n" +
-            "What you gather goes in your pack: empty it into the chest by the shack. Crops need water (well, pool or rain).\n" +
-            "B  build mode: wheel cycle · R rotate · LMB place · RMB exit\n" +
-            "F5 save · F9 load (host only) · Tab players · Esc menu\n\n" +
-            "Goal: chop & mine → Workbench → sword → follow the road south to Ashby → clear the bandit camp\n" +
-            "→ farm and trade for nails → upgrade the shack to a cottage (board by the shack).";
-        _help.Modulate = Blush;
-        Place(root, _help, 0, 0, 0, 0, 24, 80, 1000, 330);
-        GetTree().CreateTimer(25).Timeout += () => _help.Visible = false;
-
-        BuildCraftPanel(root);
-        BuildGameMenu(root);
-
-        // The stockpile outlives this scene, so unsubscribe in _ExitTree.
         GameState.Instance.Inventory.Changed += OnInventoryChanged;
     }
 
@@ -128,20 +73,226 @@ public partial class Hud : CanvasLayer
 
     private void OnInventoryChanged() => _inventoryDirty = true;
 
-    // ------------------------------------------------------------------ public API
+    // ================================================================== layout
+
+    private void BuildVitals()
+    {
+        var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        box.AddThemeConstantOverride("separation", 4);
+        Place(_root, box, 0, 1, 0, 1, 22, -150, 560, -18);
+        box.GrowVertical = Control.GrowDirection.Begin;
+        _buffs = UiTheme.Label("", "Small");
+        _buffs.AddThemeColorOverride("font_color", UiTheme.Gold);
+        box.AddChild(_buffs);
+        _ability = UiTheme.Label("", "Heading");
+        _ability.AddThemeFontSizeOverride("font_size", 18);
+        box.AddChild(_ability);
+        _health = new FramedBar("bar_health", new Vector2(340, 30));
+        box.AddChild(_health);
+        _stamina = new FramedBar("bar_stamina", new Vector2(300, 22)) { ShowNumbers = false };
+        box.AddChild(_stamina);
+    }
+
+    private void BuildClock()
+    {
+        var col = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        Place(_root, col, 0, 0, 0, 0, 18, 14, 600, 120);
+        var plate = new PanelContainer { ThemeTypeVariation = "Plate", MouseFilter = Control.MouseFilterEnum.Ignore, SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
+        _clock = UiTheme.Label("", "Heading");
+        _clock.AddThemeFontSizeOverride("font_size", 19);
+        _clock.AddThemeColorOverride("font_color", UiTheme.GoldBright);
+        plate.AddChild(_clock);
+        col.AddChild(plate);
+        _session = UiTheme.Label("", "Small");
+        _session.AddThemeColorOverride("font_color", Blush);
+        col.AddChild(_session);
+    }
+
+    private void BuildInventory()
+    {
+        var col = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.Begin };
+        col.AddThemeConstantOverride("separation", 4);
+        Place(_root, col, 1, 0, 1, 0, -336, 14, -16, 600);
+        (_packTitle, _packGrid, _packMore) = GridBlock(col);
+        col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6), MouseFilter = Control.MouseFilterEnum.Ignore });
+        (_stockTitle, _stockGrid, _stockMore) = GridBlock(col);
+    }
+
+    private static (Label, GridContainer, Label) GridBlock(VBoxContainer parent)
+    {
+        var title = UiTheme.Label("", "Heading", HorizontalAlignment.Right);
+        title.AddThemeFontSizeOverride("font_size", 17);
+        parent.AddChild(title);
+        var grid = new GridContainer { Columns = 7, MouseFilter = Control.MouseFilterEnum.Ignore, SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd };
+        grid.AddThemeConstantOverride("h_separation", 2);
+        grid.AddThemeConstantOverride("v_separation", 2);
+        parent.AddChild(grid);
+        var more = UiTheme.Label("", "Dim", HorizontalAlignment.Right);
+        parent.AddChild(more);
+        return (title, grid, more);
+    }
+
+    private void BuildHotbar()
+    {
+        var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore, Alignment = BoxContainer.AlignmentMode.Center };
+        row.AddThemeConstantOverride("separation", 4);
+        Place(_root, row, 0.5f, 1, 0.5f, 1, -200, -82, 200, -14);
+        for (int i = 0; i < 5; i++)
+        {
+            var slot = new ItemSlot(62, (i + 1).ToString()) { MouseFilter = Control.MouseFilterEnum.Ignore };
+            row.AddChild(slot);
+            _hotbar.Add(slot);
+        }
+    }
+
+    private void BuildCentre()
+    {
+        // Crosshair.
+        _crosshair = UiTheme.Label("·", "Heading", HorizontalAlignment.Center);
+        _crosshair.VerticalAlignment = VerticalAlignment.Center;
+        Place(_root, _crosshair, 0.5f, 0.5f, 0.5f, 0.5f, -20, -16, 20, 16);
+
+        // Interact prompt: [E] key cap + what it does.
+        var promptCenter = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        Place(_root, promptCenter, 0.5f, 0.5f, 0.5f, 0.5f, -400, 44, 400, 84);
+        var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        row.AddChild(UiTheme.KeyCap("E"));
+        _prompt = UiTheme.Label("", "Heading");
+        _prompt.AddThemeColorOverride("font_color", UiTheme.Ink);
+        _prompt.AddThemeFontSizeOverride("font_size", 20);
+        row.AddChild(_prompt);
+        promptCenter.AddChild(row);
+        _promptRow = row;
+
+        // Build mode: a plate above the hotbar.
+        var buildCenter = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        Place(_root, buildCenter, 0.5f, 1, 0.5f, 1, -600, -170, 600, -92);
+        var plate = new PanelContainer { ThemeTypeVariation = "Plate", MouseFilter = Control.MouseFilterEnum.Ignore };
+        _buildInfo = UiTheme.Label("", "", HorizontalAlignment.Center);
+        plate.AddChild(_buildInfo);
+        buildCenter.AddChild(plate);
+        _buildPlate = buildCenter;
+
+        // Sleep banner, top centre.
+        var sleepCenter = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        Place(_root, sleepCenter, 0.5f, 0, 0.5f, 0, -500, 70, 500, 140);
+        var sleepPlate = new PanelContainer { ThemeTypeVariation = "Plate", MouseFilter = Control.MouseFilterEnum.Ignore };
+        _sleep = UiTheme.Label("", "", HorizontalAlignment.Center);
+        sleepPlate.AddChild(_sleep);
+        sleepCenter.AddChild(sleepPlate);
+        _sleepPlate = sleepCenter;
+
+        // Toasts, left middle.
+        _toasts = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _toasts.AddThemeConstantOverride("separation", 4);
+        Place(_root, _toasts, 0, 0.5f, 0, 0.5f, 18, -110, 560, 220);
+    }
+
+    private void BuildHelp()
+    {
+        // A small reminder at first; F1 opens the full board.
+        var hintCenter = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        Place(_root, hintCenter, 1, 1, 1, 1, -330, -70, -20, -20);
+        var hint = new PanelContainer { ThemeTypeVariation = "Plate", MouseFilter = Control.MouseFilterEnum.Ignore };
+        var row = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        row.AddChild(UiTheme.KeyCap("F1"));
+        row.AddChild(UiTheme.Label("Controls & help", "Heading"));
+        hint.AddChild(row);
+        hintCenter.AddChild(hint);
+        _helpHint = hintCenter;
+        GetTree().CreateTimer(30).Timeout += () => { if (IsInstanceValid(_helpHint)) _helpHint.Visible = false; };
+
+        _help = Board(860, 600, "Controls & Help", out var body, out _);
+        _help.MouseFilter = Control.MouseFilterEnum.Ignore;
+        var cols = new HBoxContainer();
+        cols.AddThemeConstantOverride("separation", 36);
+        body.AddChild(cols);
+        (string Key, string What)[] left =
+        {
+            ("WASD", "Move · Shift sprint · Space jump"), ("Ctrl / C", "Dodge roll"), ("Mouse", "Look · V first / third person"),
+            ("LMB", "Light attack"), ("Q / MMB", "Heavy attack"), ("RMB", "Block (just in time = parry)"), ("R", "Class ability"),
+            ("1–5", "Weapons"), ("E", "Use: stations, beds, chests, plots, traders, signs"), ("F", "Eat"),
+        };
+        (string Key, string What)[] right =
+        {
+            ("I", "Character: armour and pack"), ("B", "Build mode (wheel cycles, R rotates)"), ("Space", "In the air: open the glider"),
+            ("W", "Into pale rock: climb (Space leaps off)"), ("Tab", "Players"), ("F5 / F9", "Save / load (host)"), ("Esc", "Menu"),
+        };
+        cols.AddChild(KeyList(left));
+        cols.AddChild(KeyList(right));
+        body.AddChild(UiTheme.Divider(500));
+        var goals = UiTheme.Label(
+            "What you gather rides in your pack: empty it into the chest by the shack. Crops need water.\n" +
+            "Chop and mine → Workbench → a sword → the road south to Ashby → clear the bandit camp → farm and trade for nails → a cottage.\n" +
+            "East through the pass lies Falls Valley. From day 3, raiders come at dusk: walls and watchtowers.\n" +
+            "Make armour at the workbench from pelts, feathers and nails; enchant it at a Rune Altar with rune shards.", "Small");
+        goals.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        goals.CustomMinimumSize = new Vector2(760, 0);
+        body.AddChild(goals);
+    }
+
+    private static Control KeyList((string Key, string What)[] rows)
+    {
+        var grid = new GridContainer { Columns = 2 };
+        grid.AddThemeConstantOverride("h_separation", 12);
+        grid.AddThemeConstantOverride("v_separation", 6);
+        foreach (var (key, what) in rows)
+        {
+            var c = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End, CustomMinimumSize = new Vector2(96, 0) };
+            c.AddChild(UiTheme.KeyCap(key));
+            grid.AddChild(c);
+            grid.AddChild(UiTheme.Label(what, "Small"));
+        }
+        return grid;
+    }
+
+    private void BuildPlayerList()
+    {
+        _playerList = Board(520, 340, "Players", out var body, out _);
+        _playerList.MouseFilter = Control.MouseFilterEnum.Ignore;
+        _playerListText = UiTheme.Label("", "", HorizontalAlignment.Center);
+        body.AddChild(_playerListText);
+    }
+
+    /// <summary>A framed oak board centred on screen: title plate, body, and a footer row.</summary>
+    private PanelContainer Board(float w, float h, string title, out VBoxContainer body, out HBoxContainer footer)
+    {
+        var panel = new PanelContainer { Visible = false };
+        Place(_root, panel, 0.5f, 0.5f, 0.5f, 0.5f, -w / 2, -h / 2, w / 2, h / 2);
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 8);
+        panel.AddChild(col);
+        col.AddChild(UiTheme.TitlePlate(title, out var titleLabel));
+        titleLabel.Name = "Title";
+        body = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 8);
+        col.AddChild(body);
+        footer = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        col.AddChild(footer);
+        return panel;
+    }
+
+    private static Label BoardTitle(PanelContainer board) => board.FindChild("Title", true, false) as Label;
+
+    // ================================================================== public API
 
     public static void Toast(string message)
     {
         GD.Print($"[Toast] {message}");
         if (Instance == null) return;
-        var label = Instance.MakeLabel(18);
-        label.Text = message;
-        Instance._toasts.AddChild(label);
-        if (Instance._toasts.GetChildCount() > 6) Instance._toasts.GetChild(0).QueueFree();
-        var tween = label.CreateTween();
-        tween.TweenInterval(2.2);
-        tween.TweenProperty(label, "modulate:a", 0f, 0.6);
-        tween.TweenCallback(Callable.From(label.QueueFree));
+        var note = new PanelContainer { ThemeTypeVariation = "Parchment", MouseFilter = Control.MouseFilterEnum.Ignore, SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
+        var label = UiTheme.Label(message, "OnParchment");
+        label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        label.CustomMinimumSize = new Vector2(Mathf.Min(480, 40 + message.Length * 8.2f), 0);
+        note.AddChild(label);
+        Instance._toasts.AddChild(note);
+        if (Instance._toasts.GetChildCount() > 5) Instance._toasts.GetChild(0).QueueFree();
+        note.Modulate = new Color(1, 1, 1, 0);
+        var tween = note.CreateTween();
+        tween.TweenProperty(note, "modulate:a", 1f, 0.18);
+        tween.TweenInterval(3.0);
+        tween.TweenProperty(note, "modulate:a", 0f, 0.6);
+        tween.TweenCallback(Callable.From(note.QueueFree));
     }
 
     public void FlashHitMarker() => _hitFlash = 0.15f;
@@ -150,27 +301,38 @@ public partial class Hud : CanvasLayer
     {
         _station = station;
         _trader = null;
-        _craftTitle.Text = station.StationName;
+        _enchantPick = "";
+        BoardTitle(_craftPanel).Text = station.StationName;
+        ShowBoard(_craftPanel);
         RefreshCrafting();
-        _craftPanel.Visible = true;
-        GameState.Instance.SetUiOpen(true);
     }
 
-    /// <summary>Buy from / sell to a trader (stockpile goods for coins).</summary>
+    /// <summary>Buy from / sell to a trader (goods and coins in your pack).</summary>
     public void OpenTrade(Trader trader)
     {
         _station = null;
         _trader = trader;
-        _craftTitle.Text = trader.TraderName;
+        BoardTitle(_craftPanel).Text = trader.TraderName;
+        ShowBoard(_craftPanel);
         RefreshCrafting();
-        _craftPanel.Visible = true;
-        GameState.Instance.SetUiOpen(true);
     }
+
+    /// <summary>The character sheet: worn armour, stats and the pack (I).</summary>
+    public void OpenCharacter()
+    {
+        _sheetVersion = -1;
+        ShowBoard(_sheet);
+        RefreshSheet();
+    }
+
+    public bool CharacterOpen => _sheet.Visible;
 
     public void CloseMenus()
     {
         _craftPanel.Visible = false;
         _gameMenu.Visible = false;
+        _sheet.Visible = false;
+        _help.Visible = false;
         foreach (var c in GetChildren())
             if (c is CharacterCreator cc) cc.QueueFree();
         _station = null;
@@ -179,9 +341,14 @@ public partial class Hud : CanvasLayer
     }
 
     /// <summary>Esc menu. The game keeps running (it's multiplayer, even solo).</summary>
-    public void OpenGameMenu()
+    public void OpenGameMenu() => ShowBoard(_gameMenu);
+
+    private void ShowBoard(PanelContainer board)
     {
-        _gameMenu.Visible = true;
+        foreach (var other in new[] { _craftPanel, _gameMenu, _sheet, _help })
+            if (other != board) other.Visible = false;
+        board.Visible = true;
+        UiTheme.PopIn(board);
         GameState.Instance.SetUiOpen(true);
     }
 
@@ -190,12 +357,20 @@ public partial class Hud : CanvasLayer
         if (Instance != this) return;
         if (e.IsActionPressed("help"))
         {
-            _help.Visible = !_help.Visible;
+            _helpHint.Visible = false;
+            if (_help.Visible) CloseMenus();
+            else if (!GameState.Instance.UiOpen) ShowBoard(_help);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsActionPressed("inventory"))
+        {
+            if (_sheet.Visible) CloseMenus();
+            else if (!GameState.Instance.UiOpen) OpenCharacter();
             GetViewport().SetInputAsHandled();
         }
         else if (e.IsAction("player_list"))
         {
-            _playerList.Visible = e.IsPressed();
+            _playerList.Visible = e.IsPressed() && !GameState.Instance.UiOpen;
             GetViewport().SetInputAsHandled();
         }
         else if (_craftPanel.Visible && e.IsActionPressed("interact"))
@@ -205,7 +380,7 @@ public partial class Hud : CanvasLayer
         }
     }
 
-    // ------------------------------------------------------------------ per-frame
+    // ================================================================== per-frame
 
     public override void _Process(double delta)
     {
@@ -216,55 +391,70 @@ public partial class Hud : CanvasLayer
         var player = gs.LocalPlayer;
         if (player == null) return;
 
-        _health.MaxValue = player.Health.Max;
-        _health.Value = player.Health.Current;
-        _stamina.MaxValue = player.MaxStamina;
-        _stamina.Value = player.Stamina;
+        _health.Set(player.Health.Current, player.Health.Max);
+        _stamina.Set(player.Stamina, player.MaxStamina);
 
         float hours = gs.TimeOfDay * 24f;
         int h = (int)hours, m = (int)((hours - h) * 60);
         string phase = gs.TimeOfDay is > 0.22f and < 0.78f ? "☀" : "☾";
-        _clock.Text = $"Day {gs.Day}  {phase} {h:00}:{m:00}";
+        _clock.Text = $"Day {gs.Day}   {phase}  {h:00}:{m:00}";
 
         if (player.Pack.Version != _packVersion) { _packVersion = player.Pack.Version; _inventoryDirty = true; }
         if (_inventoryDirty) RefreshInventory();
         UpdateBuffs(player);
-
-        var slots = gs.WeaponSlots(player);
-        var sb = new StringBuilder();
-        for (int i = 0; i < slots.Count && i < 5; i++)
-        {
-            string name = slots[i] == "" ? "Fists" : ItemDb.NameOf(slots[i]);
-            sb.Append(slots[i] == player.Equipped ? $"  [{i + 1}] » {name} «  " : $"  [{i + 1}] {name}  ");
-        }
-        _hotbar.Text = sb.ToString();
+        UpdateHotbar(gs, player);
+        if (_sheet.Visible && _sheetVersion != player.Pack.Version * 1000 + player.WornVersion) RefreshSheet();
 
         var target = player.Interactor.Target;
-        _prompt.Text = target != null && !gs.UiOpen ? $"[E] {target.InteractPrompt}" : "";
+        _prompt.Text = target != null && !gs.UiOpen ? target.InteractPrompt : "";
+        _promptRow.Visible = _prompt.Text != "";
 
         var build = player.Build;
         if (build.Active && build.Current != null)
         {
             var def = build.Current;
             string status = build.InvalidReason == "" ? "LMB to place" : build.InvalidReason;
-            _buildInfo.Text = $"BUILD: {def.DisplayName}  ({ItemDb.FormatCost(def.GetCost())})  —  {status}\n" +
-                              "Wheel: change · R: rotate · RMB/B: exit";
+            _buildInfo.Text = $"{def.DisplayName}  ·  {ItemDb.FormatCost(def.GetCost())}\n{status}   ·   wheel: change · R: rotate · RMB: exit";
+            _buildInfo.AddThemeColorOverride("font_color", build.InvalidReason == "" ? UiTheme.Ink : UiTheme.Bad);
         }
         else _buildInfo.Text = "";
+        _buildPlate.Visible = _buildInfo.Text != "";
 
         _hitFlash -= (float)delta;
         _crosshair.Text = _hitFlash > 0 ? "✕" : "·";
         _crosshair.Modulate = _hitFlash > 0 ? new Color(1, 0.4f, 0.3f) : Colors.White;
         _crosshair.Visible = !gs.UiOpen;
 
-        // Sleep vote.
         if (player.Sleeping)
             _sleep.Text = net.SleepTotal > 1
-                ? $"Sleeping… {net.SleepingCount}/{net.SleepTotal} asleep. The night passes when everyone is in bed.\n[E] or move to get up"
+                ? $"Sleeping… {net.SleepingCount}/{net.SleepTotal} asleep. The night passes when everyone is in bed.\nE or move to get up"
                 : "Sleeping…";
         else if (net.SleepingCount > 0)
             _sleep.Text = $"{net.SleepingCount}/{net.SleepTotal} asleep. Go to bed to skip the night.";
         else _sleep.Text = "";
+        _sleepPlate.Visible = _sleep.Text != "";
+    }
+
+    private void UpdateHotbar(GameState gs, PlayerController player)
+    {
+        var slots = gs.WeaponSlots(player);
+        for (int i = 0; i < _hotbar.Count; i++)
+        {
+            var s = _hotbar[i];
+            if (i < slots.Count)
+            {
+                string id = slots[i];
+                string key = id == "" ? "fists" : id;
+                if (s.ItemId != key || !s.Visible)
+                {
+                    s.SetItem(key);
+                    if (id == "") s.TooltipText = "Fists";
+                    s.Visible = true;
+                }
+                s.Selected = id == player.Equipped;
+            }
+            else s.Visible = i == 0;
+        }
     }
 
     private void UpdateSession(GameState gs, Net net)
@@ -272,7 +462,7 @@ public partial class Hud : CanvasLayer
         if (!net.IsMultiplayer)
         {
             _session.Text = "";
-            _playerList.Text = "";
+            _playerList.Visible = false;
             return;
         }
         string role = net.Mode == NetMode.Client ? "Co-op" : "Hosting";
@@ -281,47 +471,66 @@ public partial class Hud : CanvasLayer
         {
             var lines = gs.Players.Values.OrderBy(p => p.PeerId).Select(p =>
                 $"{p.DisplayName}{(p.PeerId == 1 ? "  (host)" : "")}{(p.IsLocal ? "  ← you" : "")}" +
-                $"   HP {p.Health.Current:0}{(p.Sleeping ? "   asleep" : "")}");
-            _playerList.Text = $"{net.Config.Name}\n\n" + string.Join("\n", lines);
+                $"   ♥ {p.Health.Current:0}{(p.Sleeping ? "   asleep" : "")}");
+            BoardTitle(_playerList).Text = net.Config.Name;
+            _playerListText.Text = string.Join("\n", lines);
         }
     }
 
     private void RefreshInventory()
     {
         _inventoryDirty = false;
-        var sb = new StringBuilder();
         var player = GameState.Instance.LocalPlayer;
         if (player != null)
         {
             var pack = player.Pack;
-            sb.Append($"Pack  {pack.Load}/{Supplies.PackCapacity}{(pack.Load >= Supplies.PackCapacity ? "  FULL" : "")}\n");
-            foreach (var kv in pack.Items.OrderBy(kv => kv.Key)) sb.Append($"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}\n");
-            sb.Append('\n');
+            bool full = pack.Load >= Supplies.PackCapacity;
+            _packTitle.Text = $"Pack  {pack.Load}/{Supplies.PackCapacity}{(full ? "  · FULL" : "")}";
+            _packTitle.AddThemeColorOverride("font_color", full ? UiTheme.Bad : UiTheme.Gold);
+            FillGrid(_packGrid, _packMore, pack.Items, 44);
         }
-        var items = GameState.Instance.Inventory.Items;
+        var stock = GameState.Instance.Inventory.Items;
         string title = Net.Instance.IsMultiplayer ? "Stockpile (shared)" : "Stockpile";
-        if (player != null && !Supplies.AtHome(player)) title += " (at home)";
-        sb.Append(items.Count == 0
-            ? $"{title}: empty"
-            : $"{title}\n" + string.Join("\n", items.OrderBy(kv => kv.Key).Select(kv => $"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}")));
-        _inventory.Text = sb.ToString();
+        bool home = player == null || Supplies.AtHome(player);
+        if (!home) title += " · at home";
+        _stockTitle.Text = stock.Count == 0 ? $"{title}: empty" : title;
+        _stockTitle.AddThemeColorOverride("font_color", home ? UiTheme.Gold : UiTheme.Muted);
+        FillGrid(_stockGrid, _stockMore, stock, 44);
+        _stockGrid.Modulate = home ? Colors.White : new Color(1, 1, 1, 0.55f);
         if (_craftPanel.Visible) RefreshCrafting();
+    }
+
+    /// <summary>Show stacks as slots (reusing the slot nodes), sorted by name.</summary>
+    private static void FillGrid(GridContainer grid, Label more, IReadOnlyDictionary<string, int> items, float size, System.Action<ItemSlot> onPress = null)
+    {
+        var list = items.OrderBy(kv => ItemDb.NameOf(kv.Key)).ToList();
+        int shown = Mathf.Min(list.Count, GridMax);
+        while (grid.GetChildCount() < shown)
+        {
+            var slot = new ItemSlot(size) { MouseFilter = onPress == null ? Control.MouseFilterEnum.Pass : Control.MouseFilterEnum.Stop };
+            if (onPress != null) slot.Pressed += () => onPress(slot);
+            grid.AddChild(slot);
+        }
+        for (int i = 0; i < grid.GetChildCount(); i++)
+        {
+            var slot = (ItemSlot)grid.GetChild(i);
+            slot.Visible = i < shown;
+            if (i < shown) slot.SetItem(list[i].Key, list[i].Value);
+        }
+        more.Text = list.Count > shown ? $"+{list.Count - shown} more kinds" : "";
+        more.Visible = more.Text != "";
     }
 
     private bool _wasHome;
 
-    private void UpdateAbility(PlayerController player)
+    private void UpdateBuffs(PlayerController player)
     {
         var cls = player.Class;
         float left = player.Ability.CooldownLeft;
         string state = player.Vanished ? "hidden" : left > 0 ? $"{left:0.0}s" : player.Stamina < cls.AbilityStamina ? "tired" : "ready";
-        _ability.Text = $"{cls.Name}   [R] {cls.AbilityName}: {state}";
-        _ability.Modulate = state == "ready" ? cls.Tint : new Color(0.75f, 0.72f, 0.8f);
-    }
+        _ability.Text = $"{cls.Name}   ·   R  {cls.AbilityName}: {state}";
+        _ability.AddThemeColorOverride("font_color", state == "ready" ? cls.Tint.Lerp(UiTheme.GoldBright, 0.35f) : UiTheme.Muted);
 
-    private void UpdateBuffs(PlayerController player)
-    {
-        UpdateAbility(player);
         bool home = Supplies.AtHome(player);
         if (home != _wasHome) { _wasHome = home; _inventoryDirty = true; }
         if (player.Buffs.Count == 0) { _buffs.Text = ""; return; }
@@ -333,44 +542,31 @@ public partial class Hud : CanvasLayer
         }));
     }
 
-    // ------------------------------------------------------------------ crafting panel
+    // ================================================================== crafting / trade / enchanting
 
-    private void BuildCraftPanel(Control root)
+    private void BuildCraftPanel()
     {
-        _craftPanel = new PanelContainer { Visible = false };
-        var style = new StyleBoxFlat
-        {
-            BgColor = new Color(0.07f, 0.06f, 0.13f, 0.92f),
-            BorderColor = Gold,
-            ContentMarginLeft = 18, ContentMarginRight = 18, ContentMarginTop = 14, ContentMarginBottom = 14,
-        };
-        style.SetBorderWidthAll(2);
-        style.SetCornerRadiusAll(8);
-        _craftPanel.AddThemeStyleboxOverride("panel", style);
-        Place(root, _craftPanel, 0.5f, 0.5f, 0.5f, 0.5f, -280, -260, 280, 260);
-
-        var vbox = new VBoxContainer();
-        vbox.AddThemeConstantOverride("separation", 8);
-        _craftPanel.AddChild(vbox);
-
-        _craftTitle = MakeLabel(26, HorizontalAlignment.Center);
-        _craftTitle.Modulate = Gold;
-        vbox.AddChild(_craftTitle);
-
-        _craftList = new VBoxContainer();
+        _craftPanel = Board(680, 620, "Workbench", out var body, out var footer);
+        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        body.AddChild(scroll);
+        _craftList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _craftList.AddThemeConstantOverride("separation", 6);
-        vbox.AddChild(_craftList);
-
-        var close = new Button { Text = "Close  [Esc / E]" };
+        scroll.AddChild(_craftList);
+        _craftFooter = UiTheme.Label("", "Dim");
+        _craftFooter.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        footer.AddChild(_craftFooter);
+        var close = new Button { Text = "Close" };
         close.Pressed += CloseMenus;
-        vbox.AddChild(close);
+        footer.AddChild(close);
     }
 
     private void RefreshCrafting()
     {
         foreach (var child in _craftList.GetChildren()) child.QueueFree();
+        _craftFooter.Text = "E or Esc to close";
         if (_trader != null) { RefreshTrade(); return; }
         if (_station == null) return;
+        if (_station.StationId == Gear.AltarStation) { RefreshEnchanting(); return; }
         var me = GameState.Instance.LocalPlayer;
         if (_station is Campfire fire)
         {
@@ -382,85 +578,290 @@ public partial class Hud : CanvasLayer
         {
             var cost = recipe.GetInputs();
             bool canAfford = Supplies.Has(me, cost);
-            var button = new Button
-            {
-                Text = $"{recipe.DisplayName}   —   {ItemDb.FormatCost(cost)}",
-                Disabled = !canAfford,
-                TooltipText = canAfford ? "Click to craft" : "Not enough materials",
-            };
             var r = recipe;
             var station = _station;
-            button.Pressed += () => { Sfx.Ui("craft", -4f); station.RequestCraft(r); };
-            _craftList.AddChild(button);
+            var out_ = ItemDb.Get(recipe.OutputItem);
+            string note = out_ is { IsWearable: true } ? $"{Gear.SlotName(out_.Slot)} · {out_.Armor:0} armour" + (out_.PerkText != "" ? $" · {out_.PerkText}" : "")
+                : out_ is { IsWeapon: true } ? $"Weapon · {out_.Damage:0} damage" : "";
+            _craftList.AddChild(RecipeRow(recipe.OutputItem, recipe.DisplayName, note, cost, me, "Craft", canAfford,
+                () => { Sfx.Ui("craft", -4f); station.RequestCraft(r); }));
         }
         if (_craftList.GetChildCount() == 0)
-            _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Center, "No recipes for this station yet."));
+            _craftList.AddChild(UiTheme.Label("No recipes for this station yet.", "Dim", HorizontalAlignment.Center));
+        _craftFooter.Text = "Materials come from your pack, then the stockpile (at home).";
+    }
+
+    /// <summary>A row: the item's slot, its name and a note, the cost as icons (red when short), a button.</summary>
+    private static Control RecipeRow(string itemId, string name, string note, IReadOnlyDictionary<string, int> cost, PlayerController me,
+        string action, bool enabled, System.Action onPress, bool useStock = true)
+    {
+        var row = new PanelContainer { ThemeTypeVariation = "Inset" };
+        var h = new HBoxContainer();
+        h.AddThemeConstantOverride("separation", 12);
+        row.AddChild(h);
+        var slot = new ItemSlot(56);
+        slot.SetItem(itemId);
+        h.AddChild(slot);
+        var mid = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Alignment = BoxContainer.AlignmentMode.Center };
+        mid.AddThemeConstantOverride("separation", 2);
+        h.AddChild(mid);
+        var title = UiTheme.Label(name, "Heading");
+        title.AddThemeFontSizeOverride("font_size", 19);
+        mid.AddChild(title);
+        if (note != "")
+        {
+            var n = UiTheme.Label(note, "Dim");
+            n.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            mid.AddChild(n);
+        }
+        if (cost != null && cost.Count > 0)
+        {
+            var costs = new HBoxContainer();
+            costs.AddThemeConstantOverride("separation", 10);
+            foreach (var kv in cost)
+            {
+                int have = me == null ? 0 : useStock ? Supplies.Count(me, kv.Key) : me.Pack.Count(kv.Key);
+                var c = new HBoxContainer();
+                c.AddThemeConstantOverride("separation", 2);
+                c.AddChild(new TextureRect
+                {
+                    Texture = UiTheme.Icon(kv.Key), ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered, CustomMinimumSize = new Vector2(24, 24),
+                    TooltipText = ItemDb.NameOf(kv.Key),
+                });
+                var amount = UiTheme.Label($"{kv.Value}", "Small");
+                amount.TooltipText = $"{ItemDb.NameOf(kv.Key)}: you have {have}";
+                amount.MouseFilter = Control.MouseFilterEnum.Pass;
+                amount.AddThemeColorOverride("font_color", have >= kv.Value ? UiTheme.Ink : UiTheme.Bad);
+                c.AddChild(amount);
+                costs.AddChild(c);
+            }
+            mid.AddChild(costs);
+        }
+        var button = new Button { Text = action, Disabled = !enabled, CustomMinimumSize = new Vector2(110, 44), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+        button.Pressed += onPress;
+        h.AddChild(button);
+        return row;
     }
 
     private void RefreshTrade()
     {
-        // Trading is done from what you carry (your pack), not the stockpile at home.
-        var inv = GameState.Instance.LocalPlayer?.Pack ?? new Inventory();
+        // Trading uses what you carry (your pack), not the stockpile at home.
+        var me = GameState.Instance.LocalPlayer;
+        var inv = me?.Pack ?? new Inventory();
         int coins = inv.Count("coin");
-        _craftList.AddChild(MakeLabel(17, HorizontalAlignment.Center, $"Coins in your pack: {coins}"));
-        _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Left, "Buy"));
+        _craftFooter.Text = $"Coins in your pack: {coins}";
+        _craftList.AddChild(Section("Buy"));
         foreach (var item in ItemDb.Items.Values.Where(i => i.BuyPrice > 0).OrderBy(i => i.BuyPrice))
         {
             var id = item.Id;
-            var b = new Button { Text = $"{item.DisplayName}   —   {item.BuyPrice} coins", Disabled = coins < item.BuyPrice };
-            b.Pressed += () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: true); };
-            _craftList.AddChild(b);
+            var price = new Dictionary<string, int> { ["coin"] = item.BuyPrice };
+            _craftList.AddChild(RecipeRow(id, item.DisplayName, ShortNote(item), price, me, "Buy", coins >= item.BuyPrice,
+                () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: true); }, useStock: false));
         }
-        _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Left, "Sell"));
-        foreach (var item in ItemDb.Items.Values.Where(i => i.SellPrice > 0).OrderBy(i => i.DisplayName))
+        _craftList.AddChild(Section("Sell"));
+        foreach (var item in ItemDb.Items.Values.Where(i => i.SellPrice > 0 && inv.Count(i.Id) > 0).OrderBy(i => i.DisplayName))
         {
             var id = item.Id;
             int have = inv.Count(id);
-            var b = new Button { Text = $"{item.DisplayName} (×{have})   —   +{item.SellPrice} coins", Disabled = have == 0 };
-            b.Pressed += () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: false); };
-            _craftList.AddChild(b);
+            _craftList.AddChild(RecipeRow(id, $"{item.DisplayName}  ×{have}", $"+{item.SellPrice} coins each", null, me, "Sell", true,
+                () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: false); }));
         }
     }
 
-    // ------------------------------------------------------------------ game menu (Esc)
+    private static string ShortNote(ItemDef d) =>
+        d.IsWearable ? (d.PerkText != "" ? d.PerkText : $"{d.Armor:0} armour") : d.IsFood ? (d.HasBuff ? d.BuffText : $"Heals {d.FoodHeal:0}") : "";
 
-    private void BuildGameMenu(Control root)
+    private static Control Section(string text)
     {
-        _gameMenu = new PanelContainer { Visible = false };
-        var style = new StyleBoxFlat
+        var col = new VBoxContainer();
+        col.AddChild(UiTheme.Label(text, "Heading"));
+        col.AddChild(UiTheme.Divider(600));
+        return col;
+    }
+
+    private void RefreshEnchanting()
+    {
+        var me = GameState.Instance.LocalPlayer;
+        if (me == null) return;
+        // Your pieces: worn first, then the pack.
+        var pieces = me.Worn.Values.Concat(me.Pack.Items.Keys.Where(id => ItemDb.Get(id)?.IsWearable ?? false)).Distinct().ToList();
+        if (!pieces.Contains(_enchantPick)) _enchantPick = pieces.FirstOrDefault() ?? "";
+        _craftList.AddChild(Section("Choose a piece of armour"));
+        if (pieces.Count == 0)
+            _craftList.AddChild(UiTheme.Label("You have no armour to enchant. Craft some at the workbench.", "Dim"));
+        var grid = new GridContainer { Columns = 8 };
+        grid.AddThemeConstantOverride("h_separation", 4);
+        _craftList.AddChild(grid);
+        foreach (var id in pieces)
         {
-            BgColor = new Color(0.07f, 0.06f, 0.13f, 0.92f),
-            BorderColor = Gold,
-            ContentMarginLeft = 18, ContentMarginRight = 18, ContentMarginTop = 14, ContentMarginBottom = 14,
-        };
-        style.SetBorderWidthAll(2);
-        style.SetCornerRadiusAll(8);
-        _gameMenu.AddThemeStyleboxOverride("panel", style);
-        Place(root, _gameMenu, 0.5f, 0.5f, 0.5f, 0.5f, -180, -140, 180, 140);
+            var slot = new ItemSlot(60);
+            slot.SetItem(id);
+            slot.Selected = id == _enchantPick;
+            if (me.Worn.ContainsValue(id)) slot.SetKey("worn");
+            var pick = id;
+            slot.Pressed += () => { _enchantPick = pick; Sfx.Ui("ui_click", -8f); RefreshCrafting(); };
+            grid.AddChild(slot);
+        }
+        var picked = ItemDb.Get(_enchantPick);
+        if (picked != null)
+        {
+            var name = UiTheme.Label(picked.DisplayName, "Heading");
+            _craftList.AddChild(name);
+        }
+        _craftList.AddChild(Section("Enchantments"));
+        var cost = new Dictionary<string, int> { [Gear.ShardId] = Gear.ShardCost, ["coin"] = Gear.CoinCost };
+        bool afford = Supplies.Has(me, cost);
+        var altar = _station;
+        foreach (var e in Gear.Enchantments)
+        {
+            var ench = e;
+            bool same = picked?.Enchant == e.Id;
+            string note = e.Text + (same ? "   (it has this one)" : picked != null && picked.Enchant != "" ? "   (replaces its enchantment)" : "");
+            var row = RecipeRow(Gear.ShardId, $"{e.Name}", note, cost, me, "Enchant", afford && picked != null && !same,
+                () => { Sfx.Ui("craft", -4f); Net.Instance.RequestEnchant(_enchantPick, ench.Id, altar); });
+            _craftList.AddChild(row);
+        }
+        _craftFooter.Text = $"Each enchantment: {Gear.ShardCost} rune shards + {Gear.CoinCost} coins. Shards drop from raiders, the captain and harpies.";
+    }
 
-        var vbox = new VBoxContainer();
-        vbox.AddThemeConstantOverride("separation", 10);
-        _gameMenu.AddChild(vbox);
-        var title = MakeLabel(26, HorizontalAlignment.Center, "Menu");
-        title.Modulate = Gold;
-        vbox.AddChild(title);
+    // ================================================================== character sheet
 
-        var resume = new Button { Text = "Resume  [Esc]" };
+    private void BuildSheet()
+    {
+        _sheet = Board(1020, 640, "Character", out var body, out var footer);
+        var row = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        row.AddThemeConstantOverride("separation", 24);
+        body.AddChild(row);
+
+        // Paper doll: 3 × 3 with the slots placed like a body.
+        var doll = new VBoxContainer();
+        _sheetName = UiTheme.Label("", "Heading", HorizontalAlignment.Center);
+        doll.AddChild(_sheetName);
+        var grid = new GridContainer { Columns = 3 };
+        grid.AddThemeConstantOverride("h_separation", 8);
+        grid.AddThemeConstantOverride("v_separation", 8);
+        doll.AddChild(grid);
+        string[] layout = { "", Gear.Head, "", Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, "", Gear.Feet };
+        foreach (var slotId in layout)
+        {
+            if (slotId == "") { grid.AddChild(new Control { CustomMinimumSize = new Vector2(84, 84) }); continue; }
+            var slot = new ItemSlot(84);
+            var sid = slotId;
+            slot.Pressed += () =>
+            {
+                if (GameState.Instance.LocalPlayer?.Worn.ContainsKey(sid) ?? false) { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTakeOff(sid); }
+            };
+            grid.AddChild(slot);
+            _wornSlots[slotId] = slot;
+        }
+        row.AddChild(doll);
+
+        // Stats.
+        var statsPanel = new PanelContainer { ThemeTypeVariation = "Parchment", CustomMinimumSize = new Vector2(280, 0) };
+        _sheetStats = new VBoxContainer();
+        _sheetStats.AddThemeConstantOverride("separation", 4);
+        statsPanel.AddChild(_sheetStats);
+        row.AddChild(statsPanel);
+
+        // Pack.
+        var packCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        packCol.AddChild(UiTheme.Label("Pack", "Heading"));
+        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        _sheetPack = new GridContainer { Columns = 5 };
+        _sheetPack.AddThemeConstantOverride("h_separation", 4);
+        _sheetPack.AddThemeConstantOverride("v_separation", 4);
+        scroll.AddChild(_sheetPack);
+        packCol.AddChild(scroll);
+        row.AddChild(packCol);
+
+        var hint = UiTheme.Label("Click armour in your pack to wear it · click a worn piece to take it off · I or Esc to close", "Dim");
+        hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        footer.AddChild(hint);
+        var close = new Button { Text = "Close" };
+        close.Pressed += CloseMenus;
+        footer.AddChild(close);
+    }
+
+    private void RefreshSheet()
+    {
+        var me = GameState.Instance.LocalPlayer;
+        if (me == null) return;
+        _sheetVersion = me.Pack.Version * 1000 + me.WornVersion;
+        _sheetName.Text = $"{me.DisplayName} · {me.Class.Name}";
+        foreach (var (slotId, slot) in _wornSlots)
+        {
+            slot.SetItem(me.Worn.TryGetValue(slotId, out var id) ? id : "", 1, Gear.SlotName(slotId));
+            if (id != null) slot.TooltipText += "\n(click to take off)";
+        }
+
+        foreach (var c in _sheetStats.GetChildren()) c.QueueFree();
+        void Stat(string text, bool head = false)
+        {
+            var l = UiTheme.Label(text, "OnParchment");
+            l.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            if (head) { l.AddThemeFontOverride("font", UiTheme.TitleFont); l.AddThemeFontSizeOverride("font_size", 19); }
+            _sheetStats.AddChild(l);
+        }
+        Stat("Vitals", true);
+        Stat($"Health {me.Health.Current:0} / {me.Health.Max:0}");
+        Stat($"Stamina {me.MaxStamina:0}");
+        Stat("Armour", true);
+        foreach (var line in Gear.Summary(me)) Stat(line);
+        Stat("Class", true);
+        Stat($"{me.Class.Name}: {me.Class.AbilityName} on R");
+
+        // Pack: everything you carry; armour is clickable to wear.
+        var items = me.Pack.Items.OrderBy(kv => (ItemDb.Get(kv.Key)?.IsWearable ?? false) ? 0 : 1).ThenBy(kv => ItemDb.NameOf(kv.Key)).ToList();
+        while (_sheetPack.GetChildCount() < items.Count)
+        {
+            var slot = new ItemSlot(68);
+            slot.Pressed += () =>
+            {
+                if (ItemDb.Get(slot.ItemId)?.IsWearable ?? false) { Sfx.Ui("ui_click", -6f); Net.Instance.RequestWear(slot.ItemId); }
+            };
+            _sheetPack.AddChild(slot);
+        }
+        for (int i = 0; i < _sheetPack.GetChildCount(); i++)
+        {
+            var slot = (ItemSlot)_sheetPack.GetChild(i);
+            slot.Visible = i < items.Count;
+            if (i < items.Count)
+            {
+                slot.SetItem(items[i].Key, items[i].Value);
+                if (ItemDb.Get(items[i].Key)?.IsWearable ?? false) slot.TooltipText += "\n(click to wear)";
+            }
+        }
+    }
+
+    // ================================================================== game menu (Esc)
+
+    private void BuildGameMenu()
+    {
+        _gameMenu = Board(400, 400, "Menu", out var body, out _);
+        var resume = new Button { Text = "Resume" };
         resume.Pressed += CloseMenus;
-        vbox.AddChild(resume);
-        var looks = new Button { Text = "Character…" };
+        body.AddChild(resume);
+        var sheet = new Button { Text = "Character & armour  (I)" };
+        sheet.Pressed += OpenCharacter;
+        body.AddChild(sheet);
+        var looks = new Button { Text = "Appearance & class…" };
         looks.Pressed += () => OpenCreator();
-        vbox.AddChild(looks);
+        body.AddChild(looks);
+        var help = new Button { Text = "Controls & help  (F1)" };
+        help.Pressed += () => ShowBoard(_help);
+        body.AddChild(help);
+        body.AddChild(UiTheme.Divider(300));
         var leave = new Button { Text = "Leave to main menu" };
         leave.Pressed += () => Net.Instance.Leave();
-        vbox.AddChild(leave);
+        body.AddChild(leave);
         var quit = new Button { Text = "Quit to desktop" };
         quit.Pressed += () =>
         {
             Net.Instance.Leave();
             GetTree().Quit();
         };
-        vbox.AddChild(quit);
+        body.AddChild(quit);
     }
 
     /// <summary>Pause menu: change your look mid-game. Done saves it and shows it to everyone.</summary>
@@ -468,6 +869,7 @@ public partial class Hud : CanvasLayer
     {
         bool fromMenu = _gameMenu.Visible;
         _gameMenu.Visible = false;
+        GameState.Instance.SetUiOpen(true);
         void Back() { if (fromMenu && GameState.Instance.UiOpen) _gameMenu.Visible = true; }
         var creator = new CharacterCreator(Appearance.Local, look =>
         {
@@ -480,33 +882,7 @@ public partial class Hud : CanvasLayer
         return creator;
     }
 
-    // ------------------------------------------------------------------ helpers
-
-    private Label MakeLabel(int size, HorizontalAlignment align = HorizontalAlignment.Left, string text = "")
-    {
-        var label = new Label { Text = text, HorizontalAlignment = align, MouseFilter = Control.MouseFilterEnum.Ignore };
-        label.AddThemeFontSizeOverride("font_size", size);
-        label.AddThemeConstantOverride("outline_size", 6);
-        label.AddThemeColorOverride("font_outline_color", new Color(0.05f, 0.04f, 0.1f));
-        return label;
-    }
-
-    private static ProgressBar MakeBar(Color fill)
-    {
-        var bar = new ProgressBar
-        {
-            ShowPercentage = false,
-            CustomMinimumSize = new Vector2(300, 18),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        var bg = new StyleBoxFlat { BgColor = new Color(0.06f, 0.05f, 0.12f, 0.75f) };
-        bg.SetCornerRadiusAll(4);
-        var fg = new StyleBoxFlat { BgColor = fill };
-        fg.SetCornerRadiusAll(4);
-        bar.AddThemeStyleboxOverride("background", bg);
-        bar.AddThemeStyleboxOverride("fill", fg);
-        return bar;
-    }
+    // ================================================================== helpers
 
     private static void Place(Control parent, Control c, float al, float at, float ar, float ab,
         float offL, float offT, float offR, float offB)
