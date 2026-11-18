@@ -16,6 +16,7 @@ public partial class CharacterModel : Node3D
     private AnimationPlayer _anim;
     private Node3D _model;
     private float _oneShotTimer;
+    private float _stride;
     private string _current = "";
 
     private static readonly string[] LoopAnims =
@@ -34,6 +35,7 @@ public partial class CharacterModel : Node3D
         AddChild(_model);
         foreach (var prop in HiddenProps)
             if (_model.FindChild(prop, true, false) is Node3D n) n.Visible = false;
+        StyleMaterials.ApplyCharacter(_model);
 
         FitHeight();
 
@@ -82,6 +84,17 @@ public partial class CharacterModel : Node3D
         return null;
     }
 
+    /// <summary>A soft footfall every stride while walking or running on the ground.</summary>
+    private void Footsteps(float speed, float dt)
+    {
+        if (!_player.Grounded || speed < 0.8f || _player.Sleeping) { _stride = 0.5f; return; }
+        _stride += speed * dt;
+        float strideLength = speed > 6f ? 2.1f : 1.35f;
+        if (_stride < strideLength) return;
+        _stride -= strideLength;
+        Sfx.At("step", _player.GlobalPosition, (speed > 6f ? -10f : -14f) + (_player.IsLocal ? 0f : -2f), 0.18f, 20f);
+    }
+
     public bool HasAnimation(string name) => _anim?.HasAnimation(name) ?? false;
 
     private void Play(string name, double blend = 0.2, float speed = 1f)
@@ -121,6 +134,7 @@ public partial class CharacterModel : Node3D
 
         var v = _player.Velocity;
         float speed = new Vector2(v.X, v.Z).Length();
+        Footsteps(speed, (float)delta);
         bool armed = _player.Equipped != "";
         if (_player.Sleeping && HasAnimation("Lie_Idle")) Play("Lie_Idle", 0.4);
         else if (_player.GuardShown && HasAnimation("Blocking")) Play("Blocking", 0.12);

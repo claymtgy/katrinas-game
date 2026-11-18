@@ -30,12 +30,8 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
         }
     }
 
-    private static Dictionary<string, int> Missing()
-    {
-        var inv = GameState.Instance.Inventory;
-        return CottageCost.Where(kv => inv.Count(kv.Key) < kv.Value)
-            .ToDictionary(kv => kv.Key, kv => kv.Value - inv.Count(kv.Key));
-    }
+    private static Dictionary<string, int> Missing(PlayerController p = null) =>
+        Supplies.Missing(p ?? GameState.Instance.LocalPlayer, CottageCost);
 
     public void Interact(PlayerController player)
     {
@@ -49,9 +45,9 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
         var net = Net.Instance;
         if (gs.HomeTier >= 2) return;
         if (gs.Players.Values.Any(p => p.Sleeping)) { net.ToastTo(player.PeerId, "Not while someone is asleep in the shack."); return; }
-        if (!gs.Inventory.TryConsume(CottageCost))
+        if (!Supplies.TryConsume(player, CottageCost))
         {
-            net.ToastTo(player.PeerId, $"The stockpile is short: {ItemDb.FormatCost(Missing())}");
+            net.ToastTo(player.PeerId, $"Still short (pack + stockpile): {ItemDb.FormatCost(Missing(player))}");
             return;
         }
         // Anything built where the cottage goes is packed up and its materials returned.

@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/StorageChest.cs" id="1_chest"]
+
+[sub_resource type="BoxShape3D" id="Shape_chest"]
+size = Vector3(1.25, 0.95, 0.8)
+
+[node name="StorageChest" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_chest")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.48, 0)
+shape = SubResource("Shape_chest")

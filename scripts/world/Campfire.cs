@@ -25,6 +25,7 @@ public partial class Campfire : CraftingStation, IServerInteractable
         _light = GetNodeOrNull<OmniLight3D>("Light");
         _flame = GetNodeOrNull<Node3D>("Flame");
         _t = (float)GD.RandRange(0, 100);
+        Sfx.Loop(this, "amb_fire", new Vector3(0, 0.4f, 0), -4f, 16f, 2f);
     }
 
     public override void _Process(double delta)

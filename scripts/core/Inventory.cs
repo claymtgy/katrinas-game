@@ -17,6 +17,12 @@ public class Inventory
 
     public IReadOnlyDictionary<string, int> Items => _items;
 
+    /// <summary>Bumped on every change (cheap "did it change?" checks for UI).</summary>
+    public int Version { get; private set; }
+
+    /// <summary>Items that take up room in a pack (coins weigh nothing).</summary>
+    public int Load => _items.Where(kv => kv.Key != "coin").Sum(kv => kv.Value);
+
     public int Count(string id) => _items.TryGetValue(id, out var c) ? c : 0;
 
     public void Add(string id, int amount = 1)
@@ -24,7 +30,7 @@ public class Inventory
         if (amount <= 0 || string.IsNullOrEmpty(id)) return;
         _items[id] = Count(id) + amount;
         ItemAdded?.Invoke(id, amount);
-        Changed?.Invoke();
+        Notify();
     }
 
     public bool Remove(string id, int amount = 1)
@@ -32,7 +38,7 @@ public class Inventory
         if (Count(id) < amount) return false;
         _items[id] -= amount;
         if (_items[id] <= 0) _items.Remove(id);
-        Changed?.Invoke();
+        Notify();
         return true;
     }
 
@@ -43,7 +49,7 @@ public class Inventory
         if (!Has(cost)) return false;
         foreach (var kv in cost) _items[kv.Key] -= kv.Value;
         foreach (var key in _items.Where(kv => kv.Value <= 0).Select(kv => kv.Key).ToList()) _items.Remove(key);
-        Changed?.Invoke();
+        Notify();
         return true;
     }
 
@@ -56,7 +62,7 @@ public class Inventory
             int n = kv.Value.AsInt32();
             if (n > 0) _items[kv.Key.AsString()] = n;
         }
-        Changed?.Invoke();
+        Notify();
     }
 
     public Godot.Collections.Dictionary ToDictionary()
@@ -69,6 +75,12 @@ public class Inventory
     public void Clear()
     {
         _items.Clear();
+        Notify();
+    }
+
+    private void Notify()
+    {
+        Version++;
         Changed?.Invoke();
     }
 }

@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 2;
+    public const int ProtocolVersion = 3;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -30,7 +30,10 @@ public partial class Net : Node
     /// <summary>Damage that gets through a (non-parry) block.</summary>
     public const float BlockedDamageFactor = 0.2f;
 
-    public enum HitResult { Hit, Blocked, Parried }
+    /// <summary>How long a dodge roll can't be hit (s).</summary>
+    public const float DodgeIFrames = 0.32f;
+
+    public enum HitResult { Hit, Blocked, Parried, Dodged }
 
     /// <summary>Server clock for block timing (seconds).</summary>
     public static double Now => Time.GetTicksMsec() / 1000.0;
@@ -64,6 +67,7 @@ public partial class Net : Node
     private string _joinPassword = "";
     private float _stateTimer, _timeSyncTimer, _autosaveTimer;
     private bool _inventoryDirty;
+    private readonly HashSet<int> _packDirty = new();
     private bool _leaving;
 
     private static GameState Gs => GameState.Instance;
@@ -286,6 +290,8 @@ public partial class Net : Node
         _joined.Add(id);
         ServerAddPlayer(id, name);
         RpcId(id, MethodName.C_Welcome, BuildSnapshot());
+        var joined = Gs.GetPlayer(id);
+        if (joined != null) RpcId(id, MethodName.C_Pack, joined.Pack.ToDictionary());
         ToastAll($"{name} joined the game", except: id);
         UpdateSleep();
     }
@@ -349,6 +355,7 @@ public partial class Net : Node
             ["sleep"] = new GArray { SleepingCount, SleepTotal },
             ["enemies"] = Wildlife.Instance?.Snapshot() ?? new GArray(),
             ["home_tier"] = Gs.HomeTier,
+            ["rain"] = Gs.Raining,
         };
     }
 
@@ -387,6 +394,7 @@ public partial class Net : Node
         }
 
         Gs.SetHomeTier(s["home_tier"].AsInt32());
+        Gs.SetRaining(s.TryGetValue("rain", out var rain) && rain.AsBool());
         // Enemies before health, so their Health nodes exist when health is applied.
         if (s.TryGetValue("enemies", out var enemies)) Wildlife.Instance?.ApplySnapshot(enemies.AsGodotArray());
 
@@ -436,7 +444,12 @@ public partial class Net : Node
         int index = Gs.Players.Count;
         var pos = rec != null ? rec["pos"].AsVector3() : Gs.WorldSpawn + new Vector3(index * 1.2f, 0, index * 0.6f);
         var p = SpawnPlayerNode(id, name, pos);
-        if (rec != null) p.SpawnPoint = rec["spawn"].AsVector3();
+        if (rec != null)
+        {
+            p.SpawnPoint = rec["spawn"].AsVector3();
+            if (rec.TryGetValue("pack", out var pack)) p.Pack.ReplaceAll(pack.AsGodotDictionary());
+        }
+        p.Pack.Changed += () => _packDirty.Add(id);
         GD.Print($"[Net] {name} (peer {id}) is in the world. {Gs.Players.Count}/{Config.MaxPlayers} players");
         foreach (var peer in _joined)
             if (peer != id) RpcId(peer, MethodName.C_SpawnPlayer, PlayerInfo(p));
@@ -519,6 +532,23 @@ public partial class Net : Node
     public void RequestBlock(bool on) => ToServer(MethodName.S_Block, on);
     public void RequestTrade(Node trader, string itemId, bool buy) => ToServer(MethodName.S_Trade, trader.GetPath(), itemId, buy);
     public void RequestEat() => ToServer(MethodName.S_Eat);
+    public void RequestDodge(Vector3 dir) => ToServer(MethodName.S_Dodge, dir);
+
+    // ---------------------------------------------------------------- dodge roll
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Dodge(Vector3 dir)
+    {
+        var p = SenderPlayer();
+        if (p == null || p.Health.IsDead) return;
+        p.DodgeUntil = Now + DodgeIFrames;
+        foreach (var peer in _joined)
+            if (peer != p.PeerId) RpcId(peer, MethodName.C_Dodge, p.PeerId, dir);
+        if (!p.IsLocal && !IsDedicated) p.PlayDodge(dir);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Dodge(int id, Vector3 dir) => Gs.GetPlayer(id)?.PlayDodge(dir);
 
     // ---------------------------------------------------------------- blocking (GDD §9 combat)
 
@@ -546,6 +576,7 @@ public partial class Net : Node
     public HitResult ServerDamagePlayer(PlayerController p, float amount, Node source)
     {
         var result = HitResult.Hit;
+        if (Now < p.DodgeUntil) return HitResult.Dodged; // rolled clear
         if (p.Blocking && source is Node3D s && p.Facing(s.GlobalPosition))
             result = Now - p.BlockStartedAt <= ParryWindow ? HitResult.Parried : HitResult.Blocked;
 
@@ -596,15 +627,16 @@ public partial class Net : Node
         if (buy)
         {
             if (item.BuyPrice <= 0) return;
-            if (!Gs.Inventory.Remove("coin", item.BuyPrice)) { ToastTo(p.PeerId, $"Not enough coins ({item.BuyPrice} needed)"); return; }
-            Gs.Inventory.Add(itemId, 1);
+            if (p.Pack.Load >= Supplies.PackCapacity) { ToastTo(p.PeerId, "Your pack is full"); return; }
+            if (!p.Pack.Remove("coin", item.BuyPrice)) { ToastTo(p.PeerId, $"Not enough coins in your pack ({item.BuyPrice} needed)"); return; }
+            p.Pack.Add(itemId, 1);
             ToastTo(p.PeerId, $"Bought {item.DisplayName} for {item.BuyPrice} coins");
         }
         else
         {
             if (item.SellPrice <= 0) return;
-            if (!Gs.Inventory.Remove(itemId, 1)) { ToastTo(p.PeerId, $"No {item.DisplayName} in the stockpile"); return; }
-            Gs.Inventory.Add("coin", item.SellPrice);
+            if (!p.Pack.Remove(itemId, 1)) { ToastTo(p.PeerId, $"No {item.DisplayName} in your pack"); return; }
+            p.Pack.Add("coin", item.SellPrice);
             ToastTo(p.PeerId, $"Sold {item.DisplayName} for {item.SellPrice} coins");
         }
     }
@@ -614,15 +646,56 @@ public partial class Net : Node
     {
         var p = SenderPlayer();
         if (p == null || p.Health.IsDead) return;
-        if (p.Health.Current >= p.Health.Max) { ToastTo(p.PeerId, "You're not hungry (full health)"); return; }
-        var food = Gs.Inventory.Items.Keys.Select(ItemDb.Get)
-            .Where(d => d != null && d.FoodHeal > 0)
-            .OrderBy(d => d.FoodHeal).FirstOrDefault(d => d.FoodHeal >= p.Health.Max - p.Health.Current)
-            ?? Gs.Inventory.Items.Keys.Select(ItemDb.Get).Where(d => d != null && d.FoodHeal > 0).OrderByDescending(d => d.FoodHeal).FirstOrDefault();
-        if (food == null || !Gs.Inventory.Remove(food.Id, 1)) { ToastTo(p.PeerId, "No food in the stockpile. Cook at a campfire."); return; }
-        ServerRestore(p, food.FoodHeal);
-        ToastTo(p.PeerId, $"Ate {food.DisplayName} (+{food.FoodHeal:0} health)");
+        var foods = ItemDb.Items.Values.Where(d => d.IsFood && Supplies.Count(p, d.Id) > 0).ToList();
+        if (foods.Count == 0)
+        {
+            ToastTo(p.PeerId, Supplies.AtHome(p) ? "No food in your pack or the stockpile. Cook at a campfire." : "No food in your pack.");
+            return;
+        }
+        float missing = p.Health.Max - p.Health.Current;
+        ItemDef food;
+        if (missing > 0.5f)
+            // Hurt: the smallest meal that heals it all, else the biggest.
+            food = foods.Where(d => d.FoodHeal >= missing).OrderBy(d => d.FoodHeal).FirstOrDefault()
+                   ?? foods.OrderByDescending(d => d.FoodHeal).First();
+        else
+        {
+            // Healthy: only worth eating for a buff you don't have yet.
+            food = foods.Where(d => d.HasBuff && p.BuffAmount(d.BuffKind) <= 0f).OrderBy(d => d.SellPrice).FirstOrDefault();
+            if (food == null) { ToastTo(p.PeerId, "You're not hungry (full health, already well fed)"); return; }
+        }
+        if (!Supplies.TryConsume(p, food.Id)) return;
+        if (food.HasBuff) ServerBuff(p, food.BuffKind, food.BuffAmount, food.BuffSeconds);
+        if (food.FoodHeal > 0) ServerRestore(p, food.FoodHeal);
+        ToastTo(p.PeerId, $"Ate {food.DisplayName}" + (food.FoodHeal > 0 ? $" (+{food.FoodHeal:0} health)" : "") +
+                          (food.HasBuff ? $". {food.BuffText} for {food.BuffSeconds / 60f:0} min" : ""));
     }
+
+    // ---------------------------------------------------------------- food buffs
+
+    /// <summary>Server: start a timed buff on a player, on every machine.</summary>
+    public void ServerBuff(PlayerController p, string kind, float amount, float seconds)
+    {
+        p.ApplyBuff(kind, amount, seconds);
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_Buff, p.PeerId, kind, amount, seconds);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Buff(int id, string kind, float amount, float seconds) => Gs.GetPlayer(id)?.ApplyBuff(kind, amount, seconds);
+
+    private void ServerClearBuffs(PlayerController p)
+    {
+        p.ClearBuffs();
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_ClearBuffs, p.PeerId);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_ClearBuffs(int id) => Gs.GetPlayer(id)?.ClearBuffs();
+
+    // ---------------------------------------------------------------- packs
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Pack(GDict items) => Gs.LocalPlayer?.Pack.ReplaceAll(items);
 
     // ---------------------------------------------------------------- building state, home
 
@@ -666,7 +739,7 @@ public partial class Net : Node
         string reason = p.GlobalPosition.DistanceTo(pos) > p.Build.MaxPlaceDistance + 6f
             ? "Too far away"
             : BuildSystem.CheckPlacement(p.GetWorld3D().DirectSpaceState, def, pos, rotY);
-        if (reason != "" || !Gs.Inventory.TryConsume(def.GetCost()))
+        if (reason != "" || !Supplies.TryConsume(p, def.GetCost()))
         {
             ToastTo(p.PeerId, $"Can't build: {(reason == "" ? "Not enough materials" : reason)}");
             return;
@@ -689,7 +762,7 @@ public partial class Net : Node
         var station = GetNodeOrNull<CraftingStation>(stationPath);
         if (p == null || recipe == null || station == null || station.StationId != recipe.Station) return;
         if (!InReach(p, station)) { ToastTo(p.PeerId, $"Get closer to the {station.StationName}"); return; }
-        if (!Gs.Inventory.TryConsume(recipe.GetInputs())) { ToastTo(p.PeerId, "Not enough materials in the stockpile"); return; }
+        if (!Supplies.TryConsume(p, recipe.GetInputs())) { ToastTo(p.PeerId, "Not enough materials in your pack or the stockpile"); return; }
 
         var item = ItemDb.Get(recipe.OutputItem);
         int count = recipe.OutputCount;
@@ -787,6 +860,9 @@ public partial class Net : Node
     /// <summary>Server: a player's Health hit zero.</summary>
     public void ServerPlayerDied(PlayerController p, Node source)
     {
+        int lost = Supplies.LoseOnDeath(p);
+        if (lost > 0) ToastTo(p.PeerId, $"You dropped {lost} things from your pack.");
+        if (p.Buffs.Count > 0) ServerClearBuffs(p);
         if (source is PlayerController killer && killer != p)
         {
             ToastTo(killer.PeerId, $"You defeated {p.DisplayName}");
@@ -894,6 +970,16 @@ public partial class Net : Node
     [Rpc(MultiplayerApi.RpcMode.Authority)]
     private void C_Inventory(GDict items) => Gs.Inventory.ReplaceAll(items);
 
+    /// <summary>Server: rain starts or stops (Weather).</summary>
+    public void ServerSetRain(bool raining)
+    {
+        Gs.SetRaining(raining);
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_Rain, raining);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Rain(bool raining) => Gs.SetRaining(raining);
+
     private void SyncTime()
     {
         foreach (var peer in _joined) RpcId(peer, MethodName.C_Time, Gs.TimeOfDay, Gs.Day);
@@ -946,6 +1032,16 @@ public partial class Net : Node
                 var items = Gs.Inventory.ToDictionary();
                 foreach (var peer in _joined) RpcId(peer, MethodName.C_Inventory, items);
             }
+        }
+
+        if (_packDirty.Count > 0)
+        {
+            foreach (int id in _packDirty)
+            {
+                var p = Gs.GetPlayer(id);
+                if (p != null && id != LocalId && _joined.Contains(id)) RpcId(id, MethodName.C_Pack, p.Pack.ToDictionary());
+            }
+            _packDirty.Clear();
         }
 
         _timeSyncTimer -= dt;

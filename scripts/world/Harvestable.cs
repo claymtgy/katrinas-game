@@ -68,6 +68,9 @@ public partial class Harvestable : StaticBody3D
             }
         }
 
+        if (!Net.Instance.IsDedicated)
+            Sfx.At(DropItemId switch { "wood" => "chop", "stone" => "mine", _ => "rustle" }, GlobalPosition + Vector3.Up, 0f, 0.1f);
+
         // Little shake.
         if (_health.IsDead) return;
         _tween?.Kill();
@@ -101,12 +104,13 @@ public partial class Harvestable : StaticBody3D
         _tween.TweenCallback(Callable.From(() => _visual.Visible = false));
     }
 
-    /// <summary>Server: into the shared stockpile, with a pickup message for whoever gathered it.</summary>
+    /// <summary>Server: into the gatherer's pack (Supplies), with a pickup message.</summary>
     private void Give(Node source, int count)
     {
         if (count <= 0) return;
-        GameState.Instance.Inventory.Add(DropItemId, count);
-        if (source is PlayerController p) Net.Instance.ToastTo(p.PeerId, $"+{count} {ItemDb.NameOf(DropItemId)}");
+        var p = source as PlayerController;
+        int got = Supplies.Give(p, DropItemId, count);
+        if (p != null && got > 0) Net.Instance.ToastTo(p.PeerId, $"+{got} {ItemDb.NameOf(DropItemId)}");
     }
 
     private void Respawn()

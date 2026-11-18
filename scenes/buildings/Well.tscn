@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/WaterSource.cs" id="1_well"]
+
+[sub_resource type="CylinderShape3D" id="Shape_well"]
+radius = 0.95
+height = 0.9
+
+[node name="Well" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_well")
+BuildVisual = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.45, 0)
+shape = SubResource("Shape_well")

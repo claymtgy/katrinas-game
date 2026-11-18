@@ -22,6 +22,12 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float SprintCostPerSecond { get; set; } = 14f;
     [Export] public float JumpCost { get; set; } = 8f;
 
+    [ExportGroup("Dodge")]
+    [Export] public float DodgeSpeed { get; set; } = 10.5f;
+    [Export] public float DodgeDuration { get; set; } = 0.38f;
+    [Export] public float DodgeCost { get; set; } = 22f;
+    [Export] public float DodgeCooldown { get; set; } = 0.55f;
+
     [ExportGroup("Falling")]
     /// <summary>Landing speeds above this (m/s) hurt.</summary>
     [Export] public float SafeFallSpeed { get; set; } = 12f;
@@ -47,6 +53,20 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>Guard shown on this machine (instant for the local player).</summary>
     public bool GuardShown => IsLocal ? Combat.GuardUp : Blocking;
 
+    /// <summary>What this player carries (GDD §16). Server-owned; the owner gets a mirror.
+    /// Emptied into the stockpile at a storage chest. See Supplies.</summary>
+    public Inventory Pack { get; } = new();
+    /// <summary>Server: when this player's dodge i-frames end (Net.Now).</summary>
+    public double DodgeUntil { get; set; }
+    /// <summary>Local player: mid-roll.</summary>
+    public bool Dodging => _dodgeTime > 0;
+
+    /// <summary>Food buffs: kind -> (amount, seconds left). Mirrored on every machine.</summary>
+    public readonly System.Collections.Generic.Dictionary<string, (float Amount, float Left)> Buffs = new();
+    public const string BuffStamina = "stamina";
+    public const string BuffVigor = "vigor";
+    public float BaseMaxHealth { get; private set; } = 100f;
+
     public float Stamina { get; private set; }
     public Health Health { get; private set; }
     public CameraRig Rig { get; private set; }
@@ -64,6 +84,8 @@ public partial class PlayerController : CharacterBody3D
     private bool _wasOnFloor = true;
     private bool _fellOut;
     private bool _wakeRequested;
+    private float _dodgeTime, _dodgeCooldown;
+    private Vector3 _dodgeDir;
 
     // Remote state.
     private bool _hasRemoteState;
@@ -88,6 +110,7 @@ public partial class PlayerController : CharacterBody3D
     {
         _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
         Stamina = MaxStamina;
+        BaseMaxHealth = Health.Max;
 
         var gs = GameState.Instance;
         gs.Players[PeerId] = this;
@@ -99,6 +122,20 @@ public partial class PlayerController : CharacterBody3D
         {
             if (Net.Instance.IsServer) Net.Instance.ServerPlayerDied(this, source);
         };
+        Health.Damaged += (amount, _) =>
+        {
+            if (amount > 0 && !Net.Instance.IsDedicated) Sfx.At("hit_flesh", GlobalPosition + Vector3.Up * 1.1f, IsLocal ? 2f : 0f, 0.1f);
+        };
+        if (IsLocal)
+        {
+            // A soft pop when something lands in your pack.
+            int lastLoad = Pack.Load;
+            Pack.Changed += () =>
+            {
+                if (Pack.Load > lastLoad) Sfx.Ui("pickup", -8f, 0.08f);
+                lastLoad = Pack.Load;
+            };
+        }
 
         if (IsLocal)
             Rig.ViewChanged += firstPerson => Body.GetNode<Node3D>("Mesh").Visible = !firstPerson;
@@ -136,6 +173,92 @@ public partial class PlayerController : CharacterBody3D
     }
 
     public void RestoreStamina() => Stamina = MaxStamina;
+
+    // ---------------------------------------------------------------- food buffs
+
+    public float BuffAmount(string kind) => Buffs.TryGetValue(kind, out var b) ? b.Amount : 0f;
+
+    /// <summary>Every machine: start (or refresh) a timed buff. The server decides; see Net.ServerBuff.</summary>
+    public void ApplyBuff(string kind, float amount, float seconds)
+    {
+        if (seconds <= 0) Buffs.Remove(kind);
+        else
+        {
+            Buffs[kind] = (amount, seconds);
+            Sfx.At("eat", GlobalPosition + Vector3.Up * 1.5f, IsLocal ? 0f : -4f);
+        }
+        UpdateMaxHealth();
+    }
+
+    public void ClearBuffs()
+    {
+        Buffs.Clear();
+        UpdateMaxHealth();
+    }
+
+    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + BuffAmount(BuffVigor));
+
+    private void TickBuffs(float dt)
+    {
+        if (Buffs.Count == 0) return;
+        bool expired = false;
+        foreach (var kind in System.Linq.Enumerable.ToList(Buffs.Keys))
+        {
+            var b = Buffs[kind];
+            b.Left -= dt;
+            if (b.Left <= 0) { Buffs.Remove(kind); expired = true; }
+            else Buffs[kind] = b;
+        }
+        if (expired)
+        {
+            UpdateMaxHealth();
+            if (IsLocal) Hud.Toast("A meal's strength wears off.");
+        }
+    }
+
+    // ---------------------------------------------------------------- dodge
+
+    /// <summary>Local player: roll in the move direction (backwards if standing still). Short
+    /// invulnerability, costs stamina. Returns false if it couldn't.</summary>
+    public bool TryDodge(Vector2 input)
+    {
+        var gs = GameState.Instance;
+        if (gs.UiOpen || Sleeping || Health.IsDead || !IsOnFloor() || _dodgeTime > 0 || _dodgeCooldown > 0) return false;
+        if (!TrySpendStamina(DodgeCost)) { Hud.Toast("Too tired to roll!"); return false; }
+        var basis = Rig.GlobalTransform.Basis;
+        var forward = new Vector3(-basis.Z.X, 0, -basis.Z.Z).Normalized();
+        var right = new Vector3(basis.X.X, 0, basis.X.Z).Normalized();
+        if (input.LengthSquared() < 0.1f) input = new Vector2(0, 1); // back
+        _dodgeDir = (right * input.X - forward * input.Y).Normalized();
+        _dodgeTime = DodgeDuration;
+        _dodgeCooldown = DodgeDuration + DodgeCooldown;
+        if (Combat.GuardUp) Combat.DropGuard();
+        PlayDodge(_dodgeDir);
+        Net.Instance.RequestDodge(_dodgeDir);
+        return true;
+    }
+
+    /// <summary>Everyone: the roll animation (third person) or a camera dip (first person).</summary>
+    public void PlayDodge(Vector3 worldDir)
+    {
+        var (yaw, _) = Rig.Look;
+        var fwd = new Vector3(-Mathf.Sin(yaw), 0, -Mathf.Cos(yaw));
+        var right = new Vector3(Mathf.Cos(yaw), 0, -Mathf.Sin(yaw));
+        float f = worldDir.Dot(fwd), r = worldDir.Dot(right);
+        string anim = Mathf.Abs(f) >= Mathf.Abs(r) ? (f >= 0 ? "Dodge_Forward" : "Dodge_Backward") : (r >= 0 ? "Dodge_Right" : "Dodge_Left");
+        Body.GetNodeOrNull<CharacterModel>("Mesh")?.PlayOneShot(anim, 1.5f);
+        Sfx.At("dodge", GlobalPosition + Vector3.Up * 0.8f, -2f);
+        if (IsLocal && Rig.FirstPerson)
+        {
+            var cam = Rig.Camera;
+            var t = cam.CreateTween();
+            float roll = r >= 0 ? -0.18f : 0.18f;
+            t.TweenProperty(cam, "rotation:z", Mathf.Abs(r) > 0.3f ? roll : 0f, DodgeDuration * 0.4);
+            t.Parallel().TweenProperty(cam, "position:y", cam.Position.Y - 0.35f, DodgeDuration * 0.4);
+            t.TweenProperty(cam, "rotation:z", 0f, DodgeDuration * 0.6);
+            t.Parallel().TweenProperty(cam, "position:y", cam.Position.Y, DodgeDuration * 0.6);
+        }
+    }
 
     /// <summary>Lose stamina even below zero cost checks (blocked blows).</summary>
     public void DrainStamina(float amount)
@@ -179,6 +302,7 @@ public partial class PlayerController : CharacterBody3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
+        TickBuffs(dt);
         if (!IsLocal) { FollowRemote(dt); return; }
 
         var gs = GameState.Instance;
@@ -207,6 +331,9 @@ public partial class PlayerController : CharacterBody3D
         var dir = right * input.X - forward * input.Y;
         if (dir.LengthSquared() > 1f) dir = dir.Normalized();
 
+        if (!blocked && Input.IsActionJustPressed("dodge")) TryDodge(input);
+        if (_dodgeCooldown > 0) _dodgeCooldown -= dt;
+
         bool moving = dir.LengthSquared() > 0.01f;
         bool guarding = Combat.GuardUp;
         bool sprinting = !blocked && !guarding && moving && onFloor && Input.IsActionPressed("sprint") && Stamina > 1f;
@@ -218,10 +345,18 @@ public partial class PlayerController : CharacterBody3D
 
         var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f));
         float accel = Mathf.Min(1f, (onFloor ? GroundAcceleration : AirAcceleration) * dt);
+        if (_dodgeTime > 0)
+        {
+            // The roll: a burst that eases off toward the end.
+            _dodgeTime -= dt;
+            float k = Mathf.Clamp(_dodgeTime / DodgeDuration, 0f, 1f);
+            target = _dodgeDir * DodgeSpeed * (0.45f + 0.55f * k);
+            accel = 1f;
+        }
         v.X = Mathf.Lerp(v.X, target.X, accel);
         v.Z = Mathf.Lerp(v.Z, target.Z, accel);
 
-        if (onFloor && !blocked && Input.IsActionJustPressed("jump") && TrySpendStamina(JumpCost))
+        if (onFloor && !blocked && _dodgeTime <= 0 && Input.IsActionJustPressed("jump") && TrySpendStamina(JumpCost))
             v.Y = JumpVelocity;
 
         if (!onFloor) _airVelocityY = v.Y;
@@ -241,7 +376,7 @@ public partial class PlayerController : CharacterBody3D
 
         // Stamina regen.
         if (_regenDelay > 0) _regenDelay -= dt;
-        else Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * (guarding ? 0.4f : 1f) * dt);
+        else Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
 
         FaceCamera(Rig.Rotation.Y, dt);
 

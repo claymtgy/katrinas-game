@@ -27,6 +27,7 @@ public partial class HumanoidModel : Node3D
         h.AddChild(h._model);
         foreach (var prop in hideProps)
             if (h._model.FindChild(prop, true, false) is Node3D n) n.Visible = false;
+        StyleMaterials.ApplyCharacter(h._model);
         h._tint = tint;
         if (tint.A > 0)
         {

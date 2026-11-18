@@ -35,6 +35,7 @@ void fragment() {
     vec3 sun_tint = clamp(sun_color.rgb, vec3(0.0), vec3(1.4));
     vec3 col = mix(shade_color, lit_color * mix(vec3(1.0), sun_tint, 0.6), band);
     col += vec3(1.0, 0.72, 0.55) * smoothstep(0.2, 0.9, n.y) * 0.22;     // warm light pooling on the flat tops
+    col *= mix(0.78, 1.0, smoothstep(-0.7, 0.2, n.y));                    // shadowed undersides: depth between puffs
     float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
     col += sun_tint * rim * 0.45;                                        // silver lining
     col = mix(col, night_color * (0.75 + 0.5 * smoothstep(-0.2, 0.8, n.y)) + col * 0.08, night);  // moonlit blue, brighter tops
@@ -103,16 +104,26 @@ void fragment() {
         GD.Print($"[CloudSea] {transforms.Count} cloud puffs");
     }
 
-    /// <summary>One cumulus: a wide flat base of big puffs topped by smaller billows.</summary>
+    /// <summary>One cumulus: a wide flat base of big puffs, then a crown of rounder billows heaped
+    /// toward the middle so it reads as a towering cloud, not a pillow.</summary>
     private static void Cluster(RandomNumberGenerator rng, Vector3 center, float radius, List<Transform3D> output)
     {
-        int count = rng.RandiRange(8, 13);
-        for (int i = 0; i < count; i++)
+        int baseCount = rng.RandiRange(6, 9);
+        for (int i = 0; i < baseCount; i++)
         {
-            float t = (float)i / count;
-            var offset = new Vector3(rng.RandfRange(-1.4f, 1.4f) * radius, t * radius * 0.35f, rng.RandfRange(-0.8f, 0.8f) * radius);
-            float size = radius * rng.RandfRange(0.7f, 1.15f) * (1f - t * 0.45f) * (1f - Mathf.Abs(offset.X) / radius * 0.3f);
-            var basis = Basis.Identity.Scaled(new Vector3(size * 1.35f, size * (0.42f + t * 0.3f), size * 1.1f));
+            var offset = new Vector3(rng.RandfRange(-1.4f, 1.4f) * radius, rng.RandfRange(-0.05f, 0.08f) * radius, rng.RandfRange(-0.8f, 0.8f) * radius);
+            float size = radius * rng.RandfRange(0.75f, 1.15f) * (1f - Mathf.Abs(offset.X) / radius * 0.3f);
+            var basis = Basis.Identity.Scaled(new Vector3(size * 1.35f, size * rng.RandfRange(0.38f, 0.5f), size * 1.1f));
+            output.Add(new Transform3D(basis, center + offset));
+        }
+        int crown = rng.RandiRange(4, 7);
+        for (int i = 0; i < crown; i++)
+        {
+            float t = (float)i / crown;
+            var offset = new Vector3(rng.RandfRange(-0.75f, 0.75f) * radius * (1f - t * 0.5f),
+                radius * (0.18f + t * 0.42f), rng.RandfRange(-0.45f, 0.45f) * radius);
+            float size = radius * rng.RandfRange(0.45f, 0.7f) * (1f - t * 0.35f);
+            var basis = Basis.Identity.Scaled(new Vector3(size, size * rng.RandfRange(0.72f, 0.92f), size * 0.95f));
             output.Add(new Transform3D(basis, center + offset));
         }
     }

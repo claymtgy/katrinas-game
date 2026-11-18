@@ -1,3 +1,4 @@
+using System.Linq;
 using Godot;
 
 namespace KatrinasGame;
@@ -58,11 +59,13 @@ public partial class Bandit : Enemy
     {
         var gs = GameState.Instance;
         int coins = Captain ? CaptainCoins : GruntCoins;
-        gs.Inventory.Add("coin", coins);
+        var looter = killer as PlayerController;
+        Supplies.Give(looter, "coin", coins);
         string msg = $"+{coins} Coins";
-        if (Captain && gs.HomeTier < 2 && gs.Inventory.Count("cottage_blueprint") == 0)
+        bool haveBlueprint = gs.Inventory.Count("cottage_blueprint") > 0 || gs.Players.Values.Any(pl => pl.Pack.Count("cottage_blueprint") > 0);
+        if (Captain && gs.HomeTier < 2 && !haveBlueprint)
         {
-            gs.Inventory.Add("cottage_blueprint", 1);
+            Supplies.Give(looter, "cottage_blueprint", 1);
             msg += ", Cottage Blueprint!";
             Net.Instance.ToastAll("The bandit captain carried plans for a proper cottage. Check the board by your shack.");
         }
@@ -71,6 +74,7 @@ public partial class Bandit : Enemy
 
     public override void PlayAttack()
     {
+        Sfx.At("swing_heavy", GlobalPosition + Vector3.Up * 1.2f, -2f);
         if (Current == State.Dead) return;
         // Slow the swing so the blow lands when the server resolves it (after the windup).
         _model.OneShot(Captain ? "1H_Melee_Attack_Chop" : "1H_Melee_Attack_Slice_Diagonal", Captain ? 0.85f : 1.0f);
@@ -80,6 +84,7 @@ public partial class Bandit : Enemy
 
     protected override void FlashHit()
     {
+        Sfx.At("hit_flesh", GlobalPosition + Vector3.Up * 1.1f, 0f, 0.12f);
         _model.Flash(new Color(1f, 0.85f, 0.85f, 0.6f));
         if (!_model.Busy) _model.OneShot("Hit_A", 1.4f);
     }

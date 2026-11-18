@@ -80,6 +80,7 @@ public partial class NetAutotest : Node
     {
         var gs = GameState.Instance;
         var net = Net.Instance;
+        Weather.AutoRain = false;
         Check(await Until(() => gs.LocalPlayer != null, 30), "host spawned its own player");
         Check(net.Mode == NetMode.Host, "running as host");
         var me = gs.LocalPlayer;
@@ -87,10 +88,13 @@ public partial class NetAutotest : Node
         Check(await Until(() => gs.Players.Count == 2, 90), "a client joined (2 players)");
         var other = gs.Players.Values.FirstOrDefault(p => !p.IsLocal);
 
-        Check(await Until(() => gs.Inventory.Count("wood") >= 3, 60), $"client's chopping fills the shared stockpile on the host (wood {gs.Inventory.Count("wood")})");
+        Check(await Until(() => other != null && other.Pack.Count("wood") >= 3, 60), $"client's chopping fills its pack on the host (wood {other?.Pack.Count("wood")})");
+        Check(gs.Inventory.Count("wood") == 0, "...and not the shared stockpile");
         Check(other != null && other.GlobalPosition.DistanceTo(new Vector3(17, 0, -13.2f)) < 4f,
             $"client's movement replicates to the host (at {other?.GlobalPosition})");
         Check(await Until(() => gs.PlacedBuildings.Any(b => b.Id == "campfire"), 60), "client's campfire exists on the host");
+        Check(await Until(() => gs.Inventory.Count("stone") > 0 && other.Pack.Load == 0, 30), "the client emptied its pack into the shared stockpile");
+        Check(await Until(() => other.DodgeUntil > 0, 30), "the client's dodge roll reached the server");
 
         // Sleep vote: host lies down first; the night must not pass until the client does too.
         await Until(() => other == null || other.GlobalPosition.DistanceTo(new Vector3(14, 0, -12)) > 5f || gs.PlacedBuildings.Any(b => b.Id == "campfire"), 5);
@@ -121,8 +125,9 @@ public partial class NetAutotest : Node
         foreach (var w in wild.Wolves.Values) wild.Despawn(w);
         gs.TimeOfDay = 0.4f;
 
-        // Vertical slice in co-op. Supplies for the client's errands.
-        gs.Inventory.Add("coin", 20);
+        // Vertical slice in co-op. Supplies for the client's errands: coins in its pack (trading
+        // is done from the pack), building materials in the stockpile at home.
+        other.Pack.Add("coin", 20);
         gs.Inventory.Add("wood", 10);
         gs.Inventory.Add("stone", 4);
 
@@ -138,7 +143,7 @@ public partial class NetAutotest : Node
         Check(await Until(() => !other.Blocking, 10), "...and lowered again");
 
         // The client buys seeds from Marta and plants them at home.
-        Check(await Until(() => gs.Inventory.Count("wheat_seeds") >= 1 && gs.Inventory.Count("coin") == 18, 40), "the client bought wheat seeds (paid from the shared coins)");
+        Check(await Until(() => other.Pack.Count("wheat_seeds") >= 1 && other.Pack.Count("coin") == 18, 40), "the client bought wheat seeds (paid from its pack)");
         Check(await Until(() => gs.PlacedBuildings.Select(b => b.Node).OfType<FarmPlot>().Any(f => f.Planted), 40), "the client's wheat is planted on the server");
 
         // Upgrade the home: the client must see the cottage.
@@ -146,6 +151,8 @@ public partial class NetAutotest : Node
         var board = GetTree().CurrentScene.FindChild("UpgradeBoard", true, false) as HomeUpgradeBoard;
         board.ServerInteract(me);
         Check(gs.HomeTier == 2, "the host upgraded the shack to a cottage");
+        Weather.Instance.SetRain(true);
+        Check(gs.Raining, "the host starts a shower");
 
         // The client leaves at the end.
         Check(await Until(() => gs.Players.Count == 1, 60), "client left; the host keeps running");
@@ -158,6 +165,7 @@ public partial class NetAutotest : Node
     {
         var gs = GameState.Instance;
         var net = Net.Instance;
+        Weather.AutoRain = false;
         Check(await Until(() => gs.LocalPlayer != null, 60), "client joined and spawned");
         Check(net.Mode == NetMode.Client && !net.IsServer, "running as client");
         await Wait(1.5);
@@ -178,26 +186,26 @@ public partial class NetAutotest : Node
         me.Teleport(new Vector3(17, 0.1f, -13.2f));
         me.Rig.SetLook(0, -0.1f);
         await Wait(0.5);
-        for (int i = 0; i < 20 && gs.Inventory.Count("wood") < 7; i++)
+        for (int i = 0; i < 20 && me.Pack.Count("wood") < 7; i++)
         {
             me.RestoreStamina();
             me.Combat.TryAttack(false);
             await Wait(0.5);
         }
-        Check(gs.Inventory.Count("wood") >= 3, $"client sees its wood in the shared stockpile ({gs.Inventory.Count("wood")})");
+        Check(me.Pack.Count("wood") >= 3, $"client sees its wood in its pack (mirrored from the server) ({me.Pack.Count("wood")})");
         var tree = GetTree().CurrentScene.FindChild("Res_0", true, false)?.GetNode<Health>("Health");
         Check(tree != null && tree.Current < tree.Max, "tree damage is mirrored to the client");
 
         me.Teleport(new Vector3(15.1f, 0.1f, -6.9f));
         me.Rig.SetLook(0, -0.25f);
         await Wait(0.5);
-        for (int i = 0; i < 24 && gs.Inventory.Count("stone") < 2; i++)
+        for (int i = 0; i < 24 && me.Pack.Count("stone") < 3; i++)
         {
             me.RestoreStamina();
             me.Combat.TryAttack(false);
             await Wait(0.45);
         }
-        Check(gs.Inventory.Count("stone") >= 2, $"client mined stone ({gs.Inventory.Count("stone")})");
+        Check(me.Pack.Count("stone") >= 3, $"client mined stone ({me.Pack.Count("stone")})");
 
         // Build a campfire: the server checks the spot and pays from the stockpile.
         me.Teleport(new Vector3(14, 0.1f, -12));
@@ -207,12 +215,24 @@ public partial class NetAutotest : Node
         me.Build.Select("campfire");
         me.Build.SetActive(true);
         await Wait(0.5);
-        int woodBefore = gs.Inventory.Count("wood");
+        int woodBefore = me.Pack.Count("wood");
         me.Build.TryPlace();
         me.Build.SetActive(false);
         me.Rig.SetView(false, true);
         Check(await Until(() => gs.PlacedBuildings.Any(b => b.Id == "campfire"), 10), $"client's campfire was built (reason '{me.Build.InvalidReason}')");
-        Check(await Until(() => gs.Inventory.Count("wood") == woodBefore - 3, 5), "building cost came out of the shared stockpile");
+        Check(await Until(() => me.Pack.Count("wood") == woodBefore - 3, 5), "building cost came out of the client's pack");
+
+        // Empty the pack into the chest by the shack.
+        var chest = GetTree().CurrentScene.FindChild("HomeChest", true, false) as StorageChest;
+        me.Teleport(chest.GlobalPosition + new Vector3(0, 0.1f, 1.6f));
+        await Wait(0.4);
+        chest.Interact(me);
+        Check(await Until(() => me.Pack.Load == 0 && gs.Inventory.Count("stone") > 0, 10), "client emptied its pack into the stockpile (mirrored)");
+
+        // A dodge roll, seen by the server.
+        me.RestoreStamina();
+        Check(me.TryDodge(new Vector2(0, 1)), "client rolls");
+        await Wait(0.6);
 
         // Sleep vote.
         var bed = GetTree().CurrentScene.FindChild("Bed", true, false) as Bed;
@@ -290,8 +310,8 @@ public partial class NetAutotest : Node
             me.Combat.HoldGuard = false;
             await Wait(1.0);
 
-            // Buy wheat seeds from Marta with the shared coins.
-            Check(await Until(() => gs.Inventory.Count("coin") >= 20, 20), "client sees the shared coins");
+            // Buy wheat seeds from Marta with the coins in our pack.
+            Check(await Until(() => me.Pack.Count("coin") >= 20, 20), "client sees the coins the host put in its pack");
             var trader = GetTree().CurrentScene.FindChild("Trader", true, false) as Trader;
             me.Teleport(trader.GlobalPosition + new Vector3(0.4f, 0.1f, -2.6f));
             var t = trader.GlobalPosition - me.GlobalPosition;
@@ -302,7 +322,7 @@ public partial class NetAutotest : Node
             await Shot("04_trading_in_ashby");
             Hud.Instance.CloseMenus();
             net.RequestTrade(trader, "wheat_seeds", buy: true);
-            Check(await Until(() => gs.Inventory.Count("wheat_seeds") >= 1, 10), "client bought wheat seeds");
+            Check(await Until(() => me.Pack.Count("wheat_seeds") >= 1, 10), "client bought wheat seeds (into its pack)");
 
             // Build a wheat plot at home and plant it.
             me.Teleport(new Vector3(0, 0.1f, -10));
@@ -333,6 +353,7 @@ public partial class NetAutotest : Node
             me.Rig.SetLook(Mathf.Atan2(-cc.X, -cc.Z) - 0.25f, -0.02f);
             await Wait(0.6);
             await Shot("05_cottage");
+            Check(await Until(() => gs.Raining, 20), "client sees the host's rain shower");
         }
         else
         {

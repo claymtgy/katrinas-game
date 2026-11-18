@@ -32,6 +32,17 @@ public partial class GameState : Node
     public int HomeTier { get; private set; } = 1;
     public event System.Action<int> HomeTierChanged;
 
+    /// <summary>Rain is falling (server-decided by Weather, mirrored). It waters every farm plot.</summary>
+    public bool Raining { get; private set; }
+    public event System.Action<bool> RainChanged;
+
+    public void SetRaining(bool raining)
+    {
+        if (raining == Raining) return;
+        Raining = raining;
+        RainChanged?.Invoke(raining);
+    }
+
     /// <summary>True while a menu is open: frees the mouse and blocks movement/attacks.</summary>
     public bool UiOpen { get; private set; }
 
@@ -117,6 +128,8 @@ public partial class GameState : Node
         HomeTier = 1;
         ClaimRadius = 30f;
         HomeTierChanged = null;
+        Raining = false;
+        RainChanged = null;
         TimeOfDay = 0.735f;
         Day = 1;
         _nextBuildingId = 1;
@@ -181,7 +194,9 @@ public partial class GameState : Node
         node.Rotation = new Vector3(0, rotationY, 0);
         var b = new PlacedBuilding { NetId = netId, Id = def.Id, Position = position, RotationY = rotationY, Node = node };
         PlacedBuildings.Add(b);
+        WorldNav.Instance?.RequestRebake();
         b.ApplyState(state);
+        Sfx.At("build", position + Vector3.Up * 0.5f);
         return b;
     }
 
@@ -194,6 +209,7 @@ public partial class GameState : Node
         var b = FindBuilding(netId);
         if (b == null) return;
         PlacedBuildings.Remove(b);
+        WorldNav.Instance?.RequestRebake();
         if (IsInstanceValid(b.Node))
         {
             b.Node.GetParent()?.RemoveChild(b.Node);
@@ -211,13 +227,14 @@ public partial class GameState : Node
                 b.Node.QueueFree();
             }
         PlacedBuildings.Clear();
+        WorldNav.Instance?.RequestRebake();
     }
 
     // ---------------------------------------------------------------- save / load (server only)
 
     /// <summary>Server: remember a player's position and shrine for when they rejoin.</summary>
     public void RememberPlayer(PlayerController p) =>
-        PlayerRecords[p.DisplayName] = new GDict { ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint };
+        PlayerRecords[p.DisplayName] = new GDict { ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary() };
 
     public void SaveGame(bool silent = false)
     {
@@ -250,6 +267,7 @@ public partial class GameState : Node
             {
                 ["pos"] = new GArray { pos.X, pos.Y, pos.Z },
                 ["spawn"] = new GArray { spawn.X, spawn.Y, spawn.Z },
+                ["pack"] = kv.Value.TryGetValue("pack", out var pack) ? pack : new GDict(),
             };
         }
 
@@ -313,7 +331,11 @@ public partial class GameState : Node
             foreach (var kv in pv.AsGodotDictionary())
             {
                 var rec = kv.Value.AsGodotDictionary();
-                PlayerRecords[kv.Key.AsString()] = new GDict { ["pos"] = ToVec(rec["pos"]), ["spawn"] = ToVec(rec["spawn"]) };
+                PlayerRecords[kv.Key.AsString()] = new GDict
+                {
+                    ["pos"] = ToVec(rec["pos"]), ["spawn"] = ToVec(rec["spawn"]),
+                    ["pack"] = rec.TryGetValue("pack", out var pack) ? pack.AsGodotDictionary() : new GDict(),
+                };
             }
         else if (data.TryGetValue("player", out var legacy)) // version 1: one player
             PlayerRecords[Net.Instance.LocalName] = new GDict { ["pos"] = ToVec(legacy), ["spawn"] = WorldSpawn };
@@ -323,6 +345,7 @@ public partial class GameState : Node
             if (PlayerRecords.TryGetValue(p.DisplayName, out var rec))
             {
                 p.SpawnPoint = rec["spawn"].AsVector3();
+                p.Pack.ReplaceAll(rec.TryGetValue("pack", out var pack) ? pack.AsGodotDictionary() : new GDict());
                 Net.Instance.ServerTeleport(p, rec["pos"].AsVector3());
             }
 
@@ -360,6 +383,8 @@ public partial class GameState : Node
         AddMouse("heavy_attack", MouseButton.Middle);
         AddMouse("block", MouseButton.Right);
         AddKey("eat", Key.F);
+        AddKey("dodge", Key.Ctrl);
+        AddKey("dodge", Key.C);
         AddMouse("next_build", MouseButton.WheelDown);
         AddMouse("prev_build", MouseButton.WheelUp);
         AddKey("next_build", Key.Period);

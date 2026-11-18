@@ -88,8 +88,14 @@ public partial class PlayerCombat : Node
         var gs = GameState.Instance;
         bool input = !gs.UiOpen && Input.MouseMode == Input.MouseModeEnum.Captured && !_player.Build.Active
                      && Input.IsActionPressed("block");
-        bool want = (input || HoldGuard) && !_player.Sleeping && !_player.Health.IsDead && _guardLock <= 0 && _player.Stamina > 0.5f;
+        bool want = (input || HoldGuard) && !_player.Dodging && !_player.Sleeping && !_player.Health.IsDead && _guardLock <= 0 && _player.Stamina > 0.5f;
         if (want != GuardUp) SetGuard(want);
+    }
+
+    /// <summary>Local player: lower the guard now (a dodge roll).</summary>
+    public void DropGuard()
+    {
+        if (GuardUp) SetGuard(false);
     }
 
     private void SetGuard(bool up)
@@ -126,6 +132,7 @@ public partial class PlayerCombat : Node
     /// <summary>Everyone: a guard took a hit (recoil in first person, flinch anim in third).</summary>
     public void PlayGuardImpact(bool parried)
     {
+        Sfx.At(parried ? "parry" : "block", _player.GlobalPosition + Vector3.Up * 1.2f, parried ? 2f : 0f);
         if (_player.IsLocal && FirstPerson && GuardUp)
         {
             _swingTween?.Kill();
@@ -206,7 +213,7 @@ public partial class PlayerCombat : Node
     /// <summary>Local player: swing now (animation, stamina) and ask the server to resolve the hit.</summary>
     public void TryAttack(bool heavy)
     {
-        if (_cooldown > 0 || GuardUp) return;
+        if (_cooldown > 0 || GuardUp || _player.Dodging) return;
         if (!_player.TrySpendStamina(heavy ? HeavyStamina : LightStamina))
         {
             Hud.Toast("Too tired to swing!");
@@ -215,13 +222,27 @@ public partial class PlayerCombat : Node
 
         var stats = Stats(heavy);
         _cooldown = stats.Cooldown;
+        PlaySwingSound(heavy, stats.Windup);
         if (FirstPerson) PlaySwing(stats.Windup, heavy);
         else _model?.PlayAttack(heavy, ItemDb.Get(_player.Equipped) != null);
         Net.Instance.RequestAttack(heavy, -_player.Rig.Camera.GlobalBasis.Z);
     }
 
     /// <summary>Someone else's swing, seen on this machine.</summary>
-    public void PlayRemoteAttack(bool heavy) => _model?.PlayAttack(heavy, ItemDb.Get(_player.Equipped) != null);
+    public void PlayRemoteAttack(bool heavy)
+    {
+        _model?.PlayAttack(heavy, ItemDb.Get(_player.Equipped) != null);
+        PlaySwingSound(heavy, Stats(heavy).Windup);
+    }
+
+    private void PlaySwingSound(bool heavy, float windup)
+    {
+        // The whoosh lands with the strike, not the wind-up.
+        GetTree().CreateTimer(windup * 0.7f).Timeout += () =>
+        {
+            if (IsInstanceValid(_player)) Sfx.At(heavy ? "swing_heavy" : "swing_light", _player.GlobalPosition + Vector3.Up * 1.2f, heavy ? 0f : -3f);
+        };
+    }
 
     private (float Damage, float Reach, float Windup, float Cooldown) Stats(bool heavy)
     {

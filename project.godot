@@ -46,3 +46,7 @@ night={
 "type": "float",
 "value": 0.0
 }
+wetness={
+"type": "float",
+"value": 0.0
+}

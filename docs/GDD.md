@@ -1,6 +1,6 @@
 # Game Design Document — working title **Ember & Blossom**
 
-> Living document. Engine: Godot 4.7 (.NET / C#). Last updated 2026-11-17.
+> Living document. Engine: Godot 4.7 (.NET / C#). Last updated 2026-11-18.
 
 ---
 
@@ -34,8 +34,10 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | 5 | Ember Ore (volcano only) | Ember Steel (Sacred Forge) | Ember-forged blades, heat-ward armor |
 
 - **Farming:** till a plot → plant seeds → water it (a well or rain) → harvest after N in-game days. Food gives timed buffs (stamina regen, max health).
-  - **Built (vertical slice):** Wheat Plot and Turnip Plot buildings (4 wood + 1 stone). E plants a seed from the stockpile. Wheat ripens in half a day, turnips in 0.4 days, measured on the game clock, so sleeping through the night counts. E on a ripe plot harvests it (3 wheat + 2 seeds back, or 2 turnips + 1 seed). Wheat seeds come from wild grain tufts (hit them) on the plateau and in the vale; turnip seeds come from the trader. No watering yet.
-  - **Cooking (built):** the campfire is also a cooking station: Bread (3 wheat, heals 35) and Roast Turnip (2 turnips, heals 25). **F** eats the best food in the stockpile for the health you're missing. Timed buffs come later.
+  - **Built (vertical slice):** Wheat Plot and Turnip Plot buildings (4 wood + 1 stone). E plants a seed. Wheat ripens in half a day, turnips in 0.4 days, measured on the game clock, so sleeping through the night counts. E on a ripe plot harvests it into the stockpile (3 wheat + 2 seeds back, or 2 turnips + 1 seed). Wheat seeds come from wild grain tufts (hit them) on the plateau and in the vale; turnip seeds come from the trader.
+  - **Watering (built):** a crop only grows while its soil is wet. E at a **well** (Ashby's, or a Well you build: 10 stone + 4 wood) or at the **pool** under the west waterfall puts 4 Water in your pack; E on a dry plot uses one. One watering keeps the soil wet for 0.6 game days, enough for one crop. Dry soil is pale and the crop turns yellowish. **Rain** showers roll in every 4–9 minutes, last 1–2 minutes and water every plot. The server decides the weather and sends it to everyone. While it rains the sky greys, the haze thickens and the grass darkens.
+  - **Cooking (built):** the campfire is also a cooking station: Bread (3 wheat, heals 35) and Roast Turnip (2 turnips, heals 25). **F** eats from your pack (and from the stockpile at home): the smallest meal that heals what you're missing.
+  - **Food buffs (built):** each meal also gives a timed buff (4 real minutes): Bread gives **stamina regen +50%**, Roast Turnip gives **+25 max health**. At full health, F eats only a meal whose buff you don't already have. Buffs show above the health bar, end on defeat, and are mirrored to every player. The values live on the item (`BuffKind`, `BuffAmount`, `BuffSeconds` in its `.tres`).
 - **Village of Ashby** (~10 min walk): a trader buys surplus and sells seeds and blueprints. A quest board. Later it sends **workers** who run your stations automatically, so the economy keeps going while you're away.
   - **Built (vertical slice):** Ashby sits at the south end of the vale below the plateau: five houses around a well, lamps, a notice board, and **Marta the Trader**. It's a sanctuary (28 m): wolves and bandits won't enter or hunt inside.
   - Marta sells wheat seeds (2), turnip seeds (3) and iron nails (5), and buys wolf pelts (8), wheat (1), turnips (2), bread and roast turnips (4). Prices live on each item (`BuyPrice` / `SellPrice` in its `.tres`), so new goods just need a price.
@@ -46,12 +48,13 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Claim radius:** you can only build near your home. Upgrading the house tier widens the claim. Later, outposts make new claims.
 - **House tiers:** Shack → Cottage → Longhouse → Keep. Each tier unlocks building types and worker slots.
   - **Cottage (built):** pay at the **Home Plans** board by the shack: 40 wood, 20 stone, 6 iron nails, 3 wolf pelts and the Cottage Blueprint (from the bandit captain). The shack is replaced by a timber-and-plaster cottage you can walk into, with two beds. Your land claim grows from 30 m to 42 m. The cottage's footprint is kept clear of new buildings while you still live in the shack; anything already there is packed up and refunded when it goes up. The tier is saved and sent to every player.
-- **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot.
+- **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot. Built so far: Workbench, Campfire (cooking), Palisade, Bedroll, the farm plots, **Well** and **Storage Chest** (8 wood; one already stands by the shack).
 - **Defense:** palisade → stone wall → gatehouse → watchtower. Bandit raids target bases above a "wealth" threshold.
 
 ## 6. Weapons & combat
 - **Sword tiers:** Wooden → Stone Club → Bronze → Iron → Steel → Ember-forged.
-- **Moves:** light attack (LMB), heavy attack (Q or middle mouse), **block** (hold RMB), **parry** (raise the block just before a hit lands). Planned: dodge roll. All of them use **stamina**.
+- **Moves:** light attack (LMB), heavy attack (Q or middle mouse), **block** (hold RMB), **parry** (raise the block just before a hit lands), **dodge roll** (Ctrl or C). All of them use **stamina**.
+- **Dodge roll (built):** a 0.38 s burst (10.5 m/s, easing off) in the direction you're moving, or backwards if you're standing still. It costs 22 stamina, with a short cooldown after. For the first 0.32 s nothing can hit you (`Net.ServerDamagePlayer` returns *Dodged*, the same rule for enemies and PVP). Rolling drops your guard, and you can't attack mid-roll. In third person it plays the Rogue's Dodge animations (forward / back / left / right); in first person the camera dips and tilts.
 - **Block / parry (built):**
   - A raised guard stops hits from the front (about ±70° of where you look). A blocked hit does 20% damage and costs stamina (8 + 0.8 × the hit). Run out of stamina and the guard breaks (you can't raise it for 1.2 s).
   - Guard raised **0.3 s or less** before the blow lands = **parry**: no damage, some stamina back, and the attacker reels (wolves 1.6 s, the captain 1.2 s). In PVP, a parried player can't swing for 1 s.
@@ -99,7 +102,8 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Wolves never enter a blossom sanctuary's light** (9 m). They'll bite you out of bed if your bed isn't safe.
 - **Drop:** a Wolf Pelt into the shared stockpile, for leather gear in tier 1.
 - **Server option:** `enemies = false` turns hostile creatures off (a peaceful building server).
-- Greybox body made of boxes; a real model and animations come in the art pass. There's no navmesh yet: wolves steer around props with a feeler ray and treat the cliffs as walls.
+- **Body:** a low-poly faceted wolf built in code (tapered 5- and 6-sided segments, hind legs with a backward hock, bushy tail, glowing eyes), with the character toon shader and outline. It is animated procedurally: trot, gallop, idle (breathing, looking around, sniffing) and the night howl.
+- **Pathing (built):** enemies follow a navmesh. The server bakes it at startup from the world's static colliders (terrain, rocks, trees, the shack, Ashby, the camp, placed buildings) and bakes again 1.5 s after a building goes up or comes down or the home is upgraded. Paths are re-asked twice a second; within 2.5 m of their goal enemies go straight at it, and a short feeler ray still nudges them around moving things. See `WorldNav` and `Enemy.Steer`.
 
 ### Bandit camp (built)
 - **Where:** off the road to Ashby, east of the track, about halfway down the vale (38, 0, 140). Tents, a fire, a stake fence with its mouth toward the road.
@@ -130,6 +134,25 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Style:** painterly, angular hand-sculpted shapes, very little surface noise, strong color blocking. Think Ori × BotW × Journey.
 - **Palette:** shadows in obsidian, slate and twilight indigo. Highlights in magma orange, sunset gold and blush pink.
 - **Concept art per zone:** see [art/README.md](art/README.md). It covers 10 generated target images (dawn and night cliffs, Ashby, Falls Valley, the volcano, house tiers, the forge, raids, the hero and weapons, and the cloud glide), each with notes on what to take from it.
+- **Art pass, round 1 (done):**
+  - The ground is a painterly terrain shader: grass in broad patches of three tones with brush flecks, dark rock on the sides, a warm golden-hour rim, and darker when wet.
+  - Grass, leaves and flowers use a foliage shader: alpha-cut, double-sided, toon-lit, swaying in the wind (gustier in rain).
+  - The pool and stream use a stylized water shader: ripple bands, a sky-coloured sheen at grazing angles, raindrop rings.
+  - Cloud clusters have a crown of rounder billows over a flat base, and shaded undersides.
+  - Wolves have a faceted low-poly body instead of boxes.
+  - New props: a stone well, a storage chest, a rain particle layer around the camera.
+- **Art pass, round 2 (done):**
+  - **Characters** (the hero, Marta, bandits, wolves) use their own toon shader: a hard two-band light ramp with a small highlight band, shadows lifted with dusk violet instead of going black, and a warm rim on the edge facing the sun. They also get an ink outline (an inverted hull, constant width in metres, dimmer at night) so they read against busy scenery. See `StyleMaterials.ApplyCharacter` / `CharacterFlat`.
+  - **Wolf animation:** knees and hocks bend, so paws lift as the leg swings forward. The trot turns into a gallop above about 5 m/s (front pair, then hind pair, the body rocking). Standing wolves breathe, look around and sniff the ground. At night an idle wolf sometimes throws its head back and howls (cosmetic, decided on each machine). The bite lunge, stagger and death tweens are unchanged.
+  - **The volcano** is a sculpted cone built in code: faceted and ridged with gullies, a concave profile (gentle foot, steep summit), a lower shoulder peak, and a crater breached toward the home cliffs. Four lava rivers pour out of the breach and fan down the flank. It is drawn without fog, with haze painted into its colours, so it keeps its facets 1 km away.
+  - **Ashby** already uses the village model kit (plaster and brick walls, tiled roofs, doors, chimneys), so it needed no greybox replacement.
+  - **Audio:** see §12a.
+- **§12a Audio (built):**
+  - Every sound is synthesized by `tools/make_audio.py` (numpy; noise and oscillators, no recordings and no licences) into `assets/audio/*.wav`. To replace one with a real recording, keep the file name.
+  - **Ambience bed** (`Ambience`, mixed for each player): wind (stronger high up and in rain), rain (follows the weather), birdsong by day, crickets at night.
+  - **Positional loops** (`Sfx.Loop`): every waterfall roars, louder for the big ones; campfires crackle; the volcano rumbles far off.
+  - **Effects** (`Sfx.At` / `Sfx.Ui`): footsteps, light and heavy swings (timed to the strike), hits, block thud and parry clang, dodge whoosh, chopping and mining, cutting grain, wolf snarl, yelp and howl, eating, a soft pop when something enters your pack, building, crafting, drawing water, and the chest.
+  - Effects play on every machine from events everyone already sees (attack and guard RPCs, health changes, building spawns), so nothing new is sent over the network. A dedicated server plays nothing. For 2.5 s after a world loads, effects are held back so a join snapshot doesn't play every building at once.
 - **Reference image** (`docs/art/reference.jpg`). This is the target for the art pass and the game's "hero shot":
   - A small hero stands on a **dark, chunky, faceted rock ledge** at the left, seen from behind, looking out.
   - A **gnarled cherry tree** grows off a black-rock overhang on the right. Its pink canopy is **lit from inside**, made of clustered blossom clumps (not one blob), with **petals and embers drifting** across the frame.
@@ -149,11 +172,12 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Action | Key |
 |---|---|
 | Move / Sprint / Jump | WASD / Shift / Space |
+| Dodge roll | Ctrl or C |
 | Look | Mouse |
 | Toggle 1st / 3rd person | V |
 | Light / Heavy attack | LMB / Q or middle mouse |
 | Block (time it to parry) | RMB (hold) |
-| Interact | E |
+| Interact (stations, beds, plots, wells, chests, trader, signs) | E |
 | Eat | F |
 | Weapon slots | 1–5 |
 | Build mode (cycle / rotate / place / exit) | B (wheel / R / LMB / RMB or B) |
@@ -165,8 +189,8 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 ## 14. Roadmap
 1. **Greybox v0 (done):** movement, 1P/3P, gathering, build mode, workbench crafting, training dummy, day/night, save/load.
 2. **Multiplayer foundation (done):** host/join, dedicated server, shared base, sleep vote, PVP toggle, difficulty scaling hooks (§16). Every later feature is built multiplayer-first.
-3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Next: playtest it on two real PCs and tune the numbers.
-4. **Art pass:** toon/foliage shaders, sculpted rock kit, character model and animations, audio.
+3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
+4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley:** climbing, glider, updrafts, the second sanctuary.
 6. **Volcano:** heat system, lava hazards, Ember Ore, the Sacred Forge.
 7. **Cities and workers:** automation and the regional economy.
@@ -175,7 +199,11 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Enemies:** `Wildlife` (Main/Wildlife) spawns and replicates every hostile (wolf packs, the bandit camp); the server runs their AI, and clients show positions sent 15 times a second. `Enemy.cs` is the shared brain (prowl around a group anchor, chase, telegraphed windup, strike, stagger, flee). A new enemy type subclasses it with its numbers, body and animations (see `Wolf.cs`, `Bandit.cs`) and registers its kind in `Enemy.Create`. Strikes on players go through `Net.ServerDamagePlayer` (block / parry).
 - **Building state:** a placed building with state (a farm plot's crop) implements `INetState`. The server changes it and calls `Net.BroadcastBuildingState`; the state is also in the join snapshot and the save.
 - **World:** `HomeCliffs` builds the plateau; `HomeCliffs.Ashby.cs` (same class) builds the vale, Ashby, the bandit camp and the home tiers (rebuilt on `GameState.HomeTierChanged`).
-- **Components:** `Health` (anything that can be damaged), `Harvestable` (resource nodes), and the `IInteractable` interface (stations, beds, signs, shrines).
+- **Components:** `Health` (anything that can be damaged), `Harvestable` (resource nodes), and the `IInteractable` interface (stations, beds, signs, shrines, wells, chests).
+- **Supplies (`Supplies.cs`):** the one place that decides where items go and come from. `Give` puts gathered things and loot in a player's pack (capped at 40; coins and the blueprint always fit). `TryConsume` pays from the pack first, then from the stockpile if the player is at home. `Deposit` empties a pack at a chest. Server code never adds gathered items to `GameState.Inventory` directly.
+- **Audio (`scripts/audio`):** `Sfx` plays one-shots and loops by name from `assets/audio`, and `Ambience` mixes the background bed. Each machine plays sounds from events it already receives.
+- **Weather (`Weather.cs`):** the server rolls the showers and calls `Net.ServerSetRain` (in the join snapshot too), and waters the plots while it rains. Every screen draws the rain and reads `Weather.Wetness` (sky, fog, the `wetness` shader global).
+- **Navigation (`WorldNav.cs`):** server-only `NavigationRegion3D` that parses the `nav_source` group (HomeCliffs and everything under it).
 - **Data-driven:** items, recipes and buildings are Godot `Resource` files in `data/`. Adding content is mostly adding `.tres` files.
 - **`GameState` autoload:** the shared stockpile, time of day, placed buildings, the player registry, save/load.
 - **`Net` autoload:** session mode (offline / host / client / dedicated), the connection handshake, and every gameplay RPC. Gameplay code asks `Net` to do things ("request build", "request craft") and never mutates shared state directly.
@@ -199,12 +227,19 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
 | Shared by everyone | Personal to each player |
 |---|---|
 | The base: buildings, land claim, stations | Position, health, stamina |
-| The **stockpile**: every gathered and crafted item | The weapon in your hand (taken out of the stockpile; it returns when you swap or leave) |
+| The **stockpile**: everything brought home, crafted or harvested | Your **pack**: what you've gathered, looted or bought and not yet stored (40 items; coins weigh nothing) |
+| | The weapon in your hand (taken out of the stockpile; it returns when you swap or leave) |
+| | Food buffs |
 | Time of day, the day count | Respawn shrine |
 | Resource nodes (a felled tree is felled for all) | Camera view (1st/3rd person) |
 
-- **Greybox simplification:** gathered items go straight into the shared stockpile wherever you are. Later, carried items (a personal pack) must be deposited at a chest at the base, which makes trips home and raids on carriers meaningful.
-- Players are saved by name: rejoining puts you back where you logged out, with your respawn shrine.
+- **Packs (built):**
+  - Chopping, mining, cutting grain, wolf pelts, bandit coins and the blueprint, water from a well, and anything bought from Marta go into **your own pack**. Empty it into the shared stockpile at a **storage chest** (one by the shack; build more).
+  - Spending takes from your pack first, then from the stockpile, but only at home (inside the land claim plus 6 m). That covers building, crafting, cooking, planting, watering, eating and the cottage.
+  - **Trading uses your pack only.** Carry goods and coins to Ashby and back.
+  - A full pack (40) refuses more and warns you.
+  - Being defeated drops **half of each stack** in your pack. Packs are saved with the player and mirrored only to their owner.
+- Players are saved by name: rejoining puts you back where you logged out, with your respawn shrine and your pack.
 
 ### Sleeping
 - Using a bed puts you to sleep. You can get up with E or by moving.

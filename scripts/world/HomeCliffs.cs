@@ -27,6 +27,11 @@ public partial class HomeCliffs : Node3D
     private static readonly Vector3 BlossomPos = new(-7, 0, -25);
     private static readonly Vector3 PoolPos = new(-44, 0, -4);
 
+    /// <summary>The painterly grass-and-rock ground shared by the plateau and the vale.</summary>
+    private static ShaderMaterial _ground;
+    private static ShaderMaterial GroundMaterial => _ground ??= StyleMaterials.Terrain(
+        new Color(0.11f, 0.1f, 0.14f), new Color(0.26f, 0.38f, 0.27f), new Color(0.36f, 0.46f, 0.26f), new Color(0.48f, 0.44f, 0.29f));
+
     private RandomNumberGenerator _rng;
     private int _resourceCount;
     private readonly Dictionary<Color, StandardMaterial3D> _mats = new();
@@ -71,6 +76,28 @@ public partial class HomeCliffs : Node3D
         BuildVale();
         BuildAshby();
         BuildBanditCamp();
+        BuildHomeChest();
+
+        AddChild(new Weather { Name = "Weather" });
+        AddChild(new Ambience { Name = "Ambience" });
+        // Enemies path around the world (the AI runs on the server only).
+        AddToGroup(WorldNav.SourceGroup);
+        if (Net.Instance.IsServer) AddChild(new WorldNav { Name = "WorldNav" });
+    }
+
+    /// <summary>Storage chest by the shack: empty your pack into the shared stockpile here.</summary>
+    private void BuildHomeChest()
+    {
+        var chest = new StorageChest
+        {
+            Name = "HomeChest",
+            Position = ShackPos + new Vector3(-6f, 0, 3f),
+            Rotation = new Vector3(0, 0.5f, 0),
+            CollisionLayer = GameState.LayerProps,
+            CollisionMask = 0,
+        };
+        AddChild(chest);
+        chest.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.25f, 0.95f, 0.8f) }, Position = new Vector3(0, 0.48f, 0) });
     }
 
     public override void _ExitTree() => GameState.Instance.HomeTierChanged -= OnHomeTierChanged;
@@ -81,8 +108,7 @@ public partial class HomeCliffs : Node3D
     {
         // Main plateau: x -60..60, z -30..90, top at y = 0.
         var ground = Block(new Vector3(0, -6, 30), new Vector3(120, 12, 120), Vector3.Zero, Grass);
-        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride =
-            StyleMaterials.Rock(new Color(0.11f, 0.1f, 0.14f), new Color(0.27f, 0.36f, 0.28f), 0.7f, 0.25f);
+        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride = GroundMaterial;
         // Dirt yard around the shack.
         Visual(new BoxMesh { Size = new Vector3(14, 0.05f, 12) }, StyleMaterials.Toon(Dirt.Darkened(0.25f), 0), ShackPos + new Vector3(0, 0.02f, 4), Vector3.Zero);
     }
@@ -283,14 +309,17 @@ public partial class HomeCliffs : Node3D
     {
         // 1) West wall falls into a pool on the plateau...
         Waterfall(new Vector3(-56.5f, 16, -4), new Vector2(7, 34), new Vector3(0, Mathf.Pi / 2f, 0));
-        var water = new StandardMaterial3D
-        {
-            AlbedoColor = new Color(0.35f, 0.6f, 0.75f, 0.8f),
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            Metallic = 0.2f, Roughness = 0.05f,
-        };
+        var water = StyleMaterials.Water();
         Visual(new BoxMesh { Size = new Vector3(14, 0.3f, 12) }, water, PoolPos + new Vector3(-2, 0.05f, 0), Vector3.Zero);
         Block(PoolPos + new Vector3(-2, -0.4f, 6.5f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
+        // Draw water at the pool's east edge.
+        var pool = new WaterSource
+        {
+            Name = "PoolWater", SourceName = "pool", Position = PoolPos + new Vector3(5.2f, 0, 0),
+            CollisionLayer = GameState.LayerProps, CollisionMask = 0,
+        };
+        AddChild(pool);
+        pool.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.2f, 0.4f, 10f) }, Position = new Vector3(0, 0.1f, 0) });
         Block(PoolPos + new Vector3(-2, -0.4f, -6.5f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
         // ...a stream runs to the edge...
         Visual(new BoxMesh { Size = new Vector3(3, 0.12f, 24) }, water, new Vector3(-40, 0.06f, -18), new Vector3(0, 0.15f, 0));
@@ -341,6 +370,8 @@ void fragment() {
         var basePos = center - new Vector3(0, size.Y / 2f, 0);
         Particles(60, 4f, new Vector3(size.X * 0.6f, 1, 2), basePos + Vector3.Up,
             new Color(0.95f, 0.97f, 1f, 0.35f), 1.5f, 3.5f, new Vector3(0, 0.6f, 0));
+        // The roar: loudest at the plunge pool, carries further for the big falls.
+        Sfx.Loop(this, "amb_waterfall", basePos + Vector3.Up * 2f, Mathf.Lerp(-6f, 4f, Mathf.Clamp(size.X * size.Y / 500f, 0f, 1f)), 40f + size.X * 8f, 3f + size.X);
     }
 
     private const string LavaShader = @"shader_type spatial;
@@ -441,7 +472,7 @@ void fragment() {
         {
             Name = "HomeSign",
             Title = "Your shack",
-            Message = "Home, such as it is. Build within 30 m (42 m once it's a cottage). Sleep in the bed to skip the night and save. In co-op, the night passes once everyone is in bed, so build a bedroll each. The plans board shows what the cottage needs.",
+            Message = "Home, such as it is. What you gather rides in your pack: empty it into the chest by the door so it's safe and everyone can use it. Build within 30 m (42 m once it's a cottage). Sleep in the bed to skip the night and save. In co-op, the night passes once everyone is in bed, so build a bedroll each. The plans board shows what the cottage needs.",
             Position = ShackPos + new Vector3(3, 0, 4),
             CollisionLayer = GameState.LayerProps,
             CollisionMask = 0,
@@ -452,48 +483,11 @@ void fragment() {
         Visual(new BoxMesh { Size = new Vector3(0.7f, 0.4f, 0.06f) }, Mat(Wood), new Vector3(0, 1.15f, 0), Vector3.Zero, homeSign);
     }
 
-    private void BuildVolcano()
-    {
-        var root = new Node3D { Name = "Volcano", Position = new Vector3(-380, -70, -950) };
-        AddChild(root);
-        Visual(new CylinderMesh { TopRadius = 35, BottomRadius = 340, Height = 380, RadialSegments = 9, Rings = 1 },
-            Mat(Obsidian), new Vector3(0, 190, 0), Vector3.Zero, root);
-        var lava = new StandardMaterial3D
-        {
-            AlbedoColor = Magma,
-            EmissionEnabled = true,
-            Emission = Magma,
-            EmissionEnergyMultiplier = 6f,
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-        };
-        Visual(new CylinderMesh { TopRadius = 30, BottomRadius = 33, Height = 6, RadialSegments = 9 }, lava, new Vector3(0, 380, 0), Vector3.Zero, root);
-        // Lava rivulets down the flank (emissive streaks).
-        for (int i = 0; i < 5; i++)
-        {
-            float ang = Mathf.DegToRad(150 + i * 22 + _rng.RandfRange(-6, 6));
-            var dir = new Vector3(Mathf.Sin(ang), 0, Mathf.Cos(ang));
-            var mid = dir * 160 + new Vector3(0, 220, 0);
-            var streak = new MeshInstance3D
-            {
-                Mesh = new BoxMesh { Size = new Vector3(_rng.RandfRange(4, 9), 1, 260) },
-                MaterialOverride = lava,
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            };
-            root.AddChild(streak);
-            streak.Position = mid;
-            streak.LookAt(root.GlobalPosition + mid + dir * 10 + Vector3.Down * 12.5f, Vector3.Up);
-        }
-        root.AddChild(new OmniLight3D { Position = new Vector3(0, 400, 0), LightColor = Magma, LightEnergy = 8f, OmniRange = 400f });
-        // Smoke column.
-        Particles(40, 20f, new Vector3(20, 5, 20), root.Position + new Vector3(0, 390, 0),
-            new Color(0.25f, 0.2f, 0.25f, 0.5f), 40f, 90f, new Vector3(3, 8, 0));
-    }
-
     private void ScatterProps()
     {
         var tree = GD.Load<PackedScene>("res://scenes/props/Tree.tscn");
         var rock = GD.Load<PackedScene>("res://scenes/props/Rock.tscn");
-        var placed = new List<Vector3> { ShackPos, BlossomPos, PoolPos, ShackPos + new Vector3(-4, 0, 7) };
+        var placed = new List<Vector3> { ShackPos, BlossomPos, PoolPos, ShackPos + new Vector3(-4, 0, 7), ShackPos + new Vector3(-6, 0, 3) };
 
         // A few guaranteed trees & rocks close to home so the first loop is quick.
         Spawn(tree, ShackPos + new Vector3(8, 0, 6), placed);

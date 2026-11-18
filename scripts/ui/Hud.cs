@@ -15,7 +15,8 @@ public partial class Hud : CanvasLayer
     private static readonly Color Blush = new(1f, 0.7f, 0.78f);
 
     private ProgressBar _health, _stamina;
-    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help, _session, _sleep, _playerList;
+    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help, _session, _sleep, _playerList, _buffs;
+    private int _packVersion = -1;
     private PanelContainer _gameMenu;
     private VBoxContainer _toasts;
     private PanelContainer _craftPanel;
@@ -42,9 +43,14 @@ public partial class Hud : CanvasLayer
         bars.AddChild(_health);
         bars.AddChild(_stamina);
 
+        // Food buffs — just above the bars.
+        _buffs = MakeLabel(15);
+        _buffs.Modulate = Gold;
+        Place(root, _buffs, 0, 1, 0, 1, 24, -132, 600, -88);
+
         // Inventory — top right.
-        _inventory = MakeLabel(18, HorizontalAlignment.Right);
-        Place(root, _inventory, 1, 0, 1, 0, -360, 20, -24, 400);
+        _inventory = MakeLabel(17, HorizontalAlignment.Right);
+        Place(root, _inventory, 1, 0, 1, 0, -360, 20, -24, 700);
 
         // Clock — top left.
         _clock = MakeLabel(18);
@@ -91,16 +97,17 @@ public partial class Hud : CanvasLayer
         _help = MakeLabel(17);
         _help.Text =
             "CONTROLS   (F1 to toggle)\n" +
-            "WASD move · Shift sprint · Space jump · Mouse look\n" +
+            "WASD move · Shift sprint · Space jump · Ctrl / C dodge roll · Mouse look\n" +
             "V  first / third person\n" +
             "LMB light attack · Q / MMB heavy attack · hold RMB block (just in time = parry) · 1-5 weapons\n" +
-            "E  interact (workbench, campfire, bed, plots, trader, signs) · F eat\n" +
+            "E  interact (workbench, campfire, bed, plots, wells, chest, trader, signs) · F eat\n" +
+            "What you gather goes in your pack: empty it into the chest by the shack. Crops need water (well, pool or rain).\n" +
             "B  build mode: wheel cycle · R rotate · LMB place · RMB exit\n" +
             "F5 save · F9 load (host only) · Tab players · Esc menu\n\n" +
             "Goal: chop & mine → Workbench → sword → follow the road south to Ashby → clear the bandit camp\n" +
             "→ farm and trade for nails → upgrade the shack to a cottage (board by the shack).";
         _help.Modulate = Blush;
-        Place(root, _help, 0, 0, 0, 0, 24, 80, 900, 300);
+        Place(root, _help, 0, 0, 0, 0, 24, 80, 1000, 330);
         GetTree().CreateTimer(25).Timeout += () => _help.Visible = false;
 
         BuildCraftPanel(root);
@@ -214,7 +221,9 @@ public partial class Hud : CanvasLayer
         string phase = gs.TimeOfDay is > 0.22f and < 0.78f ? "☀" : "☾";
         _clock.Text = $"Day {gs.Day}  {phase} {h:00}:{m:00}";
 
+        if (player.Pack.Version != _packVersion) { _packVersion = player.Pack.Version; _inventoryDirty = true; }
         if (_inventoryDirty) RefreshInventory();
+        UpdateBuffs(player);
 
         var slots = gs.WeaponSlots(player);
         var sb = new StringBuilder();
@@ -275,12 +284,38 @@ public partial class Hud : CanvasLayer
     private void RefreshInventory()
     {
         _inventoryDirty = false;
+        var sb = new StringBuilder();
+        var player = GameState.Instance.LocalPlayer;
+        if (player != null)
+        {
+            var pack = player.Pack;
+            sb.Append($"Pack  {pack.Load}/{Supplies.PackCapacity}{(pack.Load >= Supplies.PackCapacity ? "  FULL" : "")}\n");
+            foreach (var kv in pack.Items.OrderBy(kv => kv.Key)) sb.Append($"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}\n");
+            sb.Append('\n');
+        }
         var items = GameState.Instance.Inventory.Items;
         string title = Net.Instance.IsMultiplayer ? "Stockpile (shared)" : "Stockpile";
-        _inventory.Text = items.Count == 0
+        if (player != null && !Supplies.AtHome(player)) title += " (at home)";
+        sb.Append(items.Count == 0
             ? $"{title}: empty"
-            : $"{title}\n" + string.Join("\n", items.OrderBy(kv => kv.Key).Select(kv => $"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}"));
+            : $"{title}\n" + string.Join("\n", items.OrderBy(kv => kv.Key).Select(kv => $"{ItemDb.NameOf(kv.Key)}  ×{kv.Value}")));
+        _inventory.Text = sb.ToString();
         if (_craftPanel.Visible) RefreshCrafting();
+    }
+
+    private bool _wasHome;
+
+    private void UpdateBuffs(PlayerController player)
+    {
+        bool home = Supplies.AtHome(player);
+        if (home != _wasHome) { _wasHome = home; _inventoryDirty = true; }
+        if (player.Buffs.Count == 0) { _buffs.Text = ""; return; }
+        _buffs.Text = "Well fed:  " + string.Join("   ·   ", player.Buffs.Select(kv =>
+        {
+            string what = kv.Key == PlayerController.BuffVigor ? $"+{kv.Value.Amount:0} max health" : $"stamina regen +{kv.Value.Amount * 100f:0}%";
+            int s = Mathf.CeilToInt(kv.Value.Left);
+            return $"{what} ({s / 60}:{s % 60:00})";
+        }));
     }
 
     // ------------------------------------------------------------------ crafting panel
@@ -321,7 +356,7 @@ public partial class Hud : CanvasLayer
         foreach (var child in _craftList.GetChildren()) child.QueueFree();
         if (_trader != null) { RefreshTrade(); return; }
         if (_station == null) return;
-        var inv = GameState.Instance.Inventory;
+        var me = GameState.Instance.LocalPlayer;
         if (_station is Campfire fire)
         {
             var rest = new Button { Text = "Rest by the fire  (heal, refill stamina)" };
@@ -331,7 +366,7 @@ public partial class Hud : CanvasLayer
         foreach (var recipe in _station.Recipes)
         {
             var cost = recipe.GetInputs();
-            bool canAfford = inv.Has(cost);
+            bool canAfford = Supplies.Has(me, cost);
             var button = new Button
             {
                 Text = $"{recipe.DisplayName}   —   {ItemDb.FormatCost(cost)}",
@@ -340,7 +375,7 @@ public partial class Hud : CanvasLayer
             };
             var r = recipe;
             var station = _station;
-            button.Pressed += () => station.RequestCraft(r);
+            button.Pressed += () => { Sfx.Ui("craft", -4f); station.RequestCraft(r); };
             _craftList.AddChild(button);
         }
         if (_craftList.GetChildCount() == 0)
@@ -349,15 +384,16 @@ public partial class Hud : CanvasLayer
 
     private void RefreshTrade()
     {
-        var inv = GameState.Instance.Inventory;
+        // Trading is done from what you carry (your pack), not the stockpile at home.
+        var inv = GameState.Instance.LocalPlayer?.Pack ?? new Inventory();
         int coins = inv.Count("coin");
-        _craftList.AddChild(MakeLabel(17, HorizontalAlignment.Center, $"Stockpile coins: {coins}"));
+        _craftList.AddChild(MakeLabel(17, HorizontalAlignment.Center, $"Coins in your pack: {coins}"));
         _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Left, "Buy"));
         foreach (var item in ItemDb.Items.Values.Where(i => i.BuyPrice > 0).OrderBy(i => i.BuyPrice))
         {
             var id = item.Id;
             var b = new Button { Text = $"{item.DisplayName}   —   {item.BuyPrice} coins", Disabled = coins < item.BuyPrice };
-            b.Pressed += () => Net.Instance.RequestTrade(_trader, id, buy: true);
+            b.Pressed += () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: true); };
             _craftList.AddChild(b);
         }
         _craftList.AddChild(MakeLabel(16, HorizontalAlignment.Left, "Sell"));
@@ -366,7 +402,7 @@ public partial class Hud : CanvasLayer
             var id = item.Id;
             int have = inv.Count(id);
             var b = new Button { Text = $"{item.DisplayName} (×{have})   —   +{item.SellPrice} coins", Disabled = have == 0 };
-            b.Pressed += () => Net.Instance.RequestTrade(_trader, id, buy: false);
+            b.Pressed += () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: false); };
             _craftList.AddChild(b);
         }
     }

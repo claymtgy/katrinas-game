@@ -58,6 +58,12 @@ void sky() {
     COLOR = col * energy;
 }";
 
+    private static Color Grey(Color c)
+    {
+        float l = c.R * 0.3f + c.G * 0.59f + c.B * 0.11f;
+        return new Color(l, l * 1.02f, l * 1.1f);
+    }
+
     private DirectionalLight3D _sun, _moon;
     private ShaderMaterial _sky;
     private Godot.Environment _env;
@@ -143,11 +149,22 @@ void sky() {
 
         var top = DayTop.Lerp(DuskTop, dusk).Lerp(NightTop, night);
         var horizon = DayHorizon.Lerp(DuskHorizon, dusk).Lerp(NightHorizon, night);
+
+        // Rain: a lower, greyer sky, a dimmer sun and thicker haze.
+        float wet = Weather.Wetness;
+        if (wet > 0.001f)
+        {
+            top = top.Lerp(Grey(top) * 0.85f, 0.65f * wet);
+            horizon = horizon.Lerp(Grey(horizon) * 0.8f, 0.7f * wet);
+            _sun.LightEnergy *= 1f - 0.65f * wet;
+        }
+        _env.FogDensity = 0.0012f + 0.0055f * wet;
+        RenderingServer.GlobalShaderParameterSet("wetness", wet);
         _sky.SetShaderParameter("top_color", top);
         _sky.SetShaderParameter("horizon_color", horizon);
         _sky.SetShaderParameter("ground_color", horizon.Lerp(top, 0.6f).Darkened(0.3f));
         _sky.SetShaderParameter("glow_color", SunLow);
-        _sky.SetShaderParameter("glow_strength", Mathf.Clamp(dusk * 1.2f, 0f, 1f) * (1f - night * 0.6f));
+        _sky.SetShaderParameter("glow_strength", Mathf.Clamp(dusk * 1.2f, 0f, 1f) * (1f - night * 0.6f) * (1f - 0.7f * wet));
         _sky.SetShaderParameter("energy", Mathf.Lerp(1f, 0.85f, night));
 
         _env.FogLightColor = horizon.Lerp(new Color(1f, 0.75f, 0.8f), 0.3f * dusk);

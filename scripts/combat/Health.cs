@@ -54,6 +54,19 @@ public partial class Health : Node
         Net.Instance?.BroadcastHealth(this, ChangeKind.Heal, amount, null);
     }
 
+    /// <summary>Change the maximum (food buffs). Every machine calls it; the server also trims
+    /// current health that no longer fits and tells the clients.</summary>
+    public void SetMax(float max)
+    {
+        if (Mathf.IsEqualApprox(max, Max)) return;
+        Max = max;
+        if (Authoritative && Current > Max)
+        {
+            Current = Max;
+            Net.Instance?.BroadcastHealth(this, ChangeKind.Heal, 0f, null);
+        }
+    }
+
     public void Reset()
     {
         if (!Authoritative) return;

@@ -138,7 +138,7 @@ public partial class BuildSystem : Node
         _ghost.GlobalPosition = _spot;
         _ghost.Rotation = new Vector3(0, _rotationY, 0);
 
-        InvalidReason = normal.Y < 0.85f ? "Too steep" : CheckPlacement(space, Current, _spot, _rotationY);
+        InvalidReason = normal.Y < 0.85f ? "Too steep" : CheckPlacement(space, Current, _spot, _rotationY, _player);
         _ghostMaterial.AlbedoColor = InvalidReason == ""
             ? new Color(0.4f, 1f, 0.5f, 0.45f)
             : new Color(1f, 0.3f, 0.3f, 0.45f);
@@ -146,7 +146,7 @@ public partial class BuildSystem : Node
 
     /// <summary>Why a building can't go here ("" = it can). Used by the local ghost and again by
     /// the server before it builds.</summary>
-    public static string CheckPlacement(PhysicsDirectSpaceState3D space, BuildingDef def, Vector3 spot, float rotationY)
+    public static string CheckPlacement(PhysicsDirectSpaceState3D space, BuildingDef def, Vector3 spot, float rotationY, PlayerController payer = null)
     {
         var gs = GameState.Instance;
 
@@ -169,7 +169,8 @@ public partial class BuildSystem : Node
         };
         if (space.IntersectShape(shapeQuery, 1).Count > 0) return "Something is in the way";
 
-        if (!gs.Inventory.Has(def.GetCost())) return "Not enough materials";
+        // The server re-checks the cost when it pays (Supplies.TryConsume).
+        if (payer != null && !Supplies.Has(payer, def.GetCost())) return "Not enough materials";
         return "";
     }
 

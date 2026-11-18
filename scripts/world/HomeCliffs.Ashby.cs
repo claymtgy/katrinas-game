@@ -24,8 +24,7 @@ public partial class HomeCliffs
     {
         // Ground continues south through the gap in the wall (z 90..246).
         var ground = Block(new Vector3(0, -6, (90 + ValeEndZ) / 2f), new Vector3(120, 12, ValeEndZ - 90), Vector3.Zero, Grass);
-        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride =
-            StyleMaterials.Rock(new Color(0.11f, 0.1f, 0.14f), new Color(0.3f, 0.4f, 0.27f), 0.7f, 0.25f);
+        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride = GroundMaterial;
 
         // Rock walls east and west, and the far end.
         foreach (float side in new[] { -1f, 1f })
@@ -116,11 +115,13 @@ public partial class HomeCliffs
         House(root, new Vector3(0, 0, 20), 4, 4, "UnevenBrick", 4);
 
         // Well in the middle.
-        var well = Block(new Vector3(0, 0.5f, 3), new Vector3(1.8f, 1f, 1.8f), Vector3.Zero, SlateLight, root);
-        Visual(new BoxMesh { Size = new Vector3(1.4f, 0.05f, 1.4f) }, Mat(new Color(0.2f, 0.35f, 0.45f)), new Vector3(0, 0.51f, 0), Vector3.Zero, well);
-        foreach (float x in new[] { -0.8f, 0.8f })
-            Visual(new BoxMesh { Size = new Vector3(0.14f, 1.6f, 0.14f) }, Mat(WoodDark), new Vector3(x, 1.3f, 0), Vector3.Zero, well);
-        Visual(new PrismMesh { Size = new Vector3(2.2f, 0.7f, 2.0f) }, Mat(Cloth.Darkened(0.2f)), new Vector3(0, 2.4f, 0), Vector3.Zero, well);
+        var well = new WaterSource
+        {
+            Name = "AshbyWell", SourceName = "village well", Position = new Vector3(0, 0, 3), BuildVisual = true,
+            CollisionLayer = GameState.LayerProps, CollisionMask = 0,
+        };
+        root.AddChild(well);
+        well.AddChild(new CollisionShape3D { Shape = new CylinderShape3D { Radius = 0.95f, Height = 0.9f }, Position = new Vector3(0, 0.45f, 0) });
 
         // Lamps (they glow at night like everything else lit).
         foreach (var p in new[] { new Vector3(-10, 0, -10), new Vector3(6, 0, -8), new Vector3(-8, 0, 7), new Vector3(8, 0, 7), new Vector3(2, 0, -18) })

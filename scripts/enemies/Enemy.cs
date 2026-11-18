@@ -20,6 +20,8 @@ public abstract partial class Enemy : CharacterBody3D
     public int Group { get; protected set; }
     public Health Health { get; protected set; }
     public State Current { get; protected set; } = State.Prowl;
+    /// <summary>Tests and photo shots: stop thinking and moving (still animates, idles).</summary>
+    public bool Frozen { get; set; }
     public PlayerController Target { get; protected set; }
     /// <summary>Damage per hit (big monsters get it scaled by player count when spawned).</summary>
     public float Damage { get; set; }
@@ -46,6 +48,11 @@ public abstract partial class Enemy : CharacterBody3D
     private float _attackCooldown, _gravity, _staggerFor;
     private Vector3 _wanderTo, _knockback;
     private bool _hasWander;
+    // ---- path following (WorldNav)
+    private Vector3[] _path = System.Array.Empty<Vector3>();
+    private int _pathIndex;
+    private float _repathIn;
+    private Vector3 _pathGoal;
     protected readonly RandomNumberGenerator Rng = new();
 
     // ---- client interpolation
@@ -85,7 +92,7 @@ public abstract partial class Enemy : CharacterBody3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
-        if (Current != State.Dead)
+        if (Current != State.Dead && !Frozen)
         {
             if (Net.Instance.IsServer) Think(dt);
             else Follow(dt);
@@ -168,7 +175,7 @@ public abstract partial class Enemy : CharacterBody3D
                     _hasWander = true;
                     StateTime = 0;
                 }
-                desired = Flat(_wanderTo - pos);
+                desired = Steer(pos, _wanderTo, dt);
                 speed = Flat(anchor - pos).Length() > WanderRadius * 2f ? RunSpeed * 0.7f : WalkSpeed;
                 break;
             }
@@ -183,7 +190,7 @@ public abstract partial class Enemy : CharacterBody3D
                     wildlife.BroadcastAnim(this, Wildlife.AnimAttack);
                     break;
                 }
-                desired = to;
+                desired = Steer(pos, Target.GlobalPosition, dt);
                 speed = dist > 4f ? RunSpeed : Mathf.Lerp(WalkSpeed, RunSpeed, (dist - 1f) / 3f);
                 if (dist < AttackRange) speed = 0; // waiting out the cooldown
                 faceYaw = YawOf(to);
@@ -238,6 +245,26 @@ public abstract partial class Enemy : CharacterBody3D
         float flatSpeed = Flat(Velocity).Length();
         if (faceYaw == null && flatSpeed > 0.4f) faceYaw = YawOf(Flat(Velocity));
         if (faceYaw != null) Rotation = new Vector3(0, Mathf.LerpAngle(Rotation.Y, faceYaw.Value, Mathf.Min(1f, 10f * dt)), 0);
+    }
+
+    /// <summary>Server: which way to walk to reach goal, following the navmesh around rocks, trees
+    /// and buildings. Close up (or before the navmesh is baked) it's just straight at it.</summary>
+    protected Vector3 Steer(Vector3 pos, Vector3 goal, float dt)
+    {
+        var direct = Flat(goal - pos);
+        var nav = WorldNav.Instance;
+        if (nav == null || !nav.Ready || direct.Length() < 2.5f) return direct;
+
+        _repathIn -= dt;
+        if (_repathIn <= 0 || Flat(goal - _pathGoal).Length() > 1.5f || _pathIndex >= _path.Length)
+        {
+            _path = nav.Path(pos, goal);
+            _pathIndex = 0;
+            _pathGoal = goal;
+            _repathIn = 0.5f + Rng.Randf() * 0.2f;
+        }
+        while (_pathIndex < _path.Length && Flat(_path[_pathIndex] - pos).Length() < 0.7f) _pathIndex++;
+        return _pathIndex < _path.Length ? Flat(_path[_pathIndex] - pos) : direct;
     }
 
     /// <summary>Steer around trees and rocks with a short feeler ray.</summary>

@@ -10,3 +10,6 @@ Category = "food"
 IconColor = Color(0.8, 0.55, 0.3, 1)
 FoodHeal = 35.0
 SellPrice = 4
+BuffKind = "stamina"
+BuffAmount = 0.5
+BuffSeconds = 240.0

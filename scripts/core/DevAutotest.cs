@@ -47,6 +47,10 @@ public partial class DevAutotest : Node
         p.Rig.SetLook(Mathf.Atan2(-d.X, -d.Z), -0.1f);
     }
 
+    /// <summary>What the local player has: their pack plus the shared stockpile.</summary>
+    private static int Have(string id) =>
+        GameState.Instance.Inventory.Count(id) + (GameState.Instance.LocalPlayer?.Pack.Count(id) ?? 0);
+
     private void Check(bool ok, string what)
     {
         GD.Print($"[AUTOTEST] {(ok ? "PASS" : "FAIL")}: {what}");
@@ -61,6 +65,20 @@ public partial class DevAutotest : Node
         var img = GetViewport().GetTexture().GetImage();
         img.SavePng($"{_shots}/{name}.png");
         GD.Print($"[AUTOTEST] screenshot {name}.png");
+    }
+
+    /// <summary>Audio (art pass round 2): the ambience bed is running and the game's actions
+    /// asked for their sounds along the way.</summary>
+    private void Audio()
+    {
+        var amb = Ambience.Instance;
+        Check(amb != null && amb.GetNodeOrNull<AudioStreamPlayer>("amb_wind")?.Playing == true, "the ambience bed (wind) is playing");
+        Check(amb != null && amb.Wind > 0.1f, $"wind is audible ({amb?.Wind:0.00})");
+        var root = GetTree().CurrentScene;
+        Check(root.FindChildren("*", "AudioStreamPlayer3D", true, false).Count(n => ((AudioStreamPlayer3D)n).Stream == Sfx.Get("amb_waterfall")) >= 4, "every waterfall roars");
+        Check(root.FindChild("Volcano", true, false)?.GetNodeOrNull("Sound_amb_lava") != null, "the volcano rumbles");
+        foreach (var s in new[] { "chop", "mine", "step", "swing_light", "hit_flesh", "build", "eat", "water", "chest", "pickup", "dodge", "parry" })
+            Check(Sfx.Played.GetValueOrDefault(s) > 0, $"sound '{s}' played ({Sfx.Played.GetValueOrDefault(s)}x)");
     }
 
     /// <summary>Wolves (GDD §9, §16): hunt, bite, die to the sword, drop a pelt; packs come at
@@ -82,11 +100,33 @@ public partial class DevAutotest : Node
         var toWolf = wolf.GlobalPosition - p.GlobalPosition;
         p.Rig.SetLook(Mathf.Atan2(-toWolf.X, -toWolf.Z) + 0.35f, -0.12f); // off-centre so the hero doesn't hide it
         await Shot("10_wolf");
+        {
+            // Close-up of the faceted wolf model (art pass), lit by a lantern so it reads at night.
+            wolf.Frozen = true;   // hold still for the photo; it settles into its idle
+            await Wait(0.8);
+            var cam = new Camera3D { Fov = 50f };
+            GetTree().CurrentScene.AddChild(cam);
+            var side = wolf.GlobalBasis.X.Normalized();
+            cam.GlobalPosition = wolf.GlobalPosition + side * 3.2f + new Vector3(0, 1.1f, 0);
+            cam.LookAt(wolf.GlobalPosition + Vector3.Up * 0.6f, Vector3.Up);
+            var lamp = new OmniLight3D { LightColor = new Color(1f, 0.85f, 0.7f), LightEnergy = 2.5f, OmniRange = 6f };
+            cam.AddChild(lamp);
+            cam.MakeCurrent();
+            await Wait(0.1);
+            await Shot("10c_wolf_closeup");
+            wolf.StartHowl();
+            await Wait(0.7);
+            Check(wolf.Howling && Sfx.Played.GetValueOrDefault("wolf_howl") > 0, "a standing wolf howls (pose and sound)");
+            await Shot("10d_wolf_howl");
+            wolf.Frozen = false;
+            cam.QueueFree();
+            p.Rig.Camera.MakeCurrent();
+        }
         Check(await Until(() => wolf.GlobalPosition.DistanceTo(p.GlobalPosition) < 2.6f, 10), "a wolf hunts the player down");
         Face(p, wolf.GlobalPosition);
         Check(await Until(() => p.Health.Current < p.Health.Max, 8), $"the wolf bites (HP {p.Health.Current})");
 
-        int pelts = gs.Inventory.Count("wolf_pelt");
+        int pelts = Have("wolf_pelt");
         for (int i = 0; i < 24 && !wolf.Health.IsDead; i++)
         {
             p.RestoreStamina();
@@ -95,7 +135,7 @@ public partial class DevAutotest : Node
             await Wait(0.5);
         }
         Check(wolf.Health.IsDead, "the sword kills the wolf");
-        Check(gs.Inventory.Count("wolf_pelt") == pelts + 1, "a dead wolf leaves a pelt in the stockpile");
+        Check(Have("wolf_pelt") == pelts + 1 && p.Pack.Count("wolf_pelt") >= 1, "a dead wolf leaves a pelt in the killer's pack");
         Check(await Until(() => wild.Wolves.Count == 0, 5), "the body is cleared away");
 
         // Night spawning and dawn retreat.
@@ -191,7 +231,7 @@ public partial class DevAutotest : Node
         p.Rig.SetLook(Mathf.Atan2(-c.X, -c.Z) + 0.3f, -0.05f);
         await Shot("13_bandit_camp");
 
-        int coins = gs.Inventory.Count("coin");
+        int coins = Have("coin");
         int hits = wild.Bites;
         for (int i = 0; i < 200 && bandits.Any(b => !b.Health.IsDead); i++)
         {
@@ -207,8 +247,8 @@ public partial class DevAutotest : Node
         Check(wild.Bites > hits, "bandits swing back");
         Check(wild.CampCleared(0), "the camp counts as cleared");
         int expected = Bandit.GruntCoins * Wildlife.SoloCampSize + Bandit.CaptainCoins;
-        Check(gs.Inventory.Count("coin") == coins + expected, $"bandits drop coins ({gs.Inventory.Count("coin") - coins} of {expected})");
-        Check(gs.Inventory.Count("cottage_blueprint") == 1, "the captain carried the cottage blueprint");
+        Check(Have("coin") == coins + expected, $"bandits drop coins ({Have("coin") - coins} of {expected})");
+        Check(Have("cottage_blueprint") == 1, "the captain carried the cottage blueprint");
         Check(await Until(() => !wild.Bandits.Any(), 8), "the bodies are cleared away");
         p.Health.Reset();
     }
@@ -250,18 +290,23 @@ public partial class DevAutotest : Node
         await Shot("16_trade_menu");
 
         // Sell a pelt, then buy nails and seeds.
-        gs.Inventory.Add("wolf_pelt", 1);
-        int coins = gs.Inventory.Count("coin"), pelts = gs.Inventory.Count("wolf_pelt");
+        Check(!Supplies.AtHome(p), "Ashby is away from home (the stockpile is out of reach)");
+        gs.Inventory.Add("wolf_pelt", 5);
         Net.Instance.RequestTrade(trader, "wolf_pelt", buy: false);
-        Check(gs.Inventory.Count("coin") == coins + 8 && gs.Inventory.Count("wolf_pelt") == pelts - 1, "sold a wolf pelt for 8 coins");
+        Check(gs.Inventory.Count("wolf_pelt") == 5, "can't sell what's in the stockpile at home");
+        gs.Inventory.Remove("wolf_pelt", 5);
+        p.Pack.Add("wolf_pelt", 1);
+        int coins = Have("coin"), pelts = Have("wolf_pelt");
+        Net.Instance.RequestTrade(trader, "wolf_pelt", buy: false);
+        Check(Have("coin") == coins + 8 && Have("wolf_pelt") == pelts - 1, "sold a wolf pelt for 8 coins");
         for (int i = 0; i < 6; i++) Net.Instance.RequestTrade(trader, "iron_nails", buy: true);
         Net.Instance.RequestTrade(trader, "turnip_seeds", buy: true);
-        Check(gs.Inventory.Count("iron_nails") == 6 && gs.Inventory.Count("turnip_seeds") == 1, "bought 6 iron nails and turnip seeds");
-        Check(gs.Inventory.Count("coin") == coins + 8 - 6 * 5 - 3, $"coins paid for them ({gs.Inventory.Count("coin")} left)");
-        int left = gs.Inventory.Count("coin");
+        Check(p.Pack.Count("iron_nails") == 6 && p.Pack.Count("turnip_seeds") == 1, "bought 6 iron nails and turnip seeds (into the pack)");
+        Check(Have("coin") == coins + 8 - 6 * 5 - 3, $"coins paid for them ({Have("coin")} left)");
+        int left = Have("coin");
         for (int i = 0; i < 30; i++) Net.Instance.RequestTrade(trader, "iron_nails", buy: true);
-        Check(gs.Inventory.Count("coin") >= 0 && gs.Inventory.Count("iron_nails") == 6 + left / 5, "can't buy without the coins");
-        gs.Inventory.Remove("iron_nails", left / 5);
+        Check(Have("coin") >= 0 && Have("iron_nails") == 6 + left / 5, "can't buy without the coins");
+        p.Pack.Remove("iron_nails", left / 5);
         Hud.Instance.CloseMenus();
     }
 
@@ -276,14 +321,14 @@ public partial class DevAutotest : Node
         Face(p, grain.GlobalPosition);
         p.Rig.SetLook(0, -0.35f);
         await Wait(0.3);
-        int seeds = gs.Inventory.Count("wheat_seeds");
-        for (int i = 0; i < 8 && gs.Inventory.Count("wheat_seeds") < seeds + 2; i++)
+        int seeds = Have("wheat_seeds");
+        for (int i = 0; i < 8 && Have("wheat_seeds") < seeds + 2; i++)
         {
             p.RestoreStamina();
             p.Combat.TryAttack(false);
             await Wait(0.5);
         }
-        Check(gs.Inventory.Count("wheat_seeds") >= seeds + 2, $"cutting wild grain gives wheat seeds ({gs.Inventory.Count("wheat_seeds")})");
+        Check(Have("wheat_seeds") >= seeds + 2, $"cutting wild grain gives wheat seeds ({Have("wheat_seeds")})");
 
         // Build a wheat plot and a turnip plot in the yard.
         gs.Inventory.Add("wood", 10);
@@ -314,18 +359,40 @@ public partial class DevAutotest : Node
         // Plant: costs a seed each.
         p.Teleport(wheat.GlobalPosition + new Vector3(0, 0.1f, 1.8f));
         await Wait(0.2);
-        int ws = gs.Inventory.Count("wheat_seeds"), ts = gs.Inventory.Count("turnip_seeds");
+        int ws = Have("wheat_seeds"), ts = Have("turnip_seeds");
         wheat.Interact(p);
         turnip.Interact(p);
         Check(wheat.Planted && turnip.Planted && !wheat.Ripe, "planted wheat and turnips");
-        Check(gs.Inventory.Count("wheat_seeds") == ws - 1 && gs.Inventory.Count("turnip_seeds") == ts - 1, "planting uses a seed each");
+        Check(Have("wheat_seeds") == ws - 1 && Have("turnip_seeds") == ts - 1, "planting uses a seed each");
+
+        // Dry soil: nothing grows until it's watered.
+        gs.TimeOfDay = 0.42f;
+        await Wait(0.2);
+        Check(!wheat.Wet && wheat.Growth == 0f, $"a dry plot doesn't grow ({wheat.Growth * 100:0}%)");
+        wheat.Interact(p);
+        Check(!wheat.Wet, "can't water without Water");
+
+        // Fetch water from the pool under the west waterfall, then water both plots.
+        var pool = Find("PoolWater") as WaterSource;
+        p.Teleport(pool.GlobalPosition + new Vector3(1.4f, 0.1f, 0));
+        Face(p, pool.GlobalPosition);
+        p.Rig.SetLook(p.Rig.Look.Yaw, -0.5f);
+        await Wait(0.3);
+        pool.Interact(p);
+        Check(p.Pack.Count("water") == pool.Draw, $"drew {pool.Draw} Water at the pool");
+        p.Teleport(wheat.GlobalPosition + new Vector3(0, 0.1f, 1.8f));
+        await Wait(0.2);
+        wheat.Interact(p);
+        turnip.Interact(p);
+        Check(wheat.Wet && turnip.Wet && p.Pack.Count("water") == pool.Draw - 2, "watered both plots (a Water each)");
+
         p.Rig.SetView(false, true);
         p.Teleport(wheat.GlobalPosition + new Vector3(3, 0.1f, 3.5f));
         Face(p, wheat.GlobalPosition);
         p.Rig.SetLook(p.Rig.Look.Yaw + 0.3f, -0.3f);
-        gs.TimeOfDay = 0.5f; // a few hours later
+        gs.TimeOfDay = 0.57f; // a few hours later
         await Wait(0.5);
-        Check(wheat.Growth > 0.2f && wheat.Growth < 1f, $"crops grow with the clock ({wheat.Growth * 100:0}%)");
+        Check(wheat.Growth > 0.2f && wheat.Growth < 1f, $"watered crops grow with the clock ({wheat.Growth * 100:0}%)");
         await Shot("17_farm_growing");
 
         // Saved and loaded with the world.
@@ -350,11 +417,23 @@ public partial class DevAutotest : Node
         await Wait(0.5);
         await Shot("18_farm_ripe");
         p.Teleport(wheat.GlobalPosition + new Vector3(0, 0.1f, 1.8f));
-        int wh = gs.Inventory.Count("wheat"), tu = gs.Inventory.Count("turnip");
+        int wh = Have("wheat"), tu = Have("turnip");
         wheat.Interact(p);
         turnip.Interact(p);
-        Check(gs.Inventory.Count("wheat") == wh + 3 && gs.Inventory.Count("turnip") == tu + 2, "harvest: 3 wheat and 2 turnips");
-        Check(!wheat.Planted && gs.Inventory.Count("wheat_seeds") >= 2, "harvesting clears the plot and gives seed back");
+        Check(Have("wheat") == wh + 3 && Have("turnip") == tu + 2, "harvest: 3 wheat and 2 turnips");
+        Check(!wheat.Planted && Have("wheat_seeds") >= 2, "harvesting clears the plot and gives seed back");
+
+        // Rain waters everything.
+        Check(!wheat.Wet, "by now the soil has dried out");
+        wheat.Interact(p);
+        Check(wheat.Planted && !wheat.Wet, "replanted the wheat (dry)");
+        Weather.Instance.SetRain(true);
+        await Wait(0.3);
+        Check(gs.Raining && wheat.Wet && turnip.Wet, "rain waters every plot");
+        await Wait(3.0);
+        await Shot("17b_rain");
+        Weather.Instance.SetRain(false);
+        Check(!gs.Raining, "the shower passes");
 
         // Cook at the ledge campfire, then eat.
         var fire = Find("LedgeCampfire") as Campfire;
@@ -365,12 +444,115 @@ public partial class DevAutotest : Node
         await Shot("19_cooking");
         foreach (var r in fire.Recipes) fire.RequestCraft(r);
         Hud.Instance.CloseMenus();
-        Check(gs.Inventory.Count("bread") == 1 && gs.Inventory.Count("roast_turnip") == 1, "baked bread and roasted a turnip at the campfire");
+        Check(Have("bread") == 1 && Have("roast_turnip") == 1, "baked bread and roasted a turnip at the campfire");
         p.Health.TakeDamage(30, null);
         Net.Instance.RequestEat();
-        Check(p.Health.Current >= p.Health.Max - 0.01f && gs.Inventory.Count("bread") == 0, "eating bread (F) heals");
+        Check(p.Health.Current >= p.Health.Max - 0.01f && Have("bread") == 0, "eating bread (F) heals");
+        Check(p.BuffAmount(PlayerController.BuffStamina) > 0.4f, "bread gives a stamina-regen buff");
         Net.Instance.RequestEat();
-        Check(gs.Inventory.Count("roast_turnip") == 1, "no eating at full health");
+        Check(Have("roast_turnip") == 0 && Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + 25f),
+            $"at full health a roast turnip is still worth it: +25 max health ({p.Health.Max})");
+        Net.Instance.RequestEat();
+        Check(Have("roast_turnip") == 0, "nothing more to gain: no eating");
+        p.ApplyBuff(PlayerController.BuffVigor, 0f, 0f); // (test) let it wear off
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth) && p.Health.Current <= p.Health.Max, "when the buff wears off max health goes back");
+        p.ClearBuffs();
+    }
+
+    /// <summary>Carried packs (GDD §16): gathered things go in your pack until you empty it into
+    /// a storage chest at home; a pack holds 40; a defeat costs half of it.</summary>
+    private async Task Packs(GameState gs, PlayerController p)
+    {
+        Check(p.Pack.Load > 0, $"gathered things are in the pack (pack {p.Pack.Load})");
+        var chest = Find("HomeChest") as StorageChest;
+        Check(chest != null, "a storage chest stands by the shack");
+        p.Teleport(chest.GlobalPosition + new Vector3(0.3f, 0.1f, 2.4f));
+        Face(p, chest.GlobalPosition);
+        p.Rig.SetLook(p.Rig.Look.Yaw + 0.25f, -0.25f);
+        await Wait(0.4);
+        await Shot("03b_storage_chest");
+        p.Rig.SetView(true, true);
+        p.Teleport(chest.GlobalPosition + new Vector3(0, 0.1f, 1.6f));
+        Face(p, chest.GlobalPosition);
+        p.Rig.SetLook(p.Rig.Look.Yaw, -0.6f);
+        await Wait(0.3);
+        Check(p.Interactor.Target == chest, $"looking at the chest offers it ({p.Interactor.Target?.InteractPrompt})");
+        p.Rig.SetView(false, true);
+        int carried = p.Pack.Load, wood = Have("wood");
+        chest.Interact(p);
+        Check(p.Pack.Load == 0 && gs.Inventory.Count("wood") == wood, $"emptied {carried} items into the stockpile");
+
+        // A full pack refuses more.
+        p.Pack.Add("stone", Supplies.PackCapacity);
+        Check(Supplies.Give(p, "wood", 3) == 0 && p.Pack.Load == Supplies.PackCapacity, "a full pack (40) takes no more");
+        Check(Supplies.Give(p, "coin", 5) == 5, "coins weigh nothing");
+
+        // Building at home pays from the pack first, then the stockpile.
+        gs.Inventory.Add("wood", 2);
+        wood = gs.Inventory.Count("wood");
+        Check(Supplies.TryConsume(p, new System.Collections.Generic.Dictionary<string, int> { ["stone"] = 2, ["wood"] = 1 })
+              && p.Pack.Count("stone") == Supplies.PackCapacity - 2 && gs.Inventory.Count("wood") == wood - 1, "costs come out of the pack first, then the stockpile");
+        gs.Inventory.Add("wood", 1);
+
+        // Defeat: half the pack is lost.
+        p.Pack.Clear();
+        p.Pack.Add("stone", 10);
+        p.Pack.Add("wood", 3);
+        p.Health.TakeDamage(1000, null);
+        await Wait(0.3);
+        Check(p.Pack.Count("stone") == 5 && p.Pack.Count("wood") == 2, $"a defeat drops half the pack (stone {p.Pack.Count("stone")}, wood {p.Pack.Count("wood")})");
+        Check(!p.Health.IsDead, "and you're back at the blossom tree");
+        p.Pack.Clear();
+        await Wait(0.3);
+    }
+
+    /// <summary>Dodge roll: a burst of speed, costs stamina, and hits during it miss.</summary>
+    private async Task Dodge(GameState gs, PlayerController p)
+    {
+        p.Teleport(new Vector3(-12, 0.1f, 30));
+        p.Rig.SetView(false, true);
+        p.Rig.SetLook(0, -0.1f);
+        p.RestoreStamina();
+        p.Health.Reset();
+        await Wait(0.4);
+        var start = p.GlobalPosition;
+        Check(p.TryDodge(new Vector2(1, 0)), "roll to the right");
+        Check(p.Stamina < p.MaxStamina - p.DodgeCost + 1f, "a roll costs stamina");
+        var hit = Net.Instance.ServerDamagePlayer(p, 20f, Find("TrainingDummy"));
+        Check(hit == Net.HitResult.Dodged && p.Health.Current >= p.Health.Max, "a blow mid-roll misses");
+        await Wait(0.15);
+        await Shot("10b_dodge");
+        await Wait(0.5);
+        float moved = new Vector2(p.GlobalPosition.X - start.X, p.GlobalPosition.Z - start.Z).Length();
+        Check(moved > 2.2f && p.GlobalPosition.X > start.X, $"the roll carries you sideways ({moved:0.0} m)");
+        Check(Net.Instance.ServerDamagePlayer(p, 5f, Find("TrainingDummy")) == Net.HitResult.Hit, "after the roll you can be hit again");
+        p.Health.Reset();
+        p.RestoreStamina();
+    }
+
+    /// <summary>Enemies path around obstacles on a navmesh baked from the world.</summary>
+    private async Task Navigation(GameState gs, PlayerController p)
+    {
+        var nav = WorldNav.Instance;
+        Check(nav != null && await Until(() => nav.Ready, 30), "the enemy navmesh is baked");
+        if (nav == null || !nav.Ready) return;
+        var tree = Find("Res_1") as Node3D; // (Res_0 was chopped down earlier)
+        var a = tree.GlobalPosition + new Vector3(0, 0, -3f);
+        var b = tree.GlobalPosition + new Vector3(0, 0, 3f);
+        var path = nav.Path(a, b);
+        float length = 0;
+        for (int i = 1; i < path.Length; i++) length += path[i].DistanceTo(path[i - 1]);
+        Check(path.Length > 2 && length > 6.1f && path[^1].DistanceTo(b) < 1f, $"a path goes around a tree ({path.Length} points, {length:0.0} m vs 6 m straight)");
+
+        // A building added later is walked around too, after a rebake.
+        int bakes = nav.Bakes;
+        gs.Inventory.Add("wood", 8);
+        var wallSpot = tree.GlobalPosition + new Vector3(6f, 0, 0);
+        var def = ItemDb.GetBuilding("palisade") ?? ItemDb.GetBuilding("storage_chest");
+        var placed = gs.PlaceBuilding(def, wallSpot, 0);
+        Check(await Until(() => nav.Bakes > bakes, 15), "placing a building rebakes the navmesh");
+        gs.RemoveBuilding(placed.NetId);
+        await Until(() => nav.Bakes > bakes + 1, 15);
     }
 
     /// <summary>Home tier 2 (GDD §6): pay at the plans board, the shack becomes a cottage.</summary>
@@ -389,11 +571,11 @@ public partial class DevAutotest : Node
 
         // Test shortcut: top up the bulk materials (the nails, pelts and blueprint were earned above).
         foreach (var kv in HomeUpgradeBoard.CottageCost.Where(kv => kv.Key is "wood" or "stone" or "wolf_pelt"))
-            if (gs.Inventory.Count(kv.Key) < kv.Value) gs.Inventory.Add(kv.Key, kv.Value - gs.Inventory.Count(kv.Key));
-        Check(HomeUpgradeBoard.CottageCost.All(kv => gs.Inventory.Count(kv.Key) >= kv.Value), "the stockpile has everything for the cottage");
+            if (Have(kv.Key) < kv.Value) gs.Inventory.Add(kv.Key, kv.Value - Have(kv.Key));
+        Check(HomeUpgradeBoard.CottageCost.All(kv => Have(kv.Key) >= kv.Value), "the stockpile has everything for the cottage");
         board.Interact(p);
         await Wait(0.3);
-        Check(gs.HomeTier == 2 && gs.Inventory.Count("cottage_blueprint") == 0 && gs.Inventory.Count("iron_nails") == 0, "the shack is upgraded to a cottage (cost paid)");
+        Check(gs.HomeTier == 2 && Have("cottage_blueprint") == 0 && Have("iron_nails") == 0, "the shack is upgraded to a cottage (cost paid)");
         Check(Find("Shack") == null && Find("Cottage") is Node3D, "the shack is replaced by the cottage");
         Check(Mathf.IsEqualApprox(gs.ClaimRadius, 42f), "the land claim grows to 42 m");
         var beds = Find("Cottage").FindChildren("Bed*", "", false, false).OfType<Bed>().ToList();
@@ -437,6 +619,7 @@ public partial class DevAutotest : Node
     private async Task Run()
     {
         var gs = GameState.Instance;
+        Weather.AutoRain = false;
         for (int i = 0; i < 100 && gs.LocalPlayer == null; i++) await Wait(0.2);
         await Wait(2.0);
         var p = gs.LocalPlayer;
@@ -463,25 +646,26 @@ public partial class DevAutotest : Node
         p.Teleport(new Vector3(17, 0.1f, -13.2f));
         p.Rig.SetLook(0, -0.1f);
         await Wait(0.4);
-        for (int i = 0; i < 14 && gs.Inventory.Count("wood") < 7; i++)
+        for (int i = 0; i < 14 && Have("wood") < 7; i++)
         {
             p.RestoreStamina();
             p.Combat.TryAttack(false);
             await Wait(0.5);
         }
-        Check(gs.Inventory.Count("wood") >= 7, $"chopping a tree gives wood (have {gs.Inventory.Count("wood")})");
+        Check(Have("wood") >= 7, $"chopping a tree gives wood (have {Have("wood")})");
+        Check(p.Pack.Count("wood") >= 7 && gs.Inventory.Count("wood") == 0, "the wood goes into your pack, not the stockpile");
 
         // Mine the rock at ShackPos + (6,0,12) = (15,0,-9).
         p.Teleport(new Vector3(15.1f, 0.1f, -6.9f));
         p.Rig.SetLook(0, -0.25f);
         await Wait(0.4);
-        for (int i = 0; i < 20 && gs.Inventory.Count("stone") < 3; i++)
+        for (int i = 0; i < 20 && Have("stone") < 3; i++)
         {
             p.RestoreStamina();
             p.Combat.TryAttack(false);
             await Wait(0.45);
         }
-        Check(gs.Inventory.Count("stone") >= 3, $"mining a rock gives stone (have {gs.Inventory.Count("stone")})");
+        Check(Have("stone") >= 3, $"mining a rock gives stone (have {Have("stone")})");
 
         // Build a workbench in the yard.
         p.Teleport(new Vector3(14, 0.1f, -12));
@@ -497,10 +681,10 @@ public partial class DevAutotest : Node
         p.Build.SetActive(false);
         await Wait(0.3);
         Check(gs.PlacedBuildings.Count == before + 1 && gs.PlacedBuildings.Last().Id == "workbench",
-            $"placed a workbench (wood left {gs.Inventory.Count("wood")}, reason '{p.Build.InvalidReason}')");
+            $"placed a workbench (wood left {Have("wood")}, reason '{p.Build.InvalidReason}')");
 
         // Craft a wooden sword (top up wood if the tree was stingy).
-        if (gs.Inventory.Count("wood") < 5) gs.Inventory.Add("wood", 5 - gs.Inventory.Count("wood"));
+        if (Have("wood") < 5) gs.Inventory.Add("wood", 5 - Have("wood"));
         var bench = gs.PlacedBuildings.LastOrDefault()?.Node as CraftingStation;
         var recipe = ItemDb.Recipes.First(r => r.OutputItem == "wooden_sword");
         Check(bench != null && bench.Recipes.Contains(recipe), "workbench offers the wooden sword recipe");
@@ -509,7 +693,7 @@ public partial class DevAutotest : Node
         await Shot("04_crafting_menu");
         bench?.RequestCraft(recipe);
         await Wait(0.1);
-        Check(p.Equipped == "wooden_sword" && gs.Inventory.Count("wooden_sword") == 0,
+        Check(p.Equipped == "wooden_sword" && Have("wooden_sword") == 0,
             "crafted and equipped a Wooden Sword (in hand, not in the stockpile)");
         Hud.Instance.CloseMenus();
 
@@ -535,15 +719,15 @@ public partial class DevAutotest : Node
         Check(destroyed, "dummy can be destroyed");
 
         // Save / load round trip.
-        int wood = gs.Inventory.Count("wood");
+        int wood = Have("wood");
         gs.SaveGame();
         gs.Inventory.Add("wood", 50);
         gs.LoadGame();
         await Wait(0.3);
-        Check(gs.Inventory.Count("wood") == wood && gs.PlacedBuildings.Count == before + 1, "save/load restores inventory and buildings");
-        Check(gs.Inventory.Count("wooden_sword") == 1 && p.Equipped == "", "the held sword was saved into the stockpile");
+        Check(Have("wood") == wood && gs.PlacedBuildings.Count == before + 1, "save/load restores inventory and buildings");
+        Check(Have("wooden_sword") == 1 && p.Equipped == "", "the held sword was saved into the stockpile");
         Net.Instance.RequestEquip("wooden_sword");
-        Check(p.Equipped == "wooden_sword" && gs.Inventory.Count("wooden_sword") == 0, "equipping takes the sword out of the stockpile");
+        Check(p.Equipped == "wooden_sword" && Have("wooden_sword") == 0, "equipping takes the sword out of the stockpile");
 
         // Sleep: alone, the bed skips straight to dawn.
         var bed = GetTree().CurrentScene.FindChild("Bed", true, false) as Bed;
@@ -559,6 +743,9 @@ public partial class DevAutotest : Node
         Check(Mathf.IsEqualApprox(Difficulty.BigMonsterHealth(100, 4), 205f) && Mathf.IsEqualApprox(Difficulty.BigMonsterDamage(10, 4), 14.5f),
             "big monsters scale health x2.05 and damage x1.45 at 4 players");
 
+        await Packs(gs, p);
+        await Navigation(gs, p);
+        await Dodge(gs, p);
         await Wolves(gs, p);
         await BlockAndParry(gs, p);
         await BanditCamp(gs, p);
@@ -602,9 +789,28 @@ public partial class DevAutotest : Node
         gs.TimeOfDay = 0.02f;
         await Wait(1.5);
         await Shot("11_concept_night");
+        // Art pass round 2: the sculpted volcano at dusk, seen from out past the cliff edge.
+        cam.GlobalPosition = new Vector3(-60f, 30f, -120f);
+        cam.LookAt(new Vector3(-400f, 170f, -950f), Vector3.Up);
+        gs.TimeOfDay = 0.752f;
+        await Wait(1.0);
+        await Shot("22_volcano");
+        // Character close-up: toon ramp, violet shadows, ink outline.
+        gs.TimeOfDay = 0.7f;
+        p.Teleport(new Vector3(0, 0.1f, 20f));
+        p.Rig.SetLook(0f, 0f);
+        await Wait(0.5);
+        var face = p.Body.GlobalBasis.Z.Normalized() * -1f;
+        cam.Fov = 40f;
+        cam.GlobalPosition = p.GlobalPosition + face * 3.2f + new Vector3(1.2f, 1.5f, 0);
+        cam.LookAt(p.GlobalPosition + Vector3.Up * 1.0f, Vector3.Up);
+        await Wait(0.3);
+        await Shot("23_character_toon");
         cam.QueueFree();
         p.Rig.GetNode<Camera3D>("Pivot/SpringArm3D/Camera3D").MakeCurrent();
         Hud.Instance.Visible = true;
+
+        Audio();
 
         GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
         GetTree().Quit(_fails == 0 ? 0 : 1);

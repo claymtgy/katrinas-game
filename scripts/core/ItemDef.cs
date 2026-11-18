@@ -23,6 +23,11 @@ public partial class ItemDef : Resource
     [ExportGroup("Food")]
     /// <summary>Health restored when eaten (F). 0 = not food.</summary>
     [Export] public float FoodHeal { get; set; } = 0f;
+    /// <summary>Timed buff when eaten: "stamina" (regen +Amount×100%) or "vigor" (+Amount max health). "" = none.</summary>
+    [Export] public string BuffKind { get; set; } = "";
+    [Export] public float BuffAmount { get; set; } = 0f;
+    /// <summary>Real seconds the buff lasts.</summary>
+    [Export] public float BuffSeconds { get; set; } = 0f;
 
     [ExportGroup("Trade")]
     /// <summary>Coins a trader asks for one (0 = traders don't sell it).</summary>
@@ -31,4 +36,14 @@ public partial class ItemDef : Resource
     [Export] public int SellPrice { get; set; } = 0;
 
     public bool IsWeapon => Category == "weapon";
+    public bool HasBuff => BuffKind != "" && BuffSeconds > 0;
+    public bool IsFood => FoodHeal > 0 || HasBuff;
+
+    /// <summary>"+25 max health", "Stamina regen +50%".</summary>
+    public string BuffText => BuffKind switch
+    {
+        PlayerController.BuffVigor => $"+{BuffAmount:0} max health",
+        PlayerController.BuffStamina => $"Stamina regen +{BuffAmount * 100f:0}%",
+        _ => "",
+    };
 }
