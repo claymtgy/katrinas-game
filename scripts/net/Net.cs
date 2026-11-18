@@ -579,6 +579,8 @@ public partial class Net : Node
             {
                 if (p.Vanished) ServerEndVanish(p);
                 p.Ability.ServerReadyAt = 0;
+                p.Ability2.ServerReadyAt = 0;
+                p.CritUntil = 0;
                 ToastTo(p.PeerId, $"You are now a {PlayerClasses.Get(a.Class).Name}.");
             }
         }

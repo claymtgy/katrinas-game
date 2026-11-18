@@ -158,6 +158,15 @@ public partial class PlayerController : CharacterBody3D
     public PlayerCombat Combat { get; private set; }
     /// <summary>The class ability (R).</summary>
     public PlayerAbility Ability { get; private set; }
+    /// <summary>The level-5 ability (T).</summary>
+    public PlayerAbility Ability2 { get; private set; }
+
+    /// <summary>A slot's ability node (0 = R, 1 = T).</summary>
+    public PlayerAbility AbilitySlot(int slot) => slot == 1 ? Ability2 : Ability;
+
+    /// <summary>Server clock (Net.Now): the Rogue's Shadowstep makes the next strike before this a
+    /// critical hit.</summary>
+    public double CritUntil { get; set; }
     public Interactor Interactor { get; private set; }
 
     // ---------------------------------------------------------------- climbing / gliding
@@ -408,6 +417,21 @@ public partial class PlayerController : CharacterBody3D
     private bool _wakeRequested;
     private float _dodgeTime, _dodgeCooldown;
     private Vector3 _dodgeDir;
+    // The Warrior's Charge: a straight rush that a wall or an enemy stops.
+    private float _dashTime, _dashSpeed;
+    private Vector3 _dashDir;
+
+    /// <summary>Local player: rush along dir (flat) for distance metres over seconds (Charge).</summary>
+    public void StartDash(Vector3 dir, float distance, float seconds)
+    {
+        _dashDir = dir;
+        _dashTime = seconds;
+        _dashSpeed = distance / seconds;
+        _dodgeTime = 0;
+    }
+
+    /// <summary>Local player: mid-charge.</summary>
+    public bool Dashing => _dashTime > 0;
 
     // Remote state.
     private bool _hasRemoteState;
@@ -423,8 +447,10 @@ public partial class PlayerController : CharacterBody3D
         Body = GetNode<Node3D>("Body");
         Build = GetNode<BuildSystem>("BuildSystem");
         Combat = GetNode<PlayerCombat>("Combat");
-        Ability = new PlayerAbility { Name = "Ability" };
+        Ability = new PlayerAbility { Name = "Ability", Slot = 0 };
         AddChild(Ability);
+        Ability2 = new PlayerAbility { Name = "Ability2", Slot = 1 };
+        AddChild(Ability2);
         Interactor = GetNode<Interactor>("Interactor");
         IsLocal = PeerId == Multiplayer.GetUniqueId() && !Net.Instance.IsDedicated;
         SetMultiplayerAuthority(PeerId);
@@ -650,6 +676,7 @@ public partial class PlayerController : CharacterBody3D
     {
         GlobalPosition = position;
         Velocity = Vector3.Zero;
+        _dashTime = 0;
         _airVelocityY = 0;
         _fellOut = false;
         _wasOnFloor = true;
@@ -729,6 +756,7 @@ public partial class PlayerController : CharacterBody3D
             SetMode(MoveMode.Swim);
             if (Combat.GuardUp) Combat.DropGuard();
             _dodgeTime = 0;
+            _dashTime = 0;
         }
         if (Mode == MoveMode.Swim)
         {
@@ -779,6 +807,15 @@ public partial class PlayerController : CharacterBody3D
             float k = Mathf.Clamp(_dodgeTime / DodgeDuration, 0f, 1f);
             target = _dodgeDir * DodgeSpeed * (0.45f + 0.55f * k);
             accel = 1f;
+        }
+        if (_dashTime > 0)
+        {
+            _dashTime -= dt;
+            target = _dashDir * _dashSpeed;
+            accel = 1f;
+            // Ran into something head-on (a rock, a wall, the enemy): the charge ends there.
+            for (int i = 0; i < GetSlideCollisionCount(); i++)
+                if (GetSlideCollision(i).GetNormal().Dot(_dashDir) < -0.6f) { _dashTime = 0; break; }
         }
         if (Mode == MoveMode.Glide) accel = 0f; // the glider steers itself (GlideStep)
         v.X = Mathf.Lerp(v.X, target.X, accel);

@@ -61,6 +61,71 @@ public static class Fx
         Sparks(parent, at, color, 24, 3f);
     }
 
+    /// <summary>The Healer's Blossom Ward: a glowing ring of petals on the ground that lasts
+    /// <paramref name="seconds"/>, with petals drifting up all round it, then fades.</summary>
+    public static void Ward(Node parent, Vector3 at, float radius, float seconds)
+    {
+        if (parent == null) return;
+        var pink = new Color(1f, 0.62f, 0.82f, 0.85f);
+        var root = new Node3D { Name = "BlossomWard" };
+        parent.AddChild(root);
+        root.GlobalPosition = at + Vector3.Up * 0.12f;
+
+        var mat = Glow(pink, 2.5f);
+        var ring = new MeshInstance3D
+        {
+            Mesh = new TorusMesh { InnerRadius = 0.95f, OuterRadius = 1f, Rings = 48, RingSegments = 6 },
+            MaterialOverride = mat,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Scale = new Vector3(0.2f, 0.5f, 0.2f),
+        };
+        root.AddChild(ring);
+        var floorMat = Glow(new Color(1f, 0.7f, 0.85f, 0.12f), 1f);
+        var floor = new MeshInstance3D
+        {
+            Mesh = new CylinderMesh { TopRadius = 1f, BottomRadius = 1f, Height = 0.02f, RadialSegments = 40 },
+            MaterialOverride = floorMat,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Scale = new Vector3(radius, 1f, radius),
+        };
+        root.AddChild(floor);
+
+        var petals = new CpuParticles3D
+        {
+            Amount = 60,
+            Lifetime = 1.8f,
+            EmissionShape = CpuParticles3D.EmissionShapeEnum.Ring,
+            EmissionRingAxis = Vector3.Up,
+            EmissionRingRadius = radius,
+            EmissionRingInnerRadius = radius * 0.9f,
+            EmissionRingHeight = 0.1f,
+            Direction = Vector3.Up,
+            Spread = 25f,
+            InitialVelocityMin = 0.4f,
+            InitialVelocityMax = 1.2f,
+            Gravity = new Vector3(0, 0.3f, 0),
+            Mesh = new BoxMesh { Size = new Vector3(0.09f, 0.015f, 0.06f) },
+            AngleMin = 0f, AngleMax = 360f,
+            Color = pink,
+        };
+        var pmat = Glow(pink, 2f);
+        pmat.VertexColorUseAsAlbedo = true;
+        petals.MaterialOverride = pmat;
+        var ramp = new Gradient();
+        ramp.SetColor(0, pink);
+        ramp.SetColor(1, new Color(pink.R, pink.G, pink.B, 0f));
+        petals.ColorRamp = ramp;
+        root.AddChild(petals);
+
+        var t = root.CreateTween();
+        t.TweenProperty(ring, "scale", new Vector3(radius, 0.5f, radius), 0.4).SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back);
+        t.TweenInterval(Mathf.Max(0.1f, seconds - 1.0f));
+        t.TweenCallback(Callable.From(() => petals.Emitting = false));
+        t.TweenProperty(mat, "albedo_color:a", 0f, 0.6);
+        t.Parallel().TweenProperty(floorMat, "albedo_color:a", 0f, 0.6);
+        t.TweenCallback(Callable.From(root.QueueFree));
+    }
+
     /// <summary>A puff of particles that drift up and fade (one shot, frees itself).</summary>
     public static void Sparks(Node parent, Vector3 at, Color color, int amount, float speed, float radius = 0.3f, float lifetime = 0.8f)
     {

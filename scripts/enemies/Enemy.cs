@@ -142,6 +142,21 @@ public abstract partial class Enemy : CharacterBody3D
         if (Current == State.Prowl) Enter(State.Chase);
     }
 
+    /// <summary>Server clock (Net.Now): slowed until then (the Wizard's Frost Nova).</summary>
+    public double SlowUntil { get; private set; }
+    private float _slowFactor = 1f;
+
+    /// <summary>Server: move slower for a while (factor 0.5 = half speed).</summary>
+    public void Slow(float seconds, float factor)
+    {
+        if (Current == State.Dead) return;
+        SlowUntil = Net.Now + seconds;
+        _slowFactor = factor;
+    }
+
+    /// <summary>Server: what movement speed is multiplied by now (1 = normal).</summary>
+    protected float SpeedScale => Net.Now < SlowUntil ? _slowFactor : 1f;
+
     /// <summary>Server: knocked off balance (a parried attack). Can't act for a while.</summary>
     public void Stun(float seconds)
     {
@@ -249,7 +264,7 @@ public abstract partial class Enemy : CharacterBody3D
         if (desired.LengthSquared() > 1f) desired = desired.Normalized();
 
         var v = Velocity;
-        var target = desired * speed + Knockback;
+        var target = desired * speed * SpeedScale + Knockback;
         float accel = Mathf.Min(1f, 8f * dt);
         v.X = Mathf.Lerp(v.X, target.X, accel);
         v.Z = Mathf.Lerp(v.Z, target.Z, accel);

@@ -10,7 +10,12 @@ namespace KatrinasGame;
 /// straight and burst, scorching what's around the impact.</summary>
 public partial class Projectile : Node3D
 {
-    public const string Arrow = "arrow", Firebolt = "firebolt";
+    /// <summary>Volley: the Archer's level-5 fan of arrows (weaker; otherwise an arrow).</summary>
+    public const string Arrow = "arrow", Firebolt = "firebolt", Volley = "volley";
+    public const float VolleyDamage = 10f;
+
+    private static bool IsArrowKind(string kind) => kind is Arrow or Volley;
+    private bool IsArrow => IsArrowKind(Kind);
 
     public const float ArrowSpeed = 46f, ArrowGravity = 6f, ArrowDamage = 16f, ArrowLongShot = 15f, ArrowLongBonus = 1.5f;
     public const float BoltSpeed = 26f, BoltDamage = 22f, BoltSplashDamage = 10f, BoltSplashRadius = 2.5f;
@@ -36,7 +41,7 @@ public partial class Projectile : Node3D
         {
             Name = $"Projectile_{netId}", NetId = netId, Kind = kind, Shooter = shooter,
             _velocity = velocity, _origin = origin, _server = server,
-            _gravity = kind == Arrow ? ArrowGravity : 0f,
+            _gravity = IsArrowKind(kind) ? ArrowGravity : 0f,
         };
         parent.AddChild(p);
         p.GlobalPosition = origin;
@@ -91,9 +96,9 @@ public partial class Projectile : Node3D
     private void ServerImpact(GodotObject collider, Vector3 point)
     {
         var shooter = IsInstanceValid(Shooter) ? Shooter : null;
-        if (Kind == Arrow)
+        if (IsArrow)
         {
-            float dmg = ArrowDamage * (point.DistanceTo(_origin) > ArrowLongShot ? ArrowLongBonus : 1f);
+            float dmg = (Kind == Volley ? VolleyDamage : ArrowDamage) * (point.DistanceTo(_origin) > ArrowLongShot ? ArrowLongBonus : 1f);
             if (Damage(collider, dmg, shooter) && shooter != null) Net.Instance.HitMarkerTo(shooter.PeerId);
         }
         else
@@ -151,7 +156,7 @@ public partial class Projectile : Node3D
             }
             else Sfx.At("arrow_hit", at, 0f, 0.12f);
         }
-        if (Kind == Arrow && !silent)
+        if (IsArrow && !silent)
         {
             // Leave the arrow stuck where it hit for a moment.
             var t = CreateTween();
@@ -164,7 +169,7 @@ public partial class Projectile : Node3D
     private void BuildVisual()
     {
         if (Net.Instance.IsDedicated) return;
-        if (Kind == Arrow)
+        if (IsArrow)
         {
             var wood = StyleMaterials.Toon(new Color(0.55f, 0.38f, 0.22f));
             var shaft = new MeshInstance3D

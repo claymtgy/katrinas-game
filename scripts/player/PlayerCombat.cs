@@ -266,6 +266,20 @@ public partial class PlayerCombat : Node
             GetViewport().SetInputAsHandled();
             return;
         }
+        // Pad: LB pressed and let go on its own is "eat"; with Y between, it was an ability chord.
+        if (e.IsActionPressed("pad_modifier"))
+        {
+            Gamepad.ChordUsed = false;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (e.IsActionReleased("pad_modifier"))
+        {
+            if (!Gamepad.ChordUsed) Net.Instance.RequestEat();
+            Gamepad.ChordUsed = true;
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (_player.Build.Active) return;
         if (e.IsActionPressed("next_weapon") || e.IsActionPressed("prev_weapon"))
         {
@@ -354,9 +368,17 @@ public partial class PlayerCombat : Node
             damage *= 2f;
             Net.Instance.ServerEndVanish(_player);
         }
+        // Rogue: the strike right after a Shadowstep is a critical hit.
+        bool crit = Net.Now < _player.CritUntil;
+        if (crit)
+        {
+            damage *= Net.CritDamage;
+            _player.CritUntil = 0;
+        }
         // Sphere in front of the chest, along the aim (works in both views).
         var center = _player.GlobalPosition + Vector3.Up * 1.2f + aim * (reach * 0.65f);
-        ServerStrikeArea(center, 0.45f + reach * 0.3f, damage);
+        int hits = ServerStrikeArea(center, 0.45f + reach * 0.3f, damage);
+        if (crit && hits > 0) Net.Instance.ToastTo(_player.PeerId, "Critical hit!");
     }
 
     /// <summary>Server: the light-attack damage with the current weapon and class (Whirlwind).</summary>

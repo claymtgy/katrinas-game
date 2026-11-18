@@ -232,7 +232,8 @@ public partial class CharacterCreator : Control
         var cls = PlayerClasses.Get(_look.Class);
         var about = new Label
         {
-            Text = cls.Blurb + "\n[R] " + cls.AbilityName + ": " + cls.AbilityText,
+            Text = cls.Blurb + "\n[R] " + cls.AbilityName + ": " + cls.AbilityText
+                + (cls.Second is { } s ? $"\n[T, level {s.UnlockLevel}] {s.Name}: {s.Text}" : ""),
             AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(500, 0),
         };
         about.AddThemeFontSizeOverride("font_size", 14);

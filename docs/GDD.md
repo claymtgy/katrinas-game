@@ -127,13 +127,14 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 **Saving and code.**
 - Level, XP and talents are saved with the character in the world save, like the pack and worn gear (§16). Class stays in your own settings, as now.
 - **Built:** `Levels` holds the curve and the XP table. A player's progress is one number, their total XP, and the level is worked out from it. The server awards XP (`Net.Xp.cs`: `ServerAwardXp`, `ServerXpForKill`, `ServerXpForCraft`) and sends every machine the new total (`Net.C_Xp`). The total is part of each player's info in the snapshot (protocol 9). Each character's "firsts" (first wolf, first glider) are saved with it, so a first is paid once per character. Journal goals count as world milestones: everyone online gets them.
-- Still to build: abilities and talents as data in `PlayerClasses`, each ability with an `UnlockLevel`. `PlayerAbility` gets one slot per ability.
+- **Built:** the level-5 abilities are data in `PlayerClasses` (`AbilityDef`, with its own stamina, cooldown and `UnlockLevel`), and `PlayerAbility` has one node per slot (`Ability` on R, `Ability2` on T). The server re-checks the level. Numbers chosen for them: Charge 25 stamina / 9 s (strikes for a light attack's damage); Shadowstep 20 / 10 s (a critical hit is double damage); Frost Nova 24 / 12 s; Blossom Ward 35 / 24 s (it's a temporary sanctuary, so enemies also stop hunting anyone inside it); Volley 22 / 6 s.
+- Still to build: talents, and the level-12 abilities on the third slot.
 - The HUD has an XP bar under the stamina bar with the level beside it, a "+50 XP" note for anything but a repeat kill, and a "Level up" banner (built). The character sheet (I) shows the level and XP, and gets a Talents tab later.
 
 **Controls.**
 - Keyboard: **R** (or mouse button 4) for the first ability, as now, then **T** for the level-5 ability and **G** for the level-12 ability.
 - Pad: **Y / △** for the first ability, as now. **Hold LB / L1 and press Y / △** for the level-5 ability, and **hold LB / L1 and press X / □** for the level-12 ability. Tapping LB alone still eats. Eating moves to when LB is *released* without another button pressed, so holding it for an ability doesn't also eat.
-- Add these to the controls table (§13) when they're built.
+- The level-5 key is built (in the controls table, §13); the level-12 one (G, LB + X) comes with those abilities.
 
 **Blessings vs. levels (decided).** Blessings (§10) stay separate. They're bought at sanctuaries with Blossom Petals and give small stat boosts that every class shares (max health, max stamina, pack size). Levels give abilities and talents. Neither replaces the other.
 - **Enemies:**
@@ -444,10 +445,11 @@ Keyboard and mouse, or a controller (Xbox, PlayStation / DualSense, or anything 
 | Light / Heavy attack | LMB / Q or middle mouse | RT / RB | R2 / R1 |
 | Block (time it to parry) | RMB (hold) | LT (hold) | L2 (hold) |
 | Class ability | R or mouse button 4 | Y | △ |
+| Level-5 ability | T or mouse button 5 | hold LB + Y | hold L1 + △ |
 | Climb (walk into pale rock) / leap off | W into the rock / Space | stick into the rock / A | stick into the rock / ✕ |
 | Open / fold the glider (in the air) | Space | A | ✕ |
 | Interact (stations, beds, plots, wells, chests, trader, signs) | E | X | □ |
-| Eat | F | LB | L1 |
+| Eat | F | tap LB | tap L1 |
 | Weapons | 1–5 | D-pad ◀ ▶ | D-pad ◀ ▶ |
 | Build mode (cycle / rotate / place / exit) | B (wheel / R / LMB / RMB or B) | D-pad ▲ (D-pad ◀ ▶ / RB / RT / LT) | D-pad ▲ (D-pad ◀ ▶ / R1 / R2 / L2) |
 | Character sheet / journal | I / J | D-pad ▼, then LB / RB for the tabs | D-pad ▼, then L1 / R1 |
@@ -464,7 +466,7 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner and levels on nameplates are built) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner, levels on nameplates, the level-5 abilities and the second ability key are built) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
 9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.

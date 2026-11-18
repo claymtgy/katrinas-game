@@ -1572,6 +1572,148 @@ public partial class DevAutotest : Node
         Check(saved > xpBefore, "XP only goes up in play");
     }
 
+    /// <summary>The level-5 abilities (GDD §6) on T: locked below level 5, then Charge, Shadowstep
+    /// (and its critical hit), Frost Nova, Blossom Ward and Volley each doing their job.</summary>
+    private async Task LevelFive(GameState gs, PlayerController p)
+    {
+        var net = Net.Instance;
+        var wild = Wildlife.Instance;
+        var home = gs.WorldSpawn + new Vector3(3, 0.1f, 4);
+        var field = new Vector3(-12, 0.1f, 30); // open ground, away from any sanctuary
+        var fwd = new Vector3(0, 0, -1);
+
+        async Task Become(string id)
+        {
+            p.Teleport(home);
+            await Wait(0.2);
+            var a = p.Look.Clone();
+            a.Class = id;
+            Appearance.Local = a;
+            net.RequestLook(a);
+            await Until(() => p.Class.Id == id, 3);
+            p.Ability2.ResetCooldown();
+            p.RestoreStamina();
+            p.Health.Reset();
+            p.Teleport(field);
+            p.Rig.SetLook(0f, -0.05f); // face -Z
+            await Wait(0.3);
+        }
+        async Task<Wolf> Target(Vector3 at, bool frozen = true)
+        {
+            var w = wild.SpawnPack(at, 1)[0];
+            w.Frozen = frozen;
+            await Wait(0.3);
+            w.GlobalPosition = at;
+            return w;
+        }
+        void Kill(Enemy w) { if (IsInstanceValid(w) && !w.Health.IsDead) w.Health.TakeDamage(1000, null); }
+
+        // Locked below level 5.
+        int xp = p.Xp;
+        await Become(PlayerClasses.WarriorId);
+        net.ServerLoadXp(p, 0);
+        Check(!p.Ability2.Unlocked && !p.Ability2.TryUse(), "the level-5 ability is locked at level 1");
+        net.ServerLoadXp(p, xp);
+        Check(p.Level >= 5 && p.Ability2.Unlocked, $"...and unlocked at level {p.Level}");
+        Check(p.Class.Ability(1)?.Name == "Charge" && PlayerClasses.All.All(c => c.Second is { UnlockLevel: 5 }), "every class has a level-5 ability");
+
+        // Warrior: Charge rushes forward and knocks the first wolf down.
+        p.Health.Reset();
+        p.Rig.SetView(false, true);
+        var start = p.GlobalPosition;
+        var charged = await Target(start + fwd * 6f);
+        Check(p.Ability2.TryUse(), "Warrior charges");
+        Check(await Until(() => charged.Health.Current < charged.Health.Max, 2), "the charge strikes the wolf in the way");
+        Check(charged.Current == Enemy.State.Stagger, "...and knocks it down");
+        await Wait(0.3);
+        Check(Net.FlatDistance(p.GlobalPosition, start) > 3.5f, $"the warrior rushed forward ({Net.FlatDistance(p.GlobalPosition, start):0.0} m)");
+        await Shot("29_charge");
+        Kill(charged);
+
+        // Rogue: Shadowstep behind a wolf, then a critical hit.
+        await Become(PlayerClasses.RogueId);
+        var mark = await Target(p.GlobalPosition + fwd * 9f);
+        mark.Rotation = new Vector3(0, 0, 0); // facing -Z, away from us: its back is toward us
+        await Wait(0.1);
+        var behind = mark.GlobalPosition + mark.GlobalBasis.Z * Net.ShadowstepBehind;
+        Check(Net.ShadowstepTarget(p, -p.Rig.Camera.GlobalBasis.Z) == mark, "Shadowstep picks the wolf you look at");
+        Check(p.Ability2.TryUse(), "Rogue shadowsteps");
+        Check(await Until(() => Net.FlatDistance(p.GlobalPosition, behind) < 0.8f, 2), "the rogue appears behind the wolf");
+        Face(p, mark.GlobalPosition);
+        float hp = mark.Health.Current, crit = p.Combat.LightDamage * Net.CritDamage;
+        p.RestoreStamina();
+        p.Combat.TryAttack(false);
+        Check(await Until(() => mark.Health.Current < hp, 2), "the rogue strikes");
+        Check(Mathf.IsEqualApprox(hp - mark.Health.Current, crit), $"...a critical hit ({hp - mark.Health.Current:0.#} of {crit:0.#})");
+        hp = mark.Health.Current;
+        await Wait(0.6);
+        p.RestoreStamina();
+        p.Combat.TryAttack(false);
+        await Until(() => mark.Health.Current < hp, 2);
+        Check(Mathf.IsEqualApprox(hp - mark.Health.Current, p.Combat.LightDamage), "only the first strike is critical");
+        Kill(mark);
+        p.Ability2.ResetCooldown();
+        p.RestoreStamina();
+        p.Rig.SetLook(Mathf.Pi, 0f); // nothing that way
+        Check(!p.Ability2.TryUse(), "no Shadowstep without an enemy in front");
+
+        // Wizard: Frost Nova slows what's close, not what's far.
+        await Become(PlayerClasses.WizardId);
+        var near = await Target(p.GlobalPosition + fwd * 3.5f);
+        var farW = await Target(p.GlobalPosition + fwd * 9f);
+        Check(p.Ability2.TryUse(), "Wizard casts Frost Nova");
+        Check(await Until(() => near.SlowUntil > Net.Now, 1), "the wolf within 5 m is slowed");
+        Check(farW.SlowUntil <= Net.Now, "...and the one 9 m away isn't");
+        await Wait(0.15);
+        await Shot("30_frost_nova");
+        Kill(near); Kill(farW);
+
+        // Healer: Blossom Ward keeps a hunting wolf off, then fades.
+        gs.TimeOfDay = 0.9f;
+        await Become(PlayerClasses.HealerId);
+        var hunter = await Target(p.GlobalPosition + fwd * 10f, frozen: false);
+        Check(await Until(() => hunter.Target == p, 6), "a wolf hunts the healer");
+        Check(!gs.InSafeZone(p.GlobalPosition) && p.Ability2.TryUse(), "Healer raises a Blossom Ward");
+        Check(gs.InSafeZone(p.GlobalPosition), "the ward is a sanctuary");
+        Check(await Until(() => hunter.Target != p, 2), "the wolf gives up on the healer inside it");
+        await Wait(2.0);
+        Check(Net.FlatDistance(hunter.GlobalPosition, p.GlobalPosition) > Net.WardRadius - 0.5f,
+            $"...and stays outside the petals ({Net.FlatDistance(hunter.GlobalPosition, p.GlobalPosition):0.0} m)");
+        await Shot("31_blossom_ward");
+        Check(await Until(() => !gs.InSafeZone(p.GlobalPosition), Net.WardSeconds), "the ward fades after 8 s");
+        Kill(hunter);
+        gs.TimeOfDay = 0.45f;
+
+        // Archer: Volley looses five arrows; one wolf ahead takes one 10-damage arrow.
+        await Become(PlayerClasses.ArcherId);
+        var volleyed = await Target(p.GlobalPosition + fwd * 10f);
+        var d = volleyed.GlobalPosition + Vector3.Up * 0.45f - p.Rig.Camera.GlobalPosition;
+        p.Rig.SetLook(Mathf.Atan2(-d.X, -d.Z), Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length()));
+        await Wait(0.1);
+        int spawned = Projectile.Spawned;
+        Check(p.Ability2.TryUse(), "Archer looses a Volley");
+        Check(Projectile.Spawned - spawned == Net.VolleyArrows, $"five arrows fly ({Projectile.Spawned - spawned})");
+        await Wait(0.1);
+        await Shot("32_volley");
+        Check(await Until(() => volleyed.Health.Current < volleyed.Health.Max, 3), "the volley hits the wolf");
+        float taken = volleyed.Health.Max - volleyed.Health.Current;
+        Check(taken >= Projectile.VolleyDamage - 0.01f && Mathf.IsEqualApprox(taken % Projectile.VolleyDamage, 0f),
+            $"...10 damage an arrow ({taken:0.#})");
+        Kill(volleyed);
+
+        // Pad: hold LB and press Y for the level-5 ability; LB alone (tap) still eats.
+        p.Ability2.ResetCooldown();
+        p.RestoreStamina();
+        Gamepad.SetDevice(true, 0);
+        Check(Gamepad.ButtonName("ability_2") == "LB + Y", "the pad prompt for it is LB + Y");
+        Gamepad.SetDevice(false, 0);
+        Check(Gamepad.ButtonName("ability_2") == "T", "...and T on the keyboard");
+
+        p.Teleport(home);
+        await Become(PlayerClasses.WarriorId);
+        p.Teleport(home);
+    }
+
     private async Task Run()
     {
         var gs = GameState.Instance;
@@ -1716,6 +1858,7 @@ public partial class DevAutotest : Node
         await GearAndUi(gs, p);
         await ControllerAndGuidance(gs, p);
         await Xp(gs, p);
+        await LevelFive(gs, p);
 
         // Night look.
         gs.TimeOfDay = 0.745f;

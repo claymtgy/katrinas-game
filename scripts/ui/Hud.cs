@@ -236,7 +236,7 @@ public partial class Hud : CanvasLayer
         (string Action, string What)[] left =
         {
             ("move", "Move · {sprint} sprint · {jump} jump"), ("dodge", "Dodge roll"), ("look", "Look · {toggle_view} first / third person"),
-            ("attack", "Light attack"), ("heavy_attack", "Heavy attack"), ("block", "Block (just in time = parry)"), ("ability", "Class ability"),
+            ("attack", "Light attack"), ("heavy_attack", "Heavy attack"), ("block", "Block (just in time = parry)"), ("ability", "Class ability"), ("ability_2", "Level-5 ability"),
             ("weapons", "Weapons"), ("interact", "Use: stations, beds, chests, plots, traders, signs"), ("eat", "Eat"),
         };
         (string Action, string What)[] right =
@@ -604,10 +604,19 @@ public partial class Hud : CanvasLayer
     private void UpdateBuffs(PlayerController player)
     {
         var cls = player.Class;
-        float left = player.Ability.CooldownLeft;
-        string state = player.Vanished ? "hidden" : left > 0 ? $"{left:0.0}s" : player.Stamina < cls.AbilityStamina ? "tired" : "ready";
-        _ability.Text = $"{cls.Name}   ·   {Gamepad.ButtonName("ability")}  {cls.AbilityName}: {state}";
-        _ability.AddThemeColorOverride("font_color", state == "ready" ? cls.Tint.Lerp(UiTheme.GoldBright, 0.35f) : UiTheme.Muted);
+        string AbilityState(PlayerAbility a)
+        {
+            var def = a.Def;
+            if (def == null) return "";
+            string state = !a.Unlocked ? $"level {def.UnlockLevel}"
+                : a.Slot == 0 && player.Vanished ? "hidden"
+                : a.CooldownLeft > 0 ? $"{a.CooldownLeft:0.0}s"
+                : player.Stamina < def.Stamina ? "tired" : "ready";
+            return $"{Gamepad.ButtonName(a.Action)}  {def.Name}: {state}";
+        }
+        string first = AbilityState(player.Ability), second = AbilityState(player.Ability2);
+        _ability.Text = $"{cls.Name}   ·   {first}" + (second != "" ? $"   ·   {second}" : "");
+        _ability.AddThemeColorOverride("font_color", first.EndsWith("ready") || second.EndsWith("ready") ? cls.Tint.Lerp(UiTheme.GoldBright, 0.35f) : UiTheme.Muted);
 
         bool home = Supplies.AtHome(player);
         if (home != _wasHome) { _wasHome = home; _inventoryDirty = true; }
@@ -941,6 +950,10 @@ public partial class Hud : CanvasLayer
         foreach (var line in Gear.Summary(me)) Stat(line);
         Stat("Class", true);
         Stat($"{me.Class.Name}: {me.Class.AbilityName} on {Gamepad.ButtonName("ability")}");
+        if (me.Class.Second is { } second)
+            Stat(me.Level >= second.UnlockLevel
+                ? $"{second.Name} on {Gamepad.ButtonName("ability_2")}"
+                : $"{second.Name} unlocks at level {second.UnlockLevel}");
 
         // Pack: everything you carry; armour is clickable to wear.
         var items = me.Pack.Items.OrderBy(kv => (ItemDb.Get(kv.Key)?.IsWearable ?? false) ? 0 : 1).ThenBy(kv => ItemDb.NameOf(kv.Key)).ToList();

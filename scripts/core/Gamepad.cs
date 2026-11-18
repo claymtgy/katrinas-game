@@ -11,8 +11,8 @@ namespace KatrinasGame;
 ///
 /// Layout (Xbox names / PlayStation names):
 ///   Left stick move (click: sprint) · Right stick look (click: first / third person)
-///   A/✕ jump · B/○ dodge · X/□ use · Y/△ class ability
-///   RT/R2 attack · RB/R1 heavy attack · LT/L2 block · LB/L1 eat
+///   A/✕ jump · B/○ dodge · X/□ use · Y/△ class ability · hold LB/L1 + Y/△ level-5 ability
+///   RT/R2 attack · RB/R1 heavy attack · LT/L2 block · LB/L1 (tap) eat
 ///   D-pad ◀ ▶ weapons · ▲ build mode · ▼ character sheet & journal
 ///   Menu/Options: menu · View/Create: help
 ///   In build mode: RT place, LT exit, RB rotate, D-pad ◀ ▶ change building.
@@ -32,6 +32,12 @@ public partial class Gamepad : Node
 
     /// <summary>Right-stick look speed, radians a second at full tilt.</summary>
     public static float LookSpeedYaw = 3.4f, LookSpeedPitch = 2.3f;
+    /// <summary>LB / L1 is held (the ability chord's modifier).</summary>
+    public static bool ModifierHeld => Input.IsActionPressed("pad_modifier");
+    /// <summary>A button was pressed with LB held (or the press wasn't seen in play, say in a
+    /// menu), so letting go of LB doesn't eat.</summary>
+    public static bool ChordUsed { get; set; } = true;
+
     /// <summary>Clicked the left stick: sprint until you stop moving.</summary>
     public static bool SprintLatched { get; private set; }
 
@@ -64,7 +70,9 @@ public partial class Gamepad : Node
         InputMap.ActionSetDeadzone("block", 0.45f);
         Button("heavy_attack", JoyButton.RightShoulder);
         Button("rotate_build", JoyButton.RightShoulder);
-        Button("eat", JoyButton.LeftShoulder);
+        // LB / L1: tap to eat; hold it and press Y / △ for the level-5 ability. Eating happens when
+        // it's let go without another button (PlayerCombat), so a chord doesn't also eat.
+        Button("pad_modifier", JoyButton.LeftShoulder);
         Button("tab_prev", JoyButton.LeftShoulder);
         Button("tab_next", JoyButton.RightShoulder);
         Button("toggle_view", JoyButton.RightStick);
@@ -214,6 +222,7 @@ public partial class Gamepad : Node
         ["dodge"] = ("Ctrl", "B", "○"),
         ["interact"] = ("E", "X", "□"),
         ["ability"] = ("R", "Y", "△"),
+        ["ability_2"] = ("T", "LB + Y", "L1 + △"),
         ["attack"] = ("LMB", "RT", "R2"),
         ["heavy_attack"] = ("Q", "RB", "R1"),
         ["block"] = ("RMB", "LT", "L2"),

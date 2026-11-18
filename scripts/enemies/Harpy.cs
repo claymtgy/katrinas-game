@@ -185,7 +185,7 @@ public partial class Harpy : Enemy
         else
         {
             var to = goal - pos;
-            var want = to.Length() > 0.3f ? to.Normalized() * speed : Vector3.Zero;
+            var want = to.Length() > 0.3f ? to.Normalized() * speed * SpeedScale : Vector3.Zero;
             want += wildlife.Separation(this) * 2f + SafeZonePush(pos) * 3f + Knockback;
             v = v.Lerp(want, Mathf.Min(1f, 3f * dt)); // wings, not legs: a little inertia
         }
