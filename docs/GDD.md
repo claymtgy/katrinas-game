@@ -95,7 +95,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 **What a level gives.**
 - **Every level:** +2 max health and +1 max stamina (+38 and +19 at level 20).
-- **Levels 5 and 12: a new ability**, so each class has three. The second ability goes on a new key (see Open questions).
+- **Levels 5 and 12: a new ability**, so each class has three. The new abilities get their own keys (see *Controls* below).
 - **Levels 3, 8, 15 and 20: a talent:** pick one of two class passives. You can change talents for free at home, as with class.
 - **Level 10 and 20:** a small cosmetic: a glow on your blossom charm slot, then a petal trail for your cape. Shown to everyone.
 
@@ -106,7 +106,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | **Warrior** | Whirlwind | **Charge:** rush 8 m forward. The first enemy hit is knocked down for 1.2 s | **War Cry:** you and players within 9 m deal +20% damage for 8 s, and enemies within 5 m stagger |
 | **Rogue** | Vanish | **Shadowstep:** appear behind an enemy within 12 m. Your next strike within 2 s is a critical hit | **Venom:** for 10 s your hits poison (4 damage a second for 5 s, stacking up to 3) |
 | **Wizard** | Firebolt | **Frost Nova:** enemies within 5 m are slowed 50% for 3 s. In heat zones it also cools you and players nearby (empties 25% of the heat meter) | **Meteor:** pick a spot within 25 m. After 1 s it lands for 60 damage within 4 m |
-| **Healer** | Mend | **Blossom Ward:** a 5 m circle of petals for 8 s. Enemies won't enter it, like a sanctuary | **Rekindle:** a defeated player within 12 m gets up where they fell with half their health, instead of respawning (see Open questions) |
+| **Healer** | Mend | **Blossom Ward:** a 5 m circle of petals for 8 s. Enemies won't enter it, like a sanctuary | **Rekindle:** a downed player within 12 m gets up at once with half their health, with no need to stand over them (see §16, *Downed and revived*) |
 | **Archer** | Shoot | **Volley:** 5 arrows in a 30° fan, 10 damage each | **Mark:** tag an enemy for 10 s. Everyone deals +25% damage to it and it shows through walls |
 
 **Talents (examples, two per class; the full list comes with the build):**
@@ -122,17 +122,19 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - World milestones (a sanctuary lit, a raid beaten off, a home upgrade, a boss) give XP to **every player online** at the time.
 - **Catch-up:** a player below the highest level online earns **double XP**, so a friend who joins late soon gets close.
 - Enemy scaling (`Difficulty`) still counts players only, never levels.
+- **Where levels show:** only on each player's **nameplate** over their head ("Mira · 7"). They aren't on the player list (Tab) or anywhere else, so other players can see them without it turning into a leaderboard.
 
 **Saving and code.**
 - Level, XP and talents are saved with the character in the world save, like the pack and worn gear (§16). Class stays in your own settings, as now.
 - Abilities and talents are data in `PlayerClasses`, each ability with an `UnlockLevel`. `PlayerAbility` gets one slot per ability. The server awards XP (`Net.S_Xp`), and the level is part of each player's info in the snapshot (a protocol bump).
 - The HUD gets an XP bar under the stamina bar and a "Level up" banner. The character sheet (I) gets a Talents tab.
 
-**Open questions:**
-- **The second and third ability keys.** The pad has no free buttons (§13). Proposal: keyboard **T** and **G**; on a pad, hold **LB / L1** and press **Y / △** or **X / □**. Tapping LB still eats. Check that this doesn't clash with interacting while holding food.
-- **Rekindle** needs a short "downed" state before respawning, which the game doesn't have yet. If that's too big, give the Healer a different level-12 ability, such as a long-range heal.
-- **Blessings (§10)** are also permanent upgrades. Keep them apart from levels: blessings are bought with Blossom Petals and give small stat boosts shared by every class, and levels give abilities and talents.
-- **A level shown over each player's head**, or only on the player list (Tab)? Showing it suits co-op, but could make a cosy game feel like a race.
+**Controls.**
+- Keyboard: **R** (or mouse button 4) for the first ability, as now, then **T** for the level-5 ability and **G** for the level-12 ability.
+- Pad: **Y / △** for the first ability, as now. **Hold LB / L1 and press Y / △** for the level-5 ability, and **hold LB / L1 and press X / □** for the level-12 ability. Tapping LB alone still eats. Eating moves to when LB is *released* without another button pressed, so holding it for an ability doesn't also eat.
+- Add these to the controls table (§13) when they're built.
+
+**Blessings vs. levels (decided).** Blessings (§10) stay separate. They're bought at sanctuaries with Blossom Petals and give small stat boosts that every class shares (max health, max stamina, pack size). Levels give abilities and talents. Neither replaces the other.
 - **Enemies:**
   - Start: wolves (packs at night), bandit scouts.
   - Mid: bandit camps (a leader drops a blueprint), boars, cliff harpies.
@@ -461,7 +463,7 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities:** XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, and the second ability key. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+6. **Levels and abilities:** XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
 9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.
@@ -517,6 +519,23 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
   - Being defeated drops **half of each stack** in your pack. Packs are saved with the player and mirrored only to their owner.
 - Players are saved by name: rejoining puts you back where you logged out, with your respawn shrine and your pack.
 
+### Downed and revived (planned)
+- **Why:** in co-op a lost fight should be something a friend can save. It also gives the Healer's **Rekindle** (§6, level 12) something to do.
+- **Going down:** at 0 health you're **downed** instead of defeated at once, as long as another player who isn't downed is within 60 m. Playing alone, or with nobody near, you're defeated at once, as now.
+- **While downed:**
+  - You lie on the ground and can crawl slowly (1 m/s). You can't attack, block, roll, use abilities or eat.
+  - A **30 s** timer runs down. When it runs out you're defeated as now: half of each stack in your pack drops and you respawn at your shrine. You can also **give up** early (hold Jump) to respawn at once.
+  - **Enemies leave downed players alone** and turn to someone else. A blow already swinging still lands but can't hurt you further. PVP hits can't hurt a downed player either.
+  - Food buffs stay while you're downed and end only on defeat.
+- **Reviving:** any player can stand next to you and **hold Interact (E / X / □) for 3 s**. You get up with 30% health and lose nothing. Taking a hit or moving away breaks the hold. The Healer's **Rekindle** revives from 12 m, at once, with half health.
+- **Everyone down:** if every player within 60 m of each other is downed, they're all defeated at once. Nobody waits out a timer with no one left to help.
+- **Straight to defeat:** a fall into the cloud sea, or into lava later on, skips being downed, because nobody could reach you.
+- **Seeing it:**
+  - For the downed player: the screen greys and darkens at the edges, and the timer counts down in the middle with "Hold Jump to give up".
+  - For everyone else: a marker over the downed player shows through walls and terrain, with their name and the timer. Within reach the prompt reads "Hold E to revive *name*".
+  - A downed pose: KayKit's lying-down clips if it has them, otherwise built from the skeleton, as the climb is.
+- **Code:** the movement state gets a fourth mode, *downed* (after normal, climb and glide), so every screen shows it (a protocol bump). `Net.ServerDamagePlayer` turns a killing blow into *downed* when someone can help, and the server runs the timer and the revive hold. Enemy targeting (`Enemy`) skips downed players.
+
 ### Sleeping
 - Using a bed puts you to sleep. You can get up with E or by moving.
 - **The night is skipped only when every connected player is asleep.** The HUD shows "Sleeping 2/3". Then everyone wakes at dawn fully healed and the server saves.
@@ -529,7 +548,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
 - Each factor is a server option. `Difficulty.cs` holds the formulas. Wolves and the bandit camp spawn through it (grunts = small, captain = big). Scaling is decided when a group spawns, so a camp manned for 1 player stays that size if a friend joins later.
 
 ### PVP
-- **Off by default.** It's a server option and the host's checkbox. When on, player sword hits damage other players. A downed player respawns at their shrine and loses nothing (for now).
+- **Off by default.** It's a server option and the host's checkbox. When on, player sword hits damage other players. A player beaten in PVP respawns at their shrine and loses nothing (for now). Once the downed state is built, they're downed instead and anyone can revive them (see *Downed and revived*).
 - PVP never damages the shared base.
 
 ### Saving
