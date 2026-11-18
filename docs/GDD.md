@@ -71,6 +71,68 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   | **Archer** | 4% faster | **Shoot** (8 stamina, 0.7 s): an arrow (46 m/s, slight drop) that does 16 damage, ×1.5 beyond 15 m. Carries a recurve bow (built in code, `BowView`): held up on the left in first person with an arrow nocked, in the left hand in third; each shot draws, snaps and re-nocks |
 
   - **How it works:** classes are data (`PlayerClasses`). `PlayerAbility` checks cooldown and stamina on your own machine and plays the animation at once; the server (`Net.S_Ability`) re-checks the cooldown and does the real thing. Arrows and firebolts are simulated on the server (`Projectile`) and every screen flies a cosmetic copy. Projectiles skip trees and rocks, and follow the PVP rules for other players.
+
+### Levels and abilities (draft, 2026-11-18)
+- **Why:** gear and the house are the main power curve (pillar 2), but they move in big steps, one tier per region. Levels fill the gaps between them: something improves every session, and each class gets more to do than one button.
+- **The rule: levels give options, gear gives power.** At level 20 a character's stats are about as much better as one armour tier, no more. Most of what a level brings is a **new ability** or a **talent choice**, not bigger numbers. A level-20 player in leather still struggles in the volcano.
+- **One level per character, not per class.** You still change class at home (see Classes above). Your level comes with you, and the new class gets its own abilities and talents up to that level. Trying another class never means starting again.
+
+**Earning XP.** Most XP comes from **firsts and milestones**, so it follows progress through the regions and grinding wolves doesn't help much:
+
+| Source | XP |
+|---|---|
+| First kill of an enemy type | 50 |
+| Repeat kills | wolf 4, harpy 5, bandit 6, raider 8 (later regions more) |
+| A boss (the bandit captain, then each region's boss) | 200, rising by 100 a region |
+| Lighting (first prayer at) a new sanctuary | 150 |
+| Beating off a raid | 100 |
+| Journal goals and errands | 30–80 each |
+| First craft of each item | 20 |
+| A home upgrade (Cottage, Longhouse, Keep) | 250 |
+
+- **Curve:** level *n* needs about 120 × *n*^1.4 XP. Tune it so the levels land roughly where the table below says.
+- **Target levels:** about 5 by the end of today's content (Home Cliffs, Ashby, Falls Valley), 9 after the Hollow Mine, 13 after the Spire Cliffs, 17 after the Cinder Foothills, and the cap of **20** in the volcano.
+
+**What a level gives.**
+- **Every level:** +2 max health and +1 max stamina (+38 and +19 at level 20).
+- **Levels 5 and 12: a new ability**, so each class has three. The second ability goes on a new key (see Open questions).
+- **Levels 3, 8, 15 and 20: a talent:** pick one of two class passives. You can change talents for free at home, as with class.
+- **Level 10 and 20:** a small cosmetic: a glow on your blossom charm slot, then a petal trail for your cape. Shown to everyone.
+
+**New abilities:**
+
+| Class | Level 1 (built) | Level 5 | Level 12 |
+|---|---|---|---|
+| **Warrior** | Whirlwind | **Charge:** rush 8 m forward. The first enemy hit is knocked down for 1.2 s | **War Cry:** you and players within 9 m deal +20% damage for 8 s, and enemies within 5 m stagger |
+| **Rogue** | Vanish | **Shadowstep:** appear behind an enemy within 12 m. Your next strike within 2 s is a critical hit | **Venom:** for 10 s your hits poison (4 damage a second for 5 s, stacking up to 3) |
+| **Wizard** | Firebolt | **Frost Nova:** enemies within 5 m are slowed 50% for 3 s. In heat zones it also cools you and players nearby (empties 25% of the heat meter) | **Meteor:** pick a spot within 25 m. After 1 s it lands for 60 damage within 4 m |
+| **Healer** | Mend | **Blossom Ward:** a 5 m circle of petals for 8 s. Enemies won't enter it, like a sanctuary | **Rekindle:** a defeated player within 12 m gets up where they fell with half their health, instead of respawning (see Open questions) |
+| **Archer** | Shoot | **Volley:** 5 arrows in a 30° fan, 10 damage each | **Mark:** tag an enemy for 10 s. Everyone deals +25% damage to it and it shows through walls |
+
+**Talents (examples, two per class; the full list comes with the build):**
+- Warrior, level 3: *Bulwark* (a perfect parry gives back 10 more stamina) or *Brute* (heavy attacks stagger bigger enemies).
+- Rogue, level 3: *Light-footed* (no fall damage under 8 m) or *Pickpocket* (bandits drop 50% more coin).
+- Wizard, level 3: *Kindling* (Firebolt sets grass alight for a moment) or *Focus* (Firebolt costs 4 less stamina).
+- Healer, level 3: *Herbalist* (cooking makes an extra meal 1 time in 3) or *Steady Hand* (Mend's cooldown is 2 s shorter).
+- Archer, level 3: *Long Draw* (the long-range bonus starts at 10 m) or *Quick Nock* (Shoot's cooldown is 0.15 s shorter).
+- Later talents should connect to region hazards where they can, as Frost Nova does with heat: for example a climbing talent for the spires, or a light-radius talent for the mine.
+
+**Co-op (§16).**
+- Everyone within 60 m gets **full XP** for a kill. Nothing is split, so playing together is never slower.
+- World milestones (a sanctuary lit, a raid beaten off, a home upgrade, a boss) give XP to **every player online** at the time.
+- **Catch-up:** a player below the highest level online earns **double XP**, so a friend who joins late soon gets close.
+- Enemy scaling (`Difficulty`) still counts players only, never levels.
+
+**Saving and code.**
+- Level, XP and talents are saved with the character in the world save, like the pack and worn gear (§16). Class stays in your own settings, as now.
+- Abilities and talents are data in `PlayerClasses`, each ability with an `UnlockLevel`. `PlayerAbility` gets one slot per ability. The server awards XP (`Net.S_Xp`), and the level is part of each player's info in the snapshot (a protocol bump).
+- The HUD gets an XP bar under the stamina bar and a "Level up" banner. The character sheet (I) gets a Talents tab.
+
+**Open questions:**
+- **The second and third ability keys.** The pad has no free buttons (§13). Proposal: keyboard **T** and **G**; on a pad, hold **LB / L1** and press **Y / △** or **X / □**. Tapping LB still eats. Check that this doesn't clash with interacting while holding food.
+- **Rekindle** needs a short "downed" state before respawning, which the game doesn't have yet. If that's too big, give the Healer a different level-12 ability, such as a long-range heal.
+- **Blessings (§10)** are also permanent upgrades. Keep them apart from levels: blessings are bought with Blossom Petals and give small stat boosts shared by every class, and levels give abilities and talents.
+- **A level shown over each player's head**, or only on the player list (Tab)? Showing it suits co-op, but could make a cosy game feel like a race.
 - **Enemies:**
   - Start: wolves (packs at night), bandit scouts.
   - Mid: bandit camps (a leader drops a blueprint), boars, cliff harpies.
@@ -169,18 +231,26 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Without a glider, a long fall shows a hint once.
 - **Waterfall updrafts (built):** mist columns at waterfall bases (the Great Falls in Falls Valley, and the pool below the home west falls) lift a glider at 8 m/s up to their top (36 m and 26 m). Inside a column you hang and turn instead of racing through it.
 - **River currents (built):** wading in the Falls Valley river slows you and carries you downstream at 3.2 m/s, toward the cliff edge.
-- **Co-op:** everyone sees climbing and gliding. The movement state carries a mode (normal, climb or glide), (protocol 5). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot). Protocol 7 added the shared journal (`C_Journal`, `S_Errand`; `"journal"` in the snapshot).
-- **Planned:**
-  - **Swimming** in pools. Waterfalls can't be climbed without the late-game Grapple Hook.
-  - **Fast travel** between attuned blossom sanctuaries.
-  - **Grip boots** (less drain on wet rock).
+- **Swimming (built):** the home pool and the Great Falls plunge pool are sunk 2.8 m into the ground (`HomeCliffs.Pool`; `GameState.Waters`). Water deeper than 1.2 m at your feet and you swim:
+  - You float with your head and shoulders out. WASD strokes at 3 m/s (sprint 4.8 m/s for 12 stamina a second).
+  - Look down as you swim forward to dive, look up to rise, or hold **Space** to come up. Let go and you bob back to the surface.
+  - With your head under, you hold your breath: 9 stamina a second, and no regeneration. Out of breath, you drown (12 damage a second) until you surface. The screen turns blue-green under water.
+  - Swim forward into an edge to haul yourself out.
+  - Water breaks a fall: dive in from the cliffs or the glider with no damage. A glider folds when you hit the water.
+  - No attacks, guard, rolls or class abilities while swimming.
+  - Waterfalls can't be climbed without the late-game Grapple Hook. Rivers stay wading depth (currents, above).
+- **Co-op:** everyone sees climbing, gliding and swimming. The movement state carries a mode (normal, climb, glide or swim), (protocol 5; swim from protocol 8). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot). Protocol 7 added the shared journal (`C_Journal`, `S_Errand`; `"journal"` in the snapshot).
+- **Grip boots (built):** less drain on wet rock (§6).
 
 ## 9. Hazards and progression
 | Zone | Hazards | Counter |
 |---|---|---|
 | Home Cliffs (start) | Falls, night mist (slow stamina regen), wolves | Light, shelter, food |
-| Falls Valley (built) | Slippery wet rock (rain), river currents toward the cliff, harpies | Stamina, the glider, arrows and parries (grip boots planned) |
+| Falls Valley (built) | Slippery wet rock (rain), river currents toward the cliff, harpies | Stamina, the glider, arrows and parries, grip boots |
 | Forest Road / Ashby | Bandit camps, raids | Walls, better swords |
+| Hollow Mine (planned, tier 2) | Darkness, tight tunnels, cave crawlers, flooded galleries | Torches and the lantern, bronze gear |
+| Spire Cliffs (planned, tier 3) | Wind gusts that push gliders, long falls between spires, loose rock, storm harpies | Feather cloak, grip boots, the grapple hook, a shield |
+| Cinder Foothills (planned, tier 4) | Steam vents, hot ground (a mild **heat meter**), ash-sick beasts, the bandit warlord's fort | Cool springs, steel gear, a first heat-ward charm |
 | Volcano (late) | **Heat meter** (rises near lava and drains health when full), lava flows, ash storms, emissive lava falls | Heat-ward cloak, blossom charms, cool springs |
 
 ### Wolves (built)
@@ -228,20 +298,74 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 ## 10. Sacred cherry-blossom sanctuaries
 - Glowing cherry trees on cliff edges. **The first stands beside your shack.**
 - Functions: **respawn point**, **fast travel** node, **safe zone** (enemies won't enter its light), and an altar for **blessings** (permanent upgrades bought with Blossom Petals from elite enemies and exploration).
+- **Fast travel (built):** praying at a sanctuary **attunes** it for the whole world (the journal fact `prayed:<name>`, so co-op players share it and it's saved). The home blossom starts attuned. Praying opens the list of the other attuned sanctuaries, with their distances. Picking one takes you there, heals you and sets your respawn point there. Travel is personal (friends stay put), and you can't travel within 8 s of being hurt. Code: `BlossomShrine` (`All`, `Attuned`, `ServerTravel`), `Net.RequestTravel` / `S_Travel` (protocol 8), and the travel list on the `Hud` board.
 - Each new sanctuary you light up opens the next region. That's the main progression gate, which ties exploration to power.
 - Late game: blossom charms push back volcano heat, letting the calm side and the dangerous side of the world interact.
 
 ## 11. World map (modular)
 ```
-                [Volcano — late]
+                [Volcano — late, tier 5]
+                      │
+                [Cinder Foothills — tier 4]
                       │
  [Spire Cliffs] ── [Falls Valley] ── [Ashby Village] ── [Forest Road] ── [Cities…]
-                      │
-                [HOME CLIFFS — start]
+   tier 3             │                                      │
+                [HOME CLIFFS — start]                  [Hollow Mine — tier 2]
 ```
 - Each zone is a **separate scene**, joined by road or trigger connectors and loaded in the background. New zones (cities, mines, the volcano) are added by dropping in a scene and a connector, with no core code changes.
 - **Home Cliffs layout:** a plateau of about 120 × 120 m. The shack and the sacred tree are on the north cliff edge, over a cloud sea. High rock walls stand to the east and west, with waterfalls. A road leads south toward Ashby, about a 10-minute walk. A pass through the east wall leads to **Falls Valley** (see §9).
 - For now every zone is part of one generated scene (`HomeCliffs` and its partial files: `.Ashby`, `.Falls`, `.Volcano`). Splitting them into streamed scenes comes later.
+
+### Region progression (draft, 2026-11-18)
+- **The problem:** three regions are playable (Home Cliffs, the Ashby vale with the bandit camp, Falls Valley), and they cover economy tiers 0–1 only. There are no ores, no smelter and no metal items yet: iron nails are only bought from Marta, swords stop at the stone club, and the home stops at the cottage. Going straight to the volcano would jump from tier 1 to tier 5 and leave pillar 2 (*earned steel*) empty.
+- **The rule:** each mid-game region brings **one metal tier**, **one new station**, **one blossom sanctuary** (§10), **one boss** whose drop opens the next step, and **one hazard** whose counter you craft from that tier or the one before it. The house tier follows the metals: Longhouse at tier 3, Keep at tier 4 (§5).
+- **Order:** Hollow Mine → Spire Cliffs → Cinder Foothills → Volcano. Cities and workers can come in alongside, from the Longhouse on (it is the first tier with worker slots).
+
+| Step | Region | Metal tier | New stations | Sanctuary | Boss → drop | House |
+|---|---|---|---|---|---|---|
+| 0 | (fill in tier 1) | Clay, planks, bricks | Sawhorse, Kiln | — | — | Cottage (built) |
+| 1 | Hollow Mine | Bronze (copper + tin, charcoal) | Smelter, Anvil | Mine Blossom, in a sunlit shaft | Crawler Mother → Bellows Plans | Stone walls |
+| 2 | Spire Cliffs | Iron | Bellows (smelter upgrade) | Spire Blossom, on the tallest spire | Storm Harpy Queen → Longhouse Blueprint | **Longhouse** |
+| 3 | Cinder Foothills | Steel (coal + iron) | Blast Forge | Ashen Blossom, by a cool spring | Bandit Warlord → Keep Blueprint, Ember Pass key | **Keep** |
+| 4 | Volcano / Ember Wastes | Ember steel | Sacred Forge | (the last sanctuary, at the crater rim) | Ember Warden → the Warden's crown | — |
+
+#### Step 0: fill in tier 1 (no new region)
+- **Clay** from the riverbanks in the vale and Falls Valley. **Sawhorse** (wood → planks) and **Kiln** (clay → bricks; wood → charcoal).
+- Move the Cottage's iron nails onto a recipe later (nails from iron ingots at the anvil), but keep Marta selling them so the cottage stays reachable before the mine.
+- Small, but it gives tiers 2–4 the refined goods they're priced in.
+
+#### Step 1: Hollow Mine (bronze)
+- **Where:** off the Forest Road past Ashby, an old mine dug into the valley wall. The road is the trip there (a short forest walk with wild boars, whose hides make the **furs** planned in §6); the mine is the region.
+- **The hook:** the first place where **darkness** is the hazard. Torches can be placed on walls, and a crafted **Lantern** (Charm or a held tool) lights a circle round you. Night mist already teaches "light is safety"; the mine makes it the whole level.
+- **Layout:** an upper gallery with copper and tin veins near the entrance, then deeper flooded galleries (once swimming exists, they hide side rooms). A collapsed shaft lets daylight in: the **Mine Blossom** grows there.
+- **Enemies:** **cave crawlers**, low-poly faceted spiders built in code like the wolf and the harpy. They hate light: a torch or lantern makes them back off and only lunge from the dark edge, so lighting the mine is how you clear it. The **Crawler Mother** sits at the bottom.
+- **Gear:** Bronze Sword, Bronze Cap and Scale Shirt (§6, tier 2), a bronze pickaxe.
+- **Hands off:** the Crawler Mother drops the **Bellows Plans**, which you need for iron. The mine also has one locked iron gate with a note that points to the spires.
+
+#### Step 2: Spire Cliffs (iron)
+- **Where:** past Falls Valley, a field of tall rock spires over the cloud sea.
+- **The hook:** the climbing and glider test. Iron shows as rust-red seams on the spire faces, so you mine it while hanging on. **Wind gusts** shove gliders sideways (shown by streaks in the air), and updrafts from cracks in the rock link one spire to the next.
+- **The grapple hook** (already named in §8 as late game) is found or crafted here. It shoots onto marked anchor points, which keeps the routes between spires fair without lots of extra stamina.
+- **Enemies:** **storm harpies** (a tougher roost type that dives in pairs) and goats that knock you off a ledge if you don't dodge. The **Storm Harpy Queen** nests on the tallest spire.
+- **Gear:** Iron Sword, Chain Mail and the **Shield** in a new Off-hand slot (§6, tier 3). Grip boots and the feather cloak pay off here.
+- **Hands off:** the Queen drops the **Longhouse Blueprint**. The Longhouse widens the land claim and opens the first **worker** slots (§14 step 12), so it's also where the economy starts running on its own.
+
+#### Step 3: Cinder Foothills (steel)
+- **Where:** between Falls Valley and the volcano, the burnt slopes at the volcano's foot.
+- **The hook:** a gentle version of the volcano's **heat meter**. Steam vents and hot ground fill it slowly, and cool springs empty it. It teaches the endgame's system while it can't kill you quickly yet.
+- **Coal** seams in the burnt ground, which with iron make **steel** at the **Blast Forge**.
+- **Enemies:** ash-sick wolves and boars (darker, glowing, a bit tougher), and the **Bandit Warlord's fort**: the bandits from the vale were his outriders, which ties the raids on your base (§9) into one story. Clearing the fort stops raids for a while.
+- **Gear:** Steel Sword, Plate (§6, tier 4), and the first heat-ward piece: an **Ember-glass Charm** that slows the heat meter a little.
+- **Hands off:** the Warlord drops the **Keep Blueprint** and the key to the **Ember Pass**, the only way up to the volcano.
+
+#### Step 4: Volcano (ember steel)
+- As planned in §9 and §14: the full heat meter, lava flows, ash storms, Ember Ore, the **Sacred Forge**, and the Ember Warden. It now starts with players in steel and plate who already know how the heat meter works.
+
+#### Open questions
+- **Tool tiers:** does mining a vein need a pickaxe of the right tier (bronze for iron, iron for coal), or does any tool work and the region gate is enough? Tool tiers make the chain stronger but add a chore.
+- **Forest Road:** does it get a camp, a toll gate or a small hamlet, or stay a short walk to the mine?
+- **Fast travel** (§8, planned) becomes more important with every region. Build it before or with step 2.
+- **Swimming** (§8, planned) is what the flooded galleries in step 1 would use. Make those rooms optional until it exists.
 
 ## 12. Art & tech direction (from the visual brief)
 - **Style:** painterly, angular hand-sculpted shapes, very little surface noise, strong color blocking. Think Ori × BotW × Journey.
@@ -336,9 +460,14 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 2. **Multiplayer foundation (done):** host/join, dedicated server, shared base, sleep vote, PVP toggle, difficulty scaling hooks (§16). Every later feature is built multiplayer-first.
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
-5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Next: grip boots, swimming, fast travel between sanctuaries.
-6. **Volcano:** heat system, lava hazards, Ember Ore, the Sacred Forge.
-7. **Cities and workers:** automation and the regional economy.
+5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
+6. **Levels and abilities:** XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, and the second ability key. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
+8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
+9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.
+10. **Cinder Foothills (steel):** the heat meter (gentle), coal, the Blast Forge, the Bandit Warlord's fort, plate, the Keep, and the level-15 talents.
+11. **Volcano:** the full heat system, lava hazards, Ember Ore, the Sacred Forge, the Ember Warden, and the level-20 talents at the level cap.
+12. **Cities and workers:** automation and the regional economy. Workers can start earlier, with the Longhouse's worker slots (step 9).
 
 ## 15. Code architecture notes
 - **Enemies:** `Wildlife` (Main/Wildlife) spawns and replicates every hostile (wolf packs, the bandit camp); the server runs their AI, and clients show positions sent 15 times a second. `Enemy.cs` is the shared brain (prowl around a group anchor, chase, telegraphed windup, strike, stagger, flee). A new enemy type subclasses it with its numbers, body and animations (see `Wolf.cs`, `Bandit.cs`) and registers its kind in `Enemy.Create`. Strikes on players go through `Net.ServerDamagePlayer` (block / parry).

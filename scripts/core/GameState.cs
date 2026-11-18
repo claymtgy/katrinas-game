@@ -99,6 +99,20 @@ public partial class GameState : Node
         return Vector3.Zero;
     }
 
+    /// <summary>Pools deep enough to swim in (GDD §8): the basin's floor corner and the opposite
+    /// corner at the water's surface.</summary>
+    public readonly List<(Vector3 Min, Vector3 Max)> Waters = new();
+
+    /// <summary>The surface height of the pool this point is in (within a couple of metres above it,
+    /// so a falling player is caught), or NaN out of the water.</summary>
+    public float WaterSurfaceAt(Vector3 pos)
+    {
+        foreach (var w in Waters)
+            if (pos.X > w.Min.X && pos.X < w.Max.X && pos.Z > w.Min.Z && pos.Z < w.Max.Z && pos.Y > w.Min.Y - 1f && pos.Y < w.Max.Y + 2f)
+                return w.Max.Y;
+        return float.NaN;
+    }
+
     /// <summary>Top of the updraft this point is in, or -1.</summary>
     public float UpdraftAt(Vector3 pos)
     {
@@ -176,6 +190,7 @@ public partial class GameState : Node
         SafeZones.Clear();
         Updrafts.Clear();
         Currents.Clear();
+        Waters.Clear();
         Inventory.Clear();
         HomeTier = 1;
         ClaimRadius = 30f;

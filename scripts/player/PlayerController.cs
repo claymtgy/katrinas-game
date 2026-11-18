@@ -39,6 +39,18 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float GlideFall { get; set; } = 2.2f;
     [Export] public float UpdraftLift { get; set; } = 8f;
 
+    [ExportGroup("Swim")]
+    [Export] public float SwimSpeed { get; set; } = 3.0f;
+    [Export] public float SwimSprintSpeed { get; set; } = 4.8f;
+    /// <summary>Stamina per second for a fast stroke (sprint).</summary>
+    [Export] public float SwimSprintCost { get; set; } = 12f;
+    /// <summary>Stamina per second while your head is under (holding your breath).</summary>
+    [Export] public float BreathCost { get; set; } = 9f;
+    /// <summary>Damage per second once you're out of breath.</summary>
+    [Export] public float DrownDamage { get; set; } = 12f;
+    /// <summary>How far below the surface your feet hang when you float (head and shoulders out).</summary>
+    [Export] public float FloatDepth { get; set; } = 1.35f;
+
     [ExportGroup("Falling")]
     /// <summary>Landing speeds above this (m/s) hurt.</summary>
     [Export] public float SafeFallSpeed { get; set; } = 12f;
@@ -124,11 +136,19 @@ public partial class PlayerController : CharacterBody3D
 
     // ---------------------------------------------------------------- climbing / gliding
 
-    public enum MoveMode { Normal = 0, Climb = 1, Glide = 2 }
-    /// <summary>Walking, on a rock face, or under the glider (remote players: what they last sent).</summary>
+    public enum MoveMode { Normal = 0, Climb = 1, Glide = 2, Swim = 3 }
+    /// <summary>Walking, on a rock face, under the glider or swimming (remote players: what they last sent).</summary>
     public MoveMode Mode { get; private set; }
     public bool Climbing => Mode == MoveMode.Climb;
     public bool Gliding => Mode == MoveMode.Glide;
+    public bool Swimming => Mode == MoveMode.Swim;
+    /// <summary>Local player: swimming with your head under the water (holding your breath).</summary>
+    public bool Underwater { get; private set; }
+
+    /// <summary>Into the water when it's this deep at your feet; out when it's shallower than the second.</summary>
+    private const float SwimEnterDepth = 1.2f, SwimExitDepth = 0.9f, HeadDepth = 1.6f;
+    private float _drownBank;
+    private bool _drownWarned;
     /// <summary>A glider in your pack lets you open it in the air (Space).</summary>
     public bool HasGlider => Pack.Count("glider") > 0;
 
@@ -142,6 +162,9 @@ public partial class PlayerController : CharacterBody3D
         if (mode == Mode) return;
         var old = Mode;
         Mode = mode;
+        if (mode == MoveMode.Swim && !Net.Instance.IsDedicated)
+            Sfx.At("water", GlobalPosition + Vector3.Up, IsLocal ? 0f : -4f, 0.1f); // the splash
+        if (mode != MoveMode.Swim) Underwater = false;
         if (mode == MoveMode.Glide || old == MoveMode.Glide)
         {
             ShowGlider(mode == MoveMode.Glide);
@@ -277,6 +300,75 @@ public partial class PlayerController : CharacterBody3D
         float targetY = lifting ? UpdraftLift : -GlideFall;
         float vy = Mathf.Lerp(v.Y, targetY, Mathf.Min(1f, (lifting ? 1.5f : 3f) * dt));
         return new Vector3(h.X, vy, h.Z);
+    }
+
+    /// <summary>Local player in a pool: stroke where you're heading, look down (moving forward) to
+    /// dive and up to rise, hold Jump to come up; otherwise you bob back to float at the surface.
+    /// A fast stroke (sprint) and holding your breath under water use stamina; out of breath you
+    /// drown. Swim forward into an edge to haul yourself out. Water breaks a fall (GDD §8).</summary>
+    private Vector3 SwimStep(Vector3 v, float dt, Vector2 input, Vector3 dir, Vector3 forward, float surface, bool blocked, bool sprintHeld)
+    {
+        float feetDepth = surface - GlobalPosition.Y;
+        Underwater = feetDepth > HeadDepth;
+        bool moving = dir.LengthSquared() > 0.01f;
+        bool sprint = !blocked && moving && sprintHeld && Stamina > 1f;
+        if (sprint)
+        {
+            Stamina = Mathf.Max(0, Stamina - SwimSprintCost * dt);
+            _regenDelay = 0.6f;
+        }
+        if (Underwater)
+        {
+            Stamina = Mathf.Max(0, Stamina - BreathCost * dt);
+            _regenDelay = 0.6f;
+            if (Stamina <= 0)
+            {
+                _drownBank += DrownDamage * dt;
+                if (_drownBank >= 4f)
+                {
+                    Net.Instance.ReportFallDamage(_drownBank);
+                    _drownBank = 0;
+                    if (!_drownWarned) Hud.Toast("Out of breath! Swim up for air.");
+                    _drownWarned = true;
+                }
+            }
+        }
+        else { _drownBank = 0; _drownWarned = false; }
+
+        // Haul yourself out over an edge in front of you.
+        if (!blocked && !Underwater && input.Y < -0.5f && TryClimbOut(forward, surface))
+            return Vector3.Up * 6.5f + forward * 2f;
+
+        float speed = (sprint ? SwimSprintSpeed : SwimSpeed) * Gear.MoveSpeedMult(this);
+        var target = dir * speed;
+        float pitch = Rig.Look.Pitch;
+        float vy;
+        float floatGap = surface - FloatDepth - GlobalPosition.Y; // > 0: below floating height
+        if (!blocked && Input.IsActionPressed("jump") && floatGap > 0.05f) vy = SwimSpeed;
+        else if (moving && input.Y < -0.3f && Mathf.Abs(pitch) > 0.3f) vy = Mathf.Sin(pitch) * speed;
+        else vy = Mathf.Clamp(floatGap * 2.5f, -2f, 2f);  // bob back to the surface
+        if (vy > 0 && floatGap < 0.3f) vy = Mathf.Min(vy, floatGap * 2.5f); // don't leap out of the water
+        float k = Mathf.Min(1f, 4f * dt);
+        // A dive from a height slows hard in the water.
+        float ky = Mathf.Min(1f, (v.Y < -3f ? 7f : 3f) * dt);
+        return new Vector3(Mathf.Lerp(v.X, target.X, k), Mathf.Lerp(v.Y, vy, ky), Mathf.Lerp(v.Z, target.Z, k));
+    }
+
+    /// <summary>Swimming into a pool's edge: is there a ledge just ahead, low enough to climb onto?
+    /// If so, leave the water with a mantle.</summary>
+    private bool TryClimbOut(Vector3 forward, float surface)
+    {
+        var from = new Vector3(GlobalPosition.X, surface + 1.5f, GlobalPosition.Z) + forward * 0.8f;
+        var query = PhysicsRayQueryParameters3D.Create(from, from + Vector3.Down * 2.5f, GameState.LayerWorld, new Godot.Collections.Array<Rid> { GetRid() });
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
+        if (hit.Count == 0 || hit["normal"].AsVector3().Y < 0.7f) return false;
+        float top = hit["position"].AsVector3().Y;
+        if (top < surface - 0.3f || top - GlobalPosition.Y > 2.1f) return false;
+        SetMode(MoveMode.Normal);
+        _mantleTime = 0.45f;
+        _mantleDir = forward;
+        _airVelocityY = 0;
+        return true;
     }
 
     /// <summary>On the ground (remote players use the last state they sent).</summary>
@@ -544,7 +636,7 @@ public partial class PlayerController : CharacterBody3D
     public void ApplyRemoteState(Vector3 pos, float yaw, float pitch, Vector3 velocity, bool onFloor, int mode = 0)
     {
         if (IsLocal) return;
-        SetMode((MoveMode)Mathf.Clamp(mode, 0, 2));
+        SetMode((MoveMode)Mathf.Clamp(mode, 0, 3));
         _targetPos = pos;
         _targetYaw = yaw;
         _targetPitch = pitch;
@@ -594,6 +686,26 @@ public partial class PlayerController : CharacterBody3D
         var right = new Vector3(basis.X.X, 0, basis.X.Z).Normalized();
         var dir = right * input.X - forward * input.Y;
         if (dir.LengthSquared() > 1f) dir = dir.Normalized();
+
+        // Pools: deep water at your feet and you swim (a glider folds; a fall is broken).
+        float surface = gs.WaterSurfaceAt(GlobalPosition);
+        float depth = float.IsNaN(surface) ? 0f : surface - GlobalPosition.Y;
+        if (Mode == MoveMode.Swim && (depth < SwimExitDepth || Health.IsDead || Sleeping)) SetMode(MoveMode.Normal);
+        else if ((Mode is MoveMode.Normal or MoveMode.Glide) && depth > SwimEnterDepth && _mantleTime <= 0 && !Health.IsDead)
+        {
+            SetMode(MoveMode.Swim);
+            if (Combat.GuardUp) Combat.DropGuard();
+            _dodgeTime = 0;
+        }
+        if (Mode == MoveMode.Swim)
+        {
+            Velocity = SwimStep(v, dt, input, dir, forward, surface, blocked, sprintHeld);
+            MoveAndSlide();
+            _airVelocityY = 0;
+            _wasOnFloor = true;
+            FinishLocalStep(dt, false);
+            return;
+        }
 
         if (Mode == MoveMode.Climb)
         {

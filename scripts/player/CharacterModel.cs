@@ -245,6 +245,13 @@ public partial class CharacterModel : Node3D
             if (climb > 0.4f) Play(ClimbAnimation.Climb, 0.15, Mathf.Clamp(climb / 2.4f, 0.7f, 1.4f) * (v.Y < -0.3f ? -1f : 1f));
             else Play(ClimbAnimation.Hang, 0.25);
         }
+        else if (_player.Swimming)
+        {
+            // No swim clip in the kit: a slow stride reads as kicking under the water, an idle as treading it.
+            float stroke = v.Length();
+            if (stroke > 0.5f) Play("Walking_A", 0.25, Mathf.Clamp(stroke / 3f, 0.6f, 1.3f));
+            else Play("Unarmed_Idle", 0.3);
+        }
         else if (_player.GuardShown && HasAnimation("Blocking")) Play("Blocking", 0.12);
         else if (!_player.Grounded) Play("Jump_Idle", 0.15);
         else if (speed > 6f) Play("Running_A", 0.2);

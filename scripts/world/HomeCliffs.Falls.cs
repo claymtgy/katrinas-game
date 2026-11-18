@@ -24,6 +24,8 @@ public partial class HomeCliffs
     public static readonly Vector3 FallsShrinePos = new(MesaCenter.X + 2, MesaHeight, MesaCenter.Z - 4);
 
     public static readonly Vector3 GreatFallsPool = new(184, 0, 58);
+    /// <summary>The plunge pool's basin (x, z): deep enough to swim in.</summary>
+    public static readonly Rect2 FallsPool = new(GreatFallsPool.X - 5, GreatFallsPool.Z - 8, 18, 16);
     public const float UpdraftRadius = 5.5f, UpdraftTop = 36f;
     /// <summary>The river: west from the pool, then north off the cliff (current in m/s).</summary>
     public static readonly Vector3 RiverBend = new(108, 0, 58);
@@ -42,8 +44,7 @@ public partial class HomeCliffs
         _vrng = new RandomNumberGenerator { Seed = (ulong)Seed * 31 + 5 };
 
         // Floor: x 60..200 (the pass and the valley), z -24..114.
-        var ground = Block(new Vector3(130, -6, (ValleyNorthZ + ValleySouthZ) / 2f), new Vector3(140, 12, ValleySouthZ - ValleyNorthZ), Vector3.Zero, Grass);
-        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride = GroundMaterial;
+        GroundAround(new Vector3(130, -6, (ValleyNorthZ + ValleySouthZ) / 2f), new Vector3(140, 12, ValleySouthZ - ValleyNorthZ), FallsPool);
 
         BuildValleyWalls();
         BuildMesa();
@@ -267,8 +268,7 @@ public partial class HomeCliffs
     {
         // Pours off the east cliff into a plunge pool; its mist is an updraft for gliders.
         Waterfall(new Vector3(ValleyEastX - 1.5f, 30, GreatFallsPool.Z), new Vector2(11, 60), new Vector3(0, -Mathf.Pi / 2f, 0));
-        var water = StyleMaterials.Water();
-        Visual(new BoxMesh { Size = new Vector3(18, 0.3f, 16) }, water, GreatFallsPool + new Vector3(4, 0.05f, 0), Vector3.Zero);
+        Pool(FallsPool);
         foreach (float side in new[] { -1f, 1f })
             Block(GreatFallsPool + new Vector3(4, -0.4f, side * 8.5f), new Vector3(19, 1.2f, 1), Vector3.Zero, Slate);
 

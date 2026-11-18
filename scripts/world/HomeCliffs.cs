@@ -26,6 +26,10 @@ public partial class HomeCliffs : Node3D
     private static readonly Vector3 ShackPos = new(9, 0, -21);
     private static readonly Vector3 BlossomPos = new(-7, 0, -25);
     private static readonly Vector3 PoolPos = new(-44, 0, -4);
+    /// <summary>The home pool's basin (x, z): deep enough to swim in.</summary>
+    public static readonly Rect2 HomePool = new(PoolPos.X - 9, PoolPos.Z - 6, 14, 12);
+    /// <summary>Swimmable pools: how deep the basin is, and where the water stands (just under the rim).</summary>
+    public const float PoolDepth = 2.8f, PoolSurface = -0.25f;
 
     /// <summary>The painterly grass-and-rock ground shared by the plateau and the vale.</summary>
     private static ShaderMaterial _ground;
@@ -105,11 +109,41 @@ public partial class HomeCliffs : Node3D
 
     // ================================================================== terrain
 
+    /// <summary>A slab of ground (the painterly terrain) with a rectangular hole through it for a
+    /// pool's basin: up to four blocks around the hole. The terrain shader works in world space, so
+    /// the seams don't show.</summary>
+    private void GroundAround(Vector3 center, Vector3 size, Rect2 hole)
+    {
+        float x0 = center.X - size.X / 2f, x1 = center.X + size.X / 2f, z0 = center.Z - size.Z / 2f, z1 = center.Z + size.Z / 2f;
+        float hx0 = hole.Position.X, hx1 = hole.End.X, hz0 = hole.Position.Y, hz1 = hole.End.Y;
+        void Piece(float ax, float bx, float az, float bz)
+        {
+            if (bx - ax < 0.01f || bz - az < 0.01f) return;
+            var b = Block(new Vector3((ax + bx) / 2f, center.Y, (az + bz) / 2f), new Vector3(bx - ax, size.Y, bz - az), Vector3.Zero, Grass);
+            b.Name = "Ground";
+            ((MeshInstance3D)b.GetChild(0)).MaterialOverride = GroundMaterial;
+        }
+        Piece(x0, hx0, z0, z1);
+        Piece(hx1, x1, z0, z1);
+        Piece(hx0, hx1, z0, hz0);
+        Piece(hx0, hx1, hz1, z1);
+    }
+
+    /// <summary>A pool you can swim in (GDD §8), sunk into a hole left by <see cref="GroundAround"/>:
+    /// a slate floor <see cref="PoolDepth"/> down and the water's surface just under the rim.
+    /// Swim into any edge to haul yourself out.</summary>
+    private void Pool(Rect2 area)
+    {
+        var mid = new Vector3(area.GetCenter().X, 0, area.GetCenter().Y);
+        Block(mid + Vector3.Down * (PoolDepth + 0.5f), new Vector3(area.Size.X, 1f, area.Size.Y), Vector3.Zero, Slate.Darkened(0.3f));
+        Visual(new BoxMesh { Size = new Vector3(area.Size.X, 0.1f, area.Size.Y) }, StyleMaterials.Water(), mid + new Vector3(0, PoolSurface - 0.05f, 0), Vector3.Zero);
+        GameState.Instance.Waters.Add((new Vector3(area.Position.X, -PoolDepth, area.Position.Y), new Vector3(area.End.X, PoolSurface, area.End.Y)));
+    }
+
     private void BuildGround()
     {
         // Main plateau: x -60..60, z -30..90, top at y = 0.
-        var ground = Block(new Vector3(0, -6, 30), new Vector3(120, 12, 120), Vector3.Zero, Grass);
-        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride = GroundMaterial;
+        GroundAround(new Vector3(0, -6, 30), new Vector3(120, 12, 120), HomePool);
         // Dirt yard around the shack.
         Visual(new BoxMesh { Size = new Vector3(14, 0.05f, 12) }, StyleMaterials.Toon(Dirt.Darkened(0.25f), 0), ShackPos + new Vector3(0, 0.02f, 4), Vector3.Zero);
     }
@@ -332,6 +366,7 @@ public partial class HomeCliffs : Node3D
         {
             Name = "BlossomShrine",
             Position = BlossomPos,
+            StartsAttuned = true,
             CollisionLayer = GameState.LayerProps,
             CollisionMask = 0,
         };
@@ -372,7 +407,7 @@ public partial class HomeCliffs : Node3D
         // 1) West wall falls into a pool on the plateau...
         Waterfall(new Vector3(-56.5f, 16, -4), new Vector2(7, 34), new Vector3(0, Mathf.Pi / 2f, 0));
         var water = StyleMaterials.Water();
-        Visual(new BoxMesh { Size = new Vector3(14, 0.3f, 12) }, water, PoolPos + new Vector3(-2, 0.05f, 0), Vector3.Zero);
+        Pool(HomePool);
         Block(PoolPos + new Vector3(-2, -0.4f, 6.5f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
         // Draw water at the pool's east edge.
         var pool = new WaterSource
@@ -384,7 +419,7 @@ public partial class HomeCliffs : Node3D
         pool.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.2f, 0.4f, 10f) }, Position = new Vector3(0, 0.1f, 0) });
         Block(PoolPos + new Vector3(-2, -0.4f, -6.5f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
         // ...a stream runs to the edge...
-        Visual(new BoxMesh { Size = new Vector3(3, 0.12f, 24) }, water, new Vector3(-40, 0.06f, -18), new Vector3(0, 0.15f, 0));
+        Visual(new BoxMesh { Size = new Vector3(3, 0.12f, 20) }, water, new Vector3(-40.3f, 0.06f, -20.2f), new Vector3(0, 0.15f, 0));
         // ...and spills over the cliff.
         Waterfall(new Vector3(-38, -26, -31.5f), new Vector2(4, 52), Vector3.Zero);
 

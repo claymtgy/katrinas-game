@@ -28,12 +28,15 @@ public partial class Hud : CanvasLayer
     private int _packVersion = -1;
     private bool _inventoryDirty = true;
     private float _hitFlash;
+    /// <summary>A blue-green wash over the screen while the camera is under water.</summary>
+    private ColorRect _underwater;
 
     // crafting / trade / enchanting board
     private VBoxContainer _craftList;
     private Label _craftTitle, _craftFooter;
     private CraftingStation _station;
     private Trader _trader;
+    private BlossomShrine _shrine;
     private string _enchantPick = "";
 
     // character sheet
@@ -54,6 +57,10 @@ public partial class Hud : CanvasLayer
         _root = new Control { MouseFilter = Control.MouseFilterEnum.Ignore, Theme = UiTheme.Theme };
         AddChild(_root);
         _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+        _underwater = new ColorRect { Color = new Color(0.08f, 0.32f, 0.4f, 0.45f), MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
+        _root.AddChild(_underwater);
+        _underwater.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
         BuildVitals();
         BuildClock();
@@ -327,6 +334,7 @@ public partial class Hud : CanvasLayer
     {
         _station = station;
         _trader = null;
+        _shrine = null;
         _enchantPick = "";
         BoardTitle(_craftPanel).Text = station.StationName;
         ShowBoard(_craftPanel);
@@ -338,7 +346,19 @@ public partial class Hud : CanvasLayer
     {
         _station = null;
         _trader = trader;
+        _shrine = null;
         BoardTitle(_craftPanel).Text = trader.TraderName;
+        ShowBoard(_craftPanel);
+        RefreshCrafting();
+    }
+
+    /// <summary>Fast travel from a sanctuary to the other attuned ones (GDD §10).</summary>
+    public void OpenTravel(BlossomShrine shrine)
+    {
+        _station = null;
+        _trader = null;
+        _shrine = shrine;
+        BoardTitle(_craftPanel).Text = shrine.ShrineName;
         ShowBoard(_craftPanel);
         RefreshCrafting();
     }
@@ -355,6 +375,8 @@ public partial class Hud : CanvasLayer
     }
 
     public bool CharacterOpen => _sheet.Visible;
+    /// <summary>The sanctuary travel list is open.</summary>
+    public bool TravelOpen => _shrine != null && _craftPanel.Visible;
 
     public void CloseMenus()
     {
@@ -366,6 +388,7 @@ public partial class Hud : CanvasLayer
             if (c is CharacterCreator cc) cc.QueueFree();
         _station = null;
         _trader = null;
+        _shrine = null;
         GameState.Instance.SetUiOpen(false);
     }
 
@@ -464,6 +487,10 @@ public partial class Hud : CanvasLayer
         }
         else _buildInfo.Text = "";
         _buildPlate.Visible = _buildInfo.Text != "";
+
+        var eye = player.Rig.Camera.GlobalPosition;
+        float surface = gs.WaterSurfaceAt(eye);
+        _underwater.Visible = !float.IsNaN(surface) && eye.Y < surface;
 
         _hitFlash -= (float)delta;
         _crosshair.Text = _hitFlash > 0 ? "✕" : "·";
@@ -617,6 +644,7 @@ public partial class Hud : CanvasLayer
         foreach (var child in _craftList.GetChildren()) child.QueueFree();
         _craftFooter.Text = Gamepad.Format("{back} to close");
         if (_trader != null) { RefreshTrade(); return; }
+        if (_shrine != null) { RefreshTravel(); return; }
         if (_station == null) return;
         if (_station.StationId == Gear.AltarStation) { RefreshEnchanting(); return; }
         var me = GameState.Instance.LocalPlayer;
@@ -720,6 +748,35 @@ public partial class Hud : CanvasLayer
             _craftList.AddChild(RecipeRow(id, $"{item.DisplayName}  ×{have}", $"+{item.SellPrice} coins each", null, me, "Sell", true,
                 () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTrade(_trader, id, buy: false); }));
         }
+    }
+
+    private void RefreshTravel()
+    {
+        var me = GameState.Instance.LocalPlayer;
+        var here = _shrine;
+        _craftList.AddChild(Section("Travel to another sanctuary"));
+        var note = UiTheme.Label("The blossoms remember every tree you have prayed at. Travelling heals you and sets your respawn point there. Not while you're fighting.", "Dim");
+        note.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        note.CustomMinimumSize = new Vector2(600, 0);
+        _craftList.AddChild(note);
+        bool shaken = me != null && Net.Now - me.LastHurtAt < BlossomShrine.CombatLockout;
+        foreach (var dest in here.Destinations)
+        {
+            var to = dest;
+            float metres = here.GlobalPosition.DistanceTo(to.GlobalPosition);
+            var go = new Button { Text = $"{to.ShrineName}   ·   {metres:0} m away", Disabled = shaken };
+            go.Pressed += () =>
+            {
+                Sfx.Ui("ui_click", -6f);
+                Net.Instance.RequestTravel(here, to);
+                CloseMenus();
+            };
+            _craftList.AddChild(go);
+        }
+        var stay = new Button { Text = "Stay here" };
+        stay.Pressed += CloseMenus;
+        _craftList.AddChild(stay);
+        if (shaken) _craftFooter.Text = "Too shaken to travel. Get clear of the fight first.";
     }
 
     private static string ShortNote(ItemDef d) =>

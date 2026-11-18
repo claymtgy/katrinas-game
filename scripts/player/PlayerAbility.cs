@@ -37,7 +37,7 @@ public partial class PlayerAbility : Node
     public bool TryUse()
     {
         var cls = _player.Class;
-        if (_player.Health.IsDead || _player.Sleeping || GameState.Instance.UiOpen || _player.Dodging || _player.Climbing) return false;
+        if (_player.Health.IsDead || _player.Sleeping || GameState.Instance.UiOpen || _player.Dodging || _player.Climbing || _player.Swimming) return false;
         if (CooldownLeft > 0) return false;
         if (!_player.TrySpendStamina(cls.AbilityStamina))
         {

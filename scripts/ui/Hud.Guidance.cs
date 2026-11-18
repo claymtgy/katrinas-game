@@ -331,6 +331,8 @@ public partial class Hud
             "Your pack is full. Empty it into the chest by the shack ({interact})."),
         new("climb_tired", (gs, p) => p.Climbing && p.Stamina < p.MaxStamina * 0.3f,
             "Climbing uses stamina. Rest on a ledge, or leap off ({jump}) before your grip fails."),
+        new("swim", (gs, p) => p.Swimming,
+            "You're swimming. Look down as you swim to dive, hold {jump} to come up. Under water you hold your breath (stamina). Swim into an edge to climb out."),
         new("dusk", (gs, p) => gs.TimeOfDay is > 0.70f and < 0.79f,
             "Night is coming, and wolves hunt in the dark. Sleep in the bed in the shack ({interact}) to skip the night, or stay by a fire."),
         new("raids", (gs, p) => gs.Day >= Wildlife.RaidFirstDay - 1 && gs.TimeOfDay > 0.55f && !gs.PlacedBuildings.Any(b => b.Id == "watchtower"),

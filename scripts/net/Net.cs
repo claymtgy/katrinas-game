@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 7;
+    public const int ProtocolVersion = 8;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -542,6 +542,8 @@ public partial class Net : Node
     /// <summary>Enchant a piece you carry or wear, at a Rune Altar.</summary>
     public void RequestEnchant(string itemId, string enchant, Node altar) => ToServer(MethodName.S_Enchant, itemId ?? "", enchant ?? "", altar.GetPath());
     public void RequestInteract(Node target) => ToServer(MethodName.S_Interact, target.GetPath());
+    /// <summary>Fast travel from the sanctuary you're praying at to another attuned one.</summary>
+    public void RequestTravel(BlossomShrine from, BlossomShrine to) => ToServer(MethodName.S_Travel, from.GetPath(), to.Name.ToString());
     public void RequestWake() => ToServer(MethodName.S_Wake);
     public void RequestAttack(bool heavy, Vector3 aim) => ToServer(MethodName.S_Attack, heavy, aim);
     public void ReportFallDamage(float amount) => ToServer(MethodName.S_FallDamage, amount);
@@ -971,6 +973,17 @@ public partial class Net : Node
         if (p == null || node is not IServerInteractable target) return;
         if (!InReach(p, node as Node3D)) return;
         target.ServerInteract(p);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Travel(NodePath fromPath, string toName)
+    {
+        var p = SenderPlayer();
+        var from = GetNodeOrNull<BlossomShrine>(fromPath);
+        if (p == null || from == null) return;
+        if (!InReach(p, from)) { ToastTo(p.PeerId, "Stand by a sanctuary's tree to travel."); return; }
+        string why = from.ServerTravel(p, BlossomShrine.Find(toName));
+        if (why != "") ToastTo(p.PeerId, why);
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]

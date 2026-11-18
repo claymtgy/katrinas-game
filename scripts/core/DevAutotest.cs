@@ -272,6 +272,106 @@ public partial class DevAutotest : Node
     /// <summary>Falls Valley (GDD §8, §9, §11): the pass, climbing the mesa (and losing your grip),
     /// the second sanctuary, crafting and flying the glider, the updraft, the river's current, and
     /// the harpies (swoop, parry drop, sword, arrow, feathers, the cleared roost).</summary>
+    /// <summary>Fast travel between sanctuaries (GDD §10): praying attunes one for the world and
+    /// opens the list of the others; travel is refused just after you were hurt; it takes you
+    /// there, heals you and sets your respawn point.</summary>
+    private async Task FastTravel(GameState gs, PlayerController p, BlossomShrine falls)
+    {
+        var home = BlossomShrine.Find("BlossomShrine");
+        Check(home != null && home.Attuned, "the home blossom starts attuned");
+        Check(falls != null && falls.Attuned && Journal.Instance.Facts.Contains("prayed:FallsShrine"), "praying attunes the Falls Blossom (a shared journal fact)");
+        Check(Hud.Instance.TravelOpen, "praying where another sanctuary is attuned opens the travel list");
+        await Wait(0.3);
+        await Shot("30c_fast_travel");
+        Hud.Instance.CloseMenus();
+        if (home == null || falls == null) return;
+
+        p.LastHurtAt = Net.Now;
+        Net.Instance.RequestTravel(falls, home);
+        await Wait(0.4);
+        Check(p.GlobalPosition.DistanceTo(HomeCliffs.FallsShrinePos) < 5f, "no travelling straight after being hurt");
+        p.LastHurtAt = -100;
+        p.Health.TakeDamage(10, null);
+        p.LastHurtAt = -100;
+        Net.Instance.RequestTravel(falls, home);
+        bool there = await Until(() => p.GlobalPosition.DistanceTo(home.ArrivalPoint) < 2.5f, 3);
+        Check(there, $"fast travel takes you to the home blossom ({p.GlobalPosition.DistanceTo(home.ArrivalPoint):0.0} m off)");
+        Check(p.SpawnPoint.DistanceTo(home.ArrivalPoint) < 0.5f && p.Health.Current >= p.Health.Max, "arriving heals you and sets your respawn point there");
+        Check(gs.Players.Count == 1 && Journal.Instance.Facts.Contains("travelled"), "travel is noted in the journal");
+        await Wait(0.3);
+        Net.Instance.RequestTravel(home, falls);
+        Check(await Until(() => p.GlobalPosition.DistanceTo(falls.ArrivalPoint) < 2.5f, 3), "and back to the Falls Blossom");
+        await Wait(0.3);
+    }
+
+    /// <summary>Swimming (GDD §8): a fall into the home pool is broken by the water; you float with
+    /// your head out; diving holds your breath (stamina) and tints the screen; you bob back up; you
+    /// can't attack in the water; swimming into an edge hauls you out.</summary>
+    private async Task Swimming(GameState gs, PlayerController p)
+    {
+        var pool = HomeCliffs.HomePool;
+        var mid = new Vector3(pool.GetCenter().X, 0, pool.GetCenter().Y);
+        float surface = HomeCliffs.PoolSurface;
+        Check(Mathf.IsEqualApprox(gs.WaterSurfaceAt(mid + Vector3.Down), surface) && float.IsNaN(gs.WaterSurfaceAt(mid + new Vector3(0, 0, 20))), "the home pool is swimmable water, the plateau is not");
+        p.Rig.SetView(false, true);
+        p.Health.Reset();
+        float hp = p.Health.Current;
+        p.Teleport(mid + Vector3.Up * 14f);
+        p.Rig.SetLook(Mathf.Pi, -0.2f);
+        Check(await Until(() => p.Swimming, 4), "jumping into the pool: you swim");
+        await Wait(2.5);
+        Check(p.Health.Current >= hp, $"the water breaks a 14 m fall (health {p.Health.Current:0}/{hp:0})");
+        float floatY = surface - p.FloatDepth;
+        Check(Mathf.Abs(p.GlobalPosition.Y - floatY) < 0.35f && !p.Underwater, $"you float with your head out (feet at {p.GlobalPosition.Y:0.00}, want {floatY:0.00})");
+        float before = p.Stamina;
+        p.Combat.TryAttack(false);
+        Check(p.Stamina >= before, "no swinging a sword while swimming");
+        await Shot("32_swimming");
+
+        // Dive: look down and swim forward.
+        p.RestoreStamina();
+        p.Teleport(mid + new Vector3(0, floatY, 3f));
+        p.Rig.SetLook(0, -0.9f); // facing -Z (north), down
+        Input.ActionPress("move_forward");
+        bool under = await Until(() => p.Underwater, 3);
+        await Wait(0.8);
+        Input.ActionRelease("move_forward");
+        Check(under, $"looking down as you swim dives under (feet at {p.GlobalPosition.Y:0.0})");
+        Check(p.Stamina < p.MaxStamina - 5f, $"holding your breath uses stamina ({p.Stamina:0})");
+        p.Rig.SetLook(0, 0.2f);
+        await Wait(0.2);
+        await Shot("32b_underwater");
+        Check(await Until(() => !p.Underwater && Mathf.Abs(p.GlobalPosition.Y - floatY) < 0.4f, 5), "let go and you bob back up to the surface");
+
+        // Out of breath: you drown slowly.
+        p.Health.Reset();
+        p.Teleport(mid + new Vector3(0, -2.6f, 0));
+        p.DrainStamina(1000);
+        Input.ActionPress("move_forward");
+        p.Rig.SetLook(0, -1.2f);
+        await Wait(1.2);
+        Input.ActionRelease("move_forward");
+        Check(p.Health.Current < p.Health.Max, $"out of breath under water hurts (health {p.Health.Current:0})");
+        p.Health.Reset();
+
+        // Climb out over the south edge.
+        p.Teleport(mid + new Vector3(0, floatY, -2f));
+        p.Rig.SetLook(Mathf.Pi, -0.05f); // facing +Z
+        await Wait(0.3);
+        Input.ActionPress("move_forward");
+        bool outOf = await Until(() => !p.Swimming && p.IsOnFloor() && p.GlobalPosition.Y > -0.1f, 8);
+        Input.ActionRelease("move_forward");
+        Check(outOf, $"swim into the edge to climb out (y {p.GlobalPosition.Y:0.0}, z {p.GlobalPosition.Z:0.0})");
+
+        // The Great Falls pool in the valley is deep too.
+        var falls = HomeCliffs.FallsPool;
+        Check(!float.IsNaN(gs.WaterSurfaceAt(new Vector3(falls.GetCenter().X, -1f, falls.GetCenter().Y))), "the Great Falls plunge pool is swimmable");
+        p.Teleport(new Vector3(pool.GetCenter().X + 2, 0.1f, pool.End.Y + 6f));
+        p.Rig.SetLook(0, -0.35f);
+        await Wait(0.4);
+        await Shot("32c_home_pool");
+    }
+
     private async Task FallsValley(GameState gs, PlayerController p)
     {
         var wild = Wildlife.Instance;
@@ -334,6 +434,7 @@ public partial class DevAutotest : Node
         shrine?.Interact(p);
         await Wait(0.2);
         Check(shrine != null && p.SpawnPoint.DistanceTo(HomeCliffs.FallsShrinePos) < 5f, "praying at the Falls Blossom sets your respawn point there");
+        await FastTravel(gs, p, shrine);
         p.SpawnPoint = oldSpawn;
 
         // Losing your grip: out of stamina, you fall.
@@ -1576,6 +1677,7 @@ public partial class DevAutotest : Node
         await Looks(gs, p);
         await Classes(gs, p);
         await FallsValley(gs, p);
+        await Swimming(gs, p);
         await Raids(gs, p);
         await GearAndUi(gs, p);
         await ControllerAndGuidance(gs, p);
