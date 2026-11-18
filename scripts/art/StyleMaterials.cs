@@ -175,8 +175,35 @@ uniform vec4 tint : source_color = vec4(1.0);
 uniform vec3 shadow_tint : source_color = vec3(0.46, 0.36, 0.66);
 uniform float shadow_lift = 0.22;
 uniform float rim_strength = 0.55;
+// Customisation (Appearance): each slot is a bit mask of atlas swatches (column + row * 8 in the
+// KayKit 8 x 4 swatch grid) and the colour to paint them, keeping each swatch's gradient.
+uniform int slot_mask_0 = 0;
+uniform int slot_mask_1 = 0;
+uniform int slot_mask_2 = 0;
+uniform int slot_mask_3 = 0;
+uniform vec3 slot_color_0 : source_color = vec3(1.0);
+uniform vec3 slot_color_1 : source_color = vec3(1.0);
+uniform vec3 slot_color_2 : source_color = vec3(1.0);
+uniform vec3 slot_color_3 : source_color = vec3(1.0);
+vec3 swap_swatch(vec3 c, vec2 uv) {
+    vec2 cellf = clamp(floor(uv * vec2(8.0, 4.0)), vec2(0.0), vec2(7.0, 3.0));
+    int bit = 1 << (int(cellf.x) + int(cellf.y) * 8);
+    vec3 target;
+    if ((slot_mask_0 & bit) != 0) target = slot_color_0;
+    else if ((slot_mask_1 & bit) != 0) target = slot_color_1;
+    else if ((slot_mask_2 & bit) != 0) target = slot_color_2;
+    else if ((slot_mask_3 & bit) != 0) target = slot_color_3;
+    else return c;
+    // Shade the new colour by how light this texel is relative to the swatch's middle.
+    vec3 mid = textureLod(albedo_tex, (cellf + vec2(0.3, 0.5)) / vec2(8.0, 4.0), 0.0).rgb;
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    float lm = max(dot(mid, vec3(0.299, 0.587, 0.114)), 0.02);
+    return target * clamp(l / lm, 0.25, 1.6);
+}
 void fragment() {
-    vec4 c = use_tex ? texture(albedo_tex, UV) * tint : tint;
+    vec4 c = use_tex ? texture(albedo_tex, UV) : vec4(1.0);
+    if (use_tex) c.rgb = swap_swatch(c.rgb, UV);
+    c *= tint;
     ALBEDO = c.rgb;
     ROUGHNESS = 1.0;
 }
@@ -337,8 +364,14 @@ void fragment() {
     }
 
     /// <summary>Restyle a character model (KayKit glTF) with the toon ramp and outline,
-    /// keeping each surface's texture and colour.</summary>
-    public static void ApplyCharacter(Node root)
+    /// keeping each surface's texture and colour, and painting it with a player's look if given.</summary>
+    public static void ApplyCharacter(Node root, Appearance look = null)
+    {
+        var made = new Dictionary<Material, ShaderMaterial>();
+        ApplyCharacter(root, look, made);
+    }
+
+    private static void ApplyCharacter(Node root, Appearance look, Dictionary<Material, ShaderMaterial> made)
     {
         if (root is MeshInstance3D mi && mi.Mesh != null)
         {
@@ -346,7 +379,9 @@ void fragment() {
             {
                 var src = mi.GetActiveMaterial(i);
                 if (src == null) continue;
-                if (!CharacterCache.TryGetValue(src, out var m))
+                // Unpainted models share one material per source; a painted one gets its own.
+                var cache = look == null ? CharacterCache : made;
+                if (!cache.TryGetValue(src, out var m))
                 {
                     m = new ShaderMaterial { Shader = _character ??= new Shader { Code = CharacterShader } };
                     if (src is BaseMaterial3D std)
@@ -356,12 +391,28 @@ void fragment() {
                         m.SetShaderParameter("tint", std.AlbedoColor);
                     }
                     m.NextPass = Outline;
-                    CharacterCache[src] = m;
+                    if (look != null) Paint(m, look);
+                    cache[src] = m;
                 }
                 mi.SetSurfaceOverrideMaterial(i, m);
             }
         }
-        foreach (var child in root.GetChildren()) ApplyCharacter(child);
+        foreach (var child in root.GetChildren()) ApplyCharacter(child, look, made);
+    }
+
+    private static void Paint(ShaderMaterial m, Appearance look)
+    {
+        var (skin, hair, outfit, trim) = Appearance.Slots(look.Body);
+        void Slot(int n, int mask, string color)
+        {
+            bool on = color != "" && Color.HtmlIsValid(color);
+            m.SetShaderParameter($"slot_mask_{n}", on ? mask : 0);
+            if (on) m.SetShaderParameter($"slot_color_{n}", Color.FromHtml(color));
+        }
+        Slot(0, skin, look.Skin);
+        Slot(1, hair, look.Hair);
+        Slot(2, outfit, look.Outfit);
+        Slot(3, trim, look.Trim);
     }
 
     public static StandardMaterial3D Toon(Color color, float rim = 0.25f) => new()

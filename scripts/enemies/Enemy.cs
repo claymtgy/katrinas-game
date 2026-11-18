@@ -120,6 +120,7 @@ public abstract partial class Enemy : CharacterBody3D
     public bool CanHunt(PlayerController p)
     {
         if (p == null || !IsInstanceValid(p) || !p.IsInsideTree() || p.Health.IsDead) return false;
+        if (p.Vanished) return false; // Rogue's Vanish
         if (GameState.Instance.InSafeZone(p.GlobalPosition)) return false;
         if (GlobalPosition.DistanceTo(p.GlobalPosition) >= LeashRange) return false;
         if (HomeLeash > 0 && Flat(Wildlife.Instance.GroupAnchor(Group, GlobalPosition) - p.GlobalPosition).Length() > HomeLeash) return false;

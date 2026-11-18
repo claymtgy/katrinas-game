@@ -49,6 +49,7 @@ public partial class PlayerCombat : Node
         _hand = new Node3D { Name = "Hand" };
         _player.Body.AddChild(_hand);
         _player.Rig.ViewChanged += OnViewChanged;
+        if (_model != null) _model.Rebuilt += () => OnViewChanged(FirstPerson);
         if (!_player.IsLocal) SetProcessUnhandledInput(false);
     }
 
@@ -247,7 +248,8 @@ public partial class PlayerCombat : Node
     private (float Damage, float Reach, float Windup, float Cooldown) Stats(bool heavy)
     {
         var def = ItemDb.Get(_player.Equipped);
-        float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier : 1f);
+        var cls = _player.Class;
+        float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier * cls.HeavyDamage : cls.LightDamage);
         float reach = def?.Reach ?? FistReach;
         float cooldown = (def?.AttackCooldown ?? 0.4f) * (heavy ? 1.8f : 1f);
         return (damage, reach, heavy ? 0.38f : 0.2f, cooldown);
@@ -275,20 +277,35 @@ public partial class PlayerCombat : Node
     private void DoHit(float damage, float reach, Vector3 aim)
     {
         if (!IsInstanceValid(_player) || !_player.IsInsideTree()) return;
-        bool pvp = Net.Instance.Pvp;
-
+        // Rogue: the first blow out of Vanish lands double, and ends it.
+        if (_player.Vanished)
+        {
+            damage *= 2f;
+            Net.Instance.ServerEndVanish(_player);
+        }
         // Sphere in front of the chest, along the aim (works in both views).
         var center = _player.GlobalPosition + Vector3.Up * 1.2f + aim * (reach * 0.65f);
+        ServerStrikeArea(center, 0.45f + reach * 0.3f, damage);
+    }
+
+    /// <summary>Server: the light-attack damage with the current weapon and class (Whirlwind).</summary>
+    public float LightDamage => Stats(false).Damage;
+
+    /// <summary>Server: damage everything with health in a sphere (enemies, dummies, resource
+    /// nodes, and other players when PVP is on). Returns how many things were hit.</summary>
+    public int ServerStrikeArea(Vector3 center, float radius, float damage)
+    {
+        bool pvp = Net.Instance.Pvp;
         var query = new PhysicsShapeQueryParameters3D
         {
-            Shape = new SphereShape3D { Radius = 0.45f + reach * 0.3f },
+            Shape = new SphereShape3D { Radius = radius },
             Transform = new Transform3D(Basis.Identity, center),
             CollisionMask = GameState.LayerProps | (pvp ? GameState.LayerPlayer : 0),
             Exclude = new Godot.Collections.Array<Rid> { _player.GetRid() },
         };
 
         var hitThisSwing = new HashSet<ulong>();
-        bool hitSomething = false;
+        int hits = 0;
         foreach (var hit in _player.GetWorld3D().DirectSpaceState.IntersectShape(query, 16))
         {
             var collider = hit["collider"].AsGodotObject();
@@ -296,7 +313,7 @@ public partial class PlayerCombat : Node
             if (collider is PlayerController && !pvp) continue;
             var health = Health.FindOn(collider);
             if (health == null || health.IsDead) continue;
-            hitSomething = true;
+            hits++;
             if (collider is PlayerController target)
             {
                 if (Net.Instance.ServerDamagePlayer(target, damage, _player) == Net.HitResult.Parried)
@@ -304,6 +321,7 @@ public partial class PlayerCombat : Node
             }
             else health.TakeDamage(damage, _player);
         }
-        if (hitSomething) Net.Instance.HitMarkerTo(_player.PeerId);
+        if (hits > 0) Net.Instance.HitMarkerTo(_player.PeerId);
+        return hits;
     }
 }

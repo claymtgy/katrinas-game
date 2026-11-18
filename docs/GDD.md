@@ -60,6 +60,17 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Guard raised **0.3 s or less** before the blow lands = **parry**: no damage, some stamina back, and the attacker reels (wolves 1.6 s, the captain 1.2 s). In PVP, a parried player can't swing for 1 s.
   - While guarding you walk at half speed, can't sprint or attack, and stamina regenerates slowly.
   - Everything that hurts a player (enemies and PVP) goes through one server function, `Net.ServerDamagePlayer`, so the rules are the same everywhere.
+- **Classes (built):** pick one in the character creator. You can change class only at home (inside the land claim plus 6 m), so it's a choice, not a mid-fight swap. Each class has passives and one ability on **R** (or mouse button 4), with its own stamina cost and cooldown (the HUD shows it next to the bars).
+
+  | Class | Passives | Ability |
+  |---|---|---|
+  | **Warrior** | +30 max health; heavy attacks ×1.25; blocking costs 30% less stamina | **Whirlwind** (30 stamina, 7 s): a spin that hits everything within 3.2 m for 1.3 × your light damage |
+  | **Rogue** | 10% faster; light attacks ×1.2; dodge costs 40% less and its i-frames last 35% longer | **Vanish** (25 stamina, 14 s): unseen for 4 s. Enemies lose you, and your next strike does double damage and ends it |
+  | **Wizard** | −20 max health; stamina comes back 25% faster | **Firebolt** (16 stamina, 0.9 s): a fireball that does 22 damage and 10 splash within 2.5 m |
+  | **Healer** | food heals 50% more; slowly regenerates health (1.5/s after a few seconds out of harm) | **Mend** (30 stamina, 10 s): heals you and every player within 9 m by 30 |
+  | **Archer** | 4% faster | **Shoot** (8 stamina, 0.7 s): an arrow (46 m/s, slight drop) that does 16 damage, ×1.5 beyond 15 m |
+
+  - **How it works:** classes are data (`PlayerClasses`). `PlayerAbility` checks cooldown and stamina on your own machine and plays the animation at once; the server (`Net.S_Ability`) re-checks the cooldown and does the real thing. Arrows and firebolts are simulated on the server (`Projectile`) and every screen flies a cosmetic copy. Projectiles skip trees and rocks, and follow the PVP rules for other players.
 - **Enemies:**
   - Start: wolves (packs at night), bandit scouts.
   - Mid: bandit camps (a leader drops a blueprint), boars, cliff harpies.
@@ -71,6 +82,14 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **First person:** precise building placement, close-up swordplay, the body hidden and the weapon held in view.
 - **Third person:** over-the-shoulder spring arm, the body visible. Better for crowd fights and for admiring your base.
 - Both views share one controller, one attack system and one interaction raycast. Only the camera rig and the weapon's attach point change.
+
+### Character customisation (built)
+- Open the creator with **Customise character…** on the main menu, or with **Character…** in the Esc menu at any time in game. It shows a live 3D preview (drag to turn).
+- **Body:** Wanderer (the hooded Rogue) or Knight. Both share the same skeleton and animations, so either body can use any move.
+- **Colours:** skin (7 tones plus a pale green), hair, outfit (the Knight's cape and cloth trim), and trim (the Wanderer's trousers and gloves, the Knight's armour). Each has 10–11 presets, and "–" keeps the model's own colour.
+- **Gear:** cape on or off, and a helmet for the Knight. **Height:** 90–110 %. **Randomise** rolls a whole look.
+- **How it works:** the KayKit models take every colour from an 8 × 4 grid of gradient swatches in one texture. The character shader recolours the swatches each slot uses (`Appearance.Slots`), keeping each swatch's light-to-dark gradient, so a recoloured part still shades like the original. Each painted player gets its own materials; unpainted models still share theirs.
+- **Where it lives:** your look belongs to you, not to the world. It's kept in `user://settings.cfg` (`[look]`), sent in the join hello (protocol 4), and echoed to everyone. Changing it in game rebuilds your body on every screen, and your held weapon moves to the new hand. The server cleans up looks it receives: unknown bodies, bad colours and out-of-range heights fall back to defaults.
 
 ## 8. Traversal (verticality)
 - **Now:** walk, sprint (stamina), jump, fall damage.
@@ -177,6 +196,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Toggle 1st / 3rd person | V |
 | Light / Heavy attack | LMB / Q or middle mouse |
 | Block (time it to parry) | RMB (hold) |
+| Class ability | R or mouse button 4 |
 | Interact (stations, beds, plots, wells, chests, trader, signs) | E |
 | Eat | F |
 | Weapon slots | 1–5 |
@@ -232,6 +252,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
 | | Food buffs |
 | Time of day, the day count | Respawn shrine |
 | Resource nodes (a felled tree is felled for all) | Camera view (1st/3rd person) |
+| | Your look and class (body, colours, gear, height): kept in your own settings, not the world save |
 
 - **Packs (built):**
   - Chopping, mining, cutting grain, wolf pelts, bandit coins and the blueprint, water from a well, and anything bought from Marta go into **your own pack**. Empty it into the shared stockpile at a **storage chest** (one by the shack; build more).

@@ -11,6 +11,7 @@ public static class Models
     public const string Shack = Dir + "shack.glb";
     public const string CherryTree = Dir + "cherry_tree.glb";
     public const string Hero = "res://assets/thirdparty/kaykit/Rogue.glb";
+    public const string Knight = "res://assets/thirdparty/kaykit/Knight.glb";
     public const string Sword = "res://assets/thirdparty/kaykit/sword_1handed.gltf";
 
     public static readonly string[] Pines = { Dir + "pine_01.glb", Dir + "pine_02.glb", Dir + "pine_03.glb" };

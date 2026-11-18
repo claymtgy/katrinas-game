@@ -28,6 +28,7 @@ public partial class MainMenu : Control
     public override void _Ready()
     {
         Input.MouseMode = Input.MouseModeEnum.Visible;
+        Appearance.LoadLocal();
         if (HandleCommandLine()) return;
         BuildUi();
         LoadSettings();
@@ -92,6 +93,9 @@ public partial class MainMenu : Control
 
     private static void StartTests(string mpRole)
     {
+        // Tests use their own looks and never write the player's settings.
+        Appearance.Persist = false;
+        Appearance.Local = new Appearance();
         // Scripted tests always start from a fresh world, and spawn wolves themselves.
         Wildlife.AutoSpawn = false;
         foreach (var world in new[] { "autotest", "autotest_mp" })
@@ -133,6 +137,9 @@ public partial class MainMenu : Control
         col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 12) });
 
         _name = Field(col, "Your name", "Player");
+        var looks = new Button { Text = "Customise character…", CustomMinimumSize = new Vector2(0, 36) };
+        looks.Pressed += () => OpenCreator();
+        col.AddChild(looks);
         _world = Field(col, "World (save name)", "home");
 
         var solo = BigButton("Single Player");
@@ -176,6 +183,18 @@ public partial class MainMenu : Control
         var hint = Label("Dedicated server: run with  --headless -- --server  (settings in server.cfg)", 13, new Color(0.7f, 0.7f, 0.8f));
         hint.HorizontalAlignment = HorizontalAlignment.Center;
         col.AddChild(hint);
+    }
+
+    /// <summary>Open the character creator over the menu; Done keeps the look in settings.</summary>
+    public CharacterCreator OpenCreator()
+    {
+        var creator = new CharacterCreator(Appearance.Local, look =>
+        {
+            Appearance.Local = look;
+            SaveSettings();
+        }, null);
+        AddChild(creator);
+        return creator;
     }
 
     private void OnSolo()
@@ -241,6 +260,8 @@ public partial class MainMenu : Control
         cfg.SetValue("host", "port", _port.Value);
         cfg.SetValue("host", "max_players", _maxPlayers.Value);
         cfg.SetValue("host", "pvp", _pvp.ButtonPressed);
+        if (!Appearance.Persist) return;
+        Appearance.Local.SaveTo(cfg);
         cfg.Save(SettingsPath);
     }
 

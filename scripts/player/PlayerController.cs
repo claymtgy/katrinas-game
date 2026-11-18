@@ -56,6 +56,24 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>What this player carries (GDD §16). Server-owned; the owner gets a mirror.
     /// Emptied into the stockpile at a storage chest. See Supplies.</summary>
     public Inventory Pack { get; } = new();
+
+    /// <summary>How this player looks (set before spawning, then via <see cref="SetLook"/>).</summary>
+    public Appearance Look { get; set; } = new();
+
+    /// <summary>Every machine: show a new look (the server decides; see Net.RequestLook).</summary>
+    public void SetLook(Appearance look)
+    {
+        Look = look.Clone();
+        Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetLook(Look);
+        if (Health != null && BaseMaxHealth > 0) UpdateMaxHealth();
+        // The server may have kept our old class (changed away from home): remember what stuck.
+        if (IsLocal && Appearance.Local.Class != Look.Class)
+        {
+            Appearance.Local.Class = Look.Class;
+            Appearance.SaveLocal();
+        }
+        if (Vanished) SetVanished(true); // (re-apply the fade to the new body)
+    }
     /// <summary>Server: when this player's dodge i-frames end (Net.Now).</summary>
     public double DodgeUntil { get; set; }
     /// <summary>Local player: mid-roll.</summary>
@@ -73,6 +91,8 @@ public partial class PlayerController : CharacterBody3D
     public Node3D Body { get; private set; }
     public BuildSystem Build { get; private set; }
     public PlayerCombat Combat { get; private set; }
+    /// <summary>The class ability (R).</summary>
+    public PlayerAbility Ability { get; private set; }
     public Interactor Interactor { get; private set; }
 
     /// <summary>On the ground (remote players use the last state they sent).</summary>
@@ -101,6 +121,8 @@ public partial class PlayerController : CharacterBody3D
         Body = GetNode<Node3D>("Body");
         Build = GetNode<BuildSystem>("BuildSystem");
         Combat = GetNode<PlayerCombat>("Combat");
+        Ability = new PlayerAbility { Name = "Ability" };
+        AddChild(Ability);
         Interactor = GetNode<Interactor>("Interactor");
         IsLocal = PeerId == Multiplayer.GetUniqueId() && !Net.Instance.IsDedicated;
         SetMultiplayerAuthority(PeerId);
@@ -111,6 +133,7 @@ public partial class PlayerController : CharacterBody3D
         _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
         Stamina = MaxStamina;
         BaseMaxHealth = Health.Max;
+        Health.InitMax(BaseMaxHealth + Class.BonusHealth); // class health, full on spawn
 
         var gs = GameState.Instance;
         gs.Players[PeerId] = this;
@@ -124,6 +147,7 @@ public partial class PlayerController : CharacterBody3D
         };
         Health.Damaged += (amount, _) =>
         {
+            LastHurtAt = Net.Now;
             if (amount > 0 && !Net.Instance.IsDedicated) Sfx.At("hit_flesh", GlobalPosition + Vector3.Up * 1.1f, IsLocal ? 2f : 0f, 0.1f);
         };
         if (IsLocal)
@@ -196,7 +220,42 @@ public partial class PlayerController : CharacterBody3D
         UpdateMaxHealth();
     }
 
-    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + BuffAmount(BuffVigor));
+    private void UpdateMaxHealth() => Health.SetMax(BaseMaxHealth + Class.BonusHealth + BuffAmount(BuffVigor));
+
+    // ---------------------------------------------------------------- class
+
+    /// <summary>This player's class (from the look; see PlayerClasses).</summary>
+    public ClassDef Class => PlayerClasses.Get(Look.Class);
+
+    /// <summary>Server clock (Net.Now): Rogue's Vanish runs until then.</summary>
+    public double VanishUntil { get; set; }
+    /// <summary>Every machine: drawn faded, enemies ignore us (the server decides; Net.C_Vanish).</summary>
+    public bool Vanished { get; private set; }
+    /// <summary>Server clock: when we were last hurt (the Healer's regeneration waits 5 s).</summary>
+    public double LastHurtAt { get; set; }
+    private float _regenBank;
+
+    public void SetVanished(bool on)
+    {
+        Vanished = on;
+        var mesh = Body?.GetNodeOrNull<CharacterModel>("Mesh");
+        mesh?.SetFade(on ? (IsLocal ? 0.55f : 0.85f) : 0f);
+        if (GetNodeOrNull<Label3D>("Nameplate") is { } plate) plate.Visible = !on;
+    }
+
+    /// <summary>Server: the Healer's regeneration out of combat (healed in whole points, so the
+    /// network isn't told every frame).</summary>
+    private void ServerRegen(float dt)
+    {
+        float rate = Class.HealthRegen;
+        if (rate <= 0 || Health.IsDead || Health.Current >= Health.Max || Net.Now - LastHurtAt < 5.0) { _regenBank = 0; return; }
+        _regenBank += rate * dt;
+        if (_regenBank >= 2f)
+        {
+            Health.Heal(_regenBank);
+            _regenBank = 0;
+        }
+    }
 
     private void TickBuffs(float dt)
     {
@@ -224,7 +283,7 @@ public partial class PlayerController : CharacterBody3D
     {
         var gs = GameState.Instance;
         if (gs.UiOpen || Sleeping || Health.IsDead || !IsOnFloor() || _dodgeTime > 0 || _dodgeCooldown > 0) return false;
-        if (!TrySpendStamina(DodgeCost)) { Hud.Toast("Too tired to roll!"); return false; }
+        if (!TrySpendStamina(DodgeCost * Class.DodgeCost)) { Hud.Toast("Too tired to roll!"); return false; }
         var basis = Rig.GlobalTransform.Basis;
         var forward = new Vector3(-basis.Z.X, 0, -basis.Z.Z).Normalized();
         var right = new Vector3(basis.X.X, 0, basis.X.Z).Normalized();
@@ -303,6 +362,11 @@ public partial class PlayerController : CharacterBody3D
     {
         float dt = (float)delta;
         TickBuffs(dt);
+        if (Net.Instance.IsServer)
+        {
+            ServerRegen(dt);
+            if (Vanished && Net.Now >= VanishUntil) Net.Instance.ServerEndVanish(this);
+        }
         if (!IsLocal) { FollowRemote(dt); return; }
 
         var gs = GameState.Instance;
@@ -343,7 +407,7 @@ public partial class PlayerController : CharacterBody3D
             _regenDelay = 0.6f;
         }
 
-        var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f));
+        var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f)) * Class.MoveSpeed;
         float accel = Mathf.Min(1f, (onFloor ? GroundAcceleration : AirAcceleration) * dt);
         if (_dodgeTime > 0)
         {
@@ -376,7 +440,7 @@ public partial class PlayerController : CharacterBody3D
 
         // Stamina regen.
         if (_regenDelay > 0) _regenDelay -= dt;
-        else Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
+        else Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * Class.StaminaRegen * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
 
         FaceCamera(Rig.Rotation.Y, dt);
 

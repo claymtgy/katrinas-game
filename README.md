@@ -3,7 +3,7 @@
 A medieval cliffside base-building, crafting and sword-combat game in Godot 4.7 (C#), single player or co-op for up to 4 players (more on a dedicated server).
 Design doc: [docs/GDD.md](docs/GDD.md).
 
-**In the vertical slice:** gather, build and craft at home. What you gather goes into your pack, and you empty it into the chest by the shack. Wolves hunt at night and path around obstacles. Fight with block and parry (hold RMB, time it) and dodge roll (Ctrl or C). Follow the road south to the Village of Ashby and trade with Marta, carrying your goods and coins in your pack. Clear the bandit camp for coins and the cottage blueprint. Farm wheat and turnips: water them from a well or the pool, or let the rain do it. Cook at the campfire and eat with F for healing and timed buffs. Upgrade the shack to a cottage at the plans board.
+**In the vertical slice:** gather, build and craft at home. What you gather goes into your pack, and you empty it into the chest by the shack. Wolves hunt at night and path around obstacles. Fight with block and parry (hold RMB, time it) and dodge roll (Ctrl or C). Follow the road south to the Village of Ashby and trade with Marta, carrying your goods and coins in your pack. Clear the bandit camp for coins and the cottage blueprint. Farm wheat and turnips: water them from a well or the pool, or let the rain do it. Cook at the campfire and eat with F for healing and timed buffs. Upgrade the shack to a cottage at the plans board. Pick a class (Warrior, Rogue, Wizard, Healer or Archer), each with its own passives and an ability on R. Customise your character (Wanderer or Knight, skin, hair, outfit and trim colours, cape, helmet, height) from the main menu or the Esc menu; everyone you play with sees it.
 
 ## Requirements
 - .NET 8 SDK
@@ -35,11 +35,11 @@ The first run writes a default `server.cfg` (`user://server.cfg` unless `--confi
 Saves are written to `user://saves/<world>.json`. On Windows, `user://` is `%APPDATA%\Godot\app_userdata\Katrina's Game`.
 
 ## Scripted tests
-Single player (gather → build → craft → fight → save/load → sleep → packs and the chest → navmesh → dodge roll → wolves and the howl → block/parry → bandit camp → Ashby trade → farming, watering, rain, cooking and buffs → cottage → the volcano and the character close-up → audio), with screenshots. Add `--audio-driver Dummy` before `--` to run it silently:
+Single player (gather → build → craft → fight → save/load → sleep → packs and the chest → navmesh → dodge roll → wolves and the howl → block/parry → bandit camp → Ashby trade → farming, watering, rain, cooking and buffs → cottage → character customisation → classes and abilities → the volcano and the character close-up → audio), with screenshots. Add `--audio-driver Dummy` before `--` to run it silently:
 ```
 <path-to>/Godot_v4.7.2-stable_mono_win64_console.exe --path . -- --autotest --shots=C:/temp/shots
 ```
-Co-op: start a host, then a client in a second terminal. Each side prints `[NETTEST]` results. The test covers the client's pack and storing it in the shared stockpile, replicated building, the dodge roll, the sleep vote, PVP, wolves, bandit scaling for 2 players, the client's guard, trading from the pack and farming, the cottage upgrade, rain, and leaving.
+Co-op: start a host, then a client in a second terminal. Each side prints `[NETTEST]` results. The test covers the client's look (sent on joining and changed mid-game), the client's pack and storing it in the shared stockpile, replicated building, the dodge roll, the sleep vote, PVP, wolves, bandit scaling for 2 players, the client's guard, trading from the pack and farming, the cottage upgrade, rain, and leaving.
 ```
 <path-to>/Godot_v4.7.2-stable_mono_win64_console.exe --path . -- --autotest-mp=host --pvp --name=Hosty
 <path-to>/Godot_v4.7.2-stable_mono_win64_console.exe --path . -- --autotest-mp=client --name=Joiny
@@ -49,8 +49,8 @@ The client test also runs against a dedicated server.
 ## Layout
 - `scripts/core`: GameState autoload (shared stockpile, time, players, save/load, input map), Supplies (packs vs. stockpile), item/recipe/building definitions
 - `scripts/net`: Net autoload (sessions, handshake, every gameplay RPC), server config, co-op difficulty scaling, the co-op test
-- `scripts/player`: movement, 1st/3rd-person camera rig, combat, interaction
-- `scripts/build`, `scripts/crafting`, `scripts/ui`: build mode, workbench, HUD, main menu
+- `scripts/player`: movement, 1st/3rd-person camera rig, combat, interaction, the player's body and look (CharacterModel, Appearance)
+- `scripts/build`, `scripts/crafting`, `scripts/ui`: build mode, workbench, HUD, main menu, character creator
 - `scripts/enemies`: Wildlife (night packs, bandit camp, replication), the shared Enemy brain, Wolf and Bandit
 - `scripts/audio`: sound effects and loops by name (Sfx), the ambience bed (wind, rain, birds, crickets)
 - `scripts/art`: model paths, the stylized materials and shaders (terrain, foliage, water, characters and outline)

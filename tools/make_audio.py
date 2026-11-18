@@ -380,6 +380,92 @@ def lava():
     return loopify(x, 1.0)
 
 
+# ---------------------------------------------------------------- class abilities
+
+def pluck(f0, sec, decay=0.996):
+    """Karplus-Strong plucked string."""
+    n = int(sec * SR)
+    period = int(SR / f0)
+    buf = rng.uniform(-1, 1, period)
+    out = np.empty(n)
+    for i in range(n):
+        out[i] = buf[i % period]
+        buf[i % period] = decay * 0.5 * (buf[i % period] + buf[(i + 1) % period])
+    return out
+
+
+def bow():
+    sec = 0.5
+    n = int(sec * SR)
+    string = pluck(98, sec, 0.994) * env(n, 0.001, 0.12)
+    release = whoosh(sec, 900, 4000, 0.15) * 0.5
+    return fade(string + release)
+
+
+def arrow_hit():
+    sec = 0.3
+    n = int(sec * SR)
+    thunk = tone([(np.linspace(260, 170, n), 1.0), (520, 0.25)], sec) * env(n, 0.001, 0.035)
+    wobble = tone([(np.full(n, 140) * (1 + 0.05 * np.sin(2 * np.pi * 30 * t_of(sec))), 0.4)], sec) * env(n, 0.01, 0.08)
+    return fade(thunk + wobble + band(noise(sec), 1500, 6000) * env(n, 0.0003, 0.006))
+
+
+def firebolt():
+    sec = 0.6
+    n = int(sec * SR)
+    t = t_of(sec)
+    roar = band(noise(sec), 200, 1500) * np.clip(t / 0.08, 0, 1) * np.exp(-t / 0.25)
+    crackle = np.zeros(n)
+    for _ in range(18):
+        i = rng.integers(0, n - 300)
+        d = 0.01
+        crackle[i:i + int(d * SR)] += band(noise(d), 2000, 7000) * env(int(d * SR), 0.0003, 0.003)
+    rise = tone([(np.linspace(180, 420, n), 0.35)], sec) * np.exp(-t / 0.2)
+    return fade(roar + crackle * 0.8 + rise)
+
+
+def explode():
+    sec = 1.2
+    n = int(sec * SR)
+    boom = lowpass(noise(sec), 260) * env(n, 0.004, 0.25) * 2.0
+    crack = band(noise(sec), 800, 6000) * env(n, 0.001, 0.05)
+    sizzle = band(noise(sec), 2500, 8000) * env(n, 0.05, 0.35) * 0.25
+    return fade(boom + crack + sizzle)
+
+
+def heal():
+    sec = 1.4
+    n = int(sec * SR)
+    x = np.zeros(n)
+    for k, f in enumerate([523.25, 659.25, 783.99, 1046.5]):
+        i = int(k * 0.09 * SR)
+        c = tone([(f, 1.0), (f * 2, 0.25), (f * 3.01, 0.1)], sec) * env(n, 0.005, 0.45)
+        x[i:] += c[: n - i] * (1 - k * 0.12)
+    shimmer = band(noise(sec), 4000, 9000) * env(n, 0.2, 0.4) * 0.08
+    return fade(x + shimmer)
+
+
+def vanish():
+    sec = 0.7
+    n = int(sec * SR)
+    t = t_of(sec)
+    puff = band(noise(sec), 300, 2500) * np.clip(t / 0.05, 0, 1) * np.exp(-t / 0.18)
+    swirl = band(noise(sec), 1500, 5000) * (0.5 + 0.5 * np.sin(2 * np.pi * 9 * t)) * np.exp(-t / 0.3) * 0.4
+    fall = tone([(np.linspace(900, 300, n), 0.25)], sec) * np.exp(-t / 0.2)
+    return fade(puff + swirl + fall)
+
+
+def whirlwind():
+    sec = 0.75
+    a = whoosh(0.4, 300, 2200, 0.5)
+    b = whoosh(0.4, 400, 2600, 0.5)
+    x = np.zeros(int(sec * SR))
+    x[: len(a)] += a
+    i = int(0.3 * SR)
+    x[i:i + len(b)] += b[: len(x) - i] * 0.9
+    return fade(x)
+
+
 SOUNDS = {
     # loops
     "amb_wind": wind, "amb_rain": rain, "amb_birds": birds, "amb_crickets": crickets,
@@ -391,6 +477,9 @@ SOUNDS = {
     "wolf_howl": wolf_howl, "wolf_snarl": wolf_snarl, "wolf_yelp": wolf_yelp,
     "eat": eat, "pickup": pickup, "build": build, "craft": craft, "water": water,
     "chest": chest, "ui_click": ui_click,
+    # class abilities
+    "bow": bow, "arrow_hit": arrow_hit, "firebolt": firebolt, "explode": explode,
+    "heal": heal, "vanish": vanish, "whirlwind": whirlwind,
 }
 
 if __name__ == "__main__":

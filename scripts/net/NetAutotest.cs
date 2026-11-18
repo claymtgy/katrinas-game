@@ -21,6 +21,8 @@ public partial class NetAutotest : Node
     {
         var shots = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?.Substring("--shots=".Length);
         var t = new NetAutotest { _role = role, _shots = shots, ProcessMode = ProcessModeEnum.Always };
+        // The client joins as a red knight (its look goes in the hello), and changes it later.
+        if (role == "client") Appearance.Local = new Appearance { Class = PlayerClasses.ArcherId, Body = Appearance.Knight, Outfit = "#8c2c3a", Helmet = true };
         host.CallDeferred(Node.MethodName.AddChild, t);
     }
 
@@ -87,6 +89,9 @@ public partial class NetAutotest : Node
 
         Check(await Until(() => gs.Players.Count == 2, 90), "a client joined (2 players)");
         var other = gs.Players.Values.FirstOrDefault(p => !p.IsLocal);
+        Check(other != null && other.Look.Body == Appearance.Knight && other.Look.Outfit == "#8c2c3a", "the client's look arrived with its hello (red knight)");
+        Check(other != null && other.Class.Id == PlayerClasses.ArcherId, "...and its class (Archer)");
+        Check(other?.Body.GetNode<CharacterModel>("Mesh").FindChild("Knight", false, false) != null, "...and the host draws it as a knight");
 
         Check(await Until(() => other != null && other.Pack.Count("wood") >= 3, 60), $"client's chopping fills its pack on the host (wood {other?.Pack.Count("wood")})");
         Check(gs.Inventory.Count("wood") == 0, "...and not the shared stockpile");
@@ -95,6 +100,8 @@ public partial class NetAutotest : Node
         Check(await Until(() => gs.PlacedBuildings.Any(b => b.Id == "campfire"), 60), "client's campfire exists on the host");
         Check(await Until(() => gs.Inventory.Count("stone") > 0 && other.Pack.Load == 0, 30), "the client emptied its pack into the shared stockpile");
         Check(await Until(() => other.DodgeUntil > 0, 30), "the client's dodge roll reached the server");
+        Check(await Until(() => other.Look.Body == Appearance.Rogue && other.Look.Outfit == "#2c5c8c", 30), "the client changed its look mid-game (blue wanderer)");
+        Check(await Until(() => Projectile.Spawned > 0, 30), "the client's arrow flew on the server");
 
         // Sleep vote: host lies down first; the night must not pass until the client does too.
         await Until(() => other == null || other.GlobalPosition.DistanceTo(new Vector3(14, 0, -12)) > 5f || gs.PlacedBuildings.Any(b => b.Id == "campfire"), 5);
@@ -228,6 +235,19 @@ public partial class NetAutotest : Node
         await Wait(0.4);
         chest.Interact(me);
         Check(await Until(() => me.Pack.Load == 0 && gs.Inventory.Count("stone") > 0, 10), "client emptied its pack into the stockpile (mirrored)");
+
+        // Change our look from the pause menu's creator: everyone sees it.
+        var creator = Hud.Instance.OpenCreator();
+        await Wait(0.2);
+        creator.Set(a => { a.Body = Appearance.Rogue; a.Outfit = "#2c5c8c"; });
+        creator.Done();
+        Hud.Instance.CloseMenus();
+        Check(await Until(() => me.Look.Body == Appearance.Rogue && me.Body.GetNode<CharacterModel>("Mesh").FindChild("Rogue", false, false) != null, 10),
+            "client changed its look (rebuilt after the server's echo)");
+        Check(me.Class.Id == PlayerClasses.ArcherId, "client is an Archer");
+        me.RestoreStamina();
+        Check(me.Ability.TryUse(), "client shoots an arrow");
+        Check(await Until(() => Projectile.Spawned > 0, 5), "the server's arrow shows up on the client");
 
         // A dodge roll, seen by the server.
         me.RestoreStamina();

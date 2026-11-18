@@ -385,6 +385,8 @@ public partial class GameState : Node
         AddKey("eat", Key.F);
         AddKey("dodge", Key.Ctrl);
         AddKey("dodge", Key.C);
+        AddKey("ability", Key.R);       // (R also rotates in build mode, where the ability is off)
+        AddMouse("ability", MouseButton.Xbutton1);
         AddMouse("next_build", MouseButton.WheelDown);
         AddMouse("prev_build", MouseButton.WheelUp);
         AddKey("next_build", Key.Period);

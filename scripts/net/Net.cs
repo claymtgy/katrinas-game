@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 3;
+    public const int ProtocolVersion = 4;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -234,13 +234,13 @@ public partial class Net : Node
         if (IsServer)
         {
             Gs.LoadGame(silent: true, resync: false);
-            if (!IsDedicated) ServerAddPlayer(LocalId, LocalName);
+            if (!IsDedicated) ServerAddPlayer(LocalId, LocalName, Appearance.Local);
             _autosaveTimer = Config.AutosaveMinutes * 60f;
             UpdateSleep();
         }
         else
         {
-            RpcId(1, MethodName.S_Hello, LocalName, _joinPassword, ProtocolVersion);
+            RpcId(1, MethodName.S_Hello, LocalName, _joinPassword, ProtocolVersion, Appearance.Local.ToDict());
         }
     }
 
@@ -278,7 +278,7 @@ public partial class Net : Node
     // ================================================================== handshake
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
-    private void S_Hello(string name, string password, int version)
+    private void S_Hello(string name, string password, int version, GDict look)
     {
         if (!IsServer) return;
         int id = Sender;
@@ -288,7 +288,7 @@ public partial class Net : Node
 
         name = UniqueName(name);
         _joined.Add(id);
-        ServerAddPlayer(id, name);
+        ServerAddPlayer(id, name, Appearance.FromDict(look));
         RpcId(id, MethodName.C_Welcome, BuildSnapshot());
         var joined = Gs.GetPlayer(id);
         if (joined != null) RpcId(id, MethodName.C_Pack, joined.Pack.ToDictionary());
@@ -362,7 +362,7 @@ public partial class Net : Node
     private static GDict PlayerInfo(PlayerController p) => new()
     {
         ["id"] = p.PeerId, ["name"] = p.DisplayName, ["pos"] = p.GlobalPosition,
-        ["equipped"] = p.Equipped, ["sleeping"] = p.Sleeping,
+        ["equipped"] = p.Equipped, ["sleeping"] = p.Sleeping, ["look"] = p.Look.ToDict(),
     };
 
     private void ApplySnapshot(GDict s)
@@ -388,7 +388,10 @@ public partial class Net : Node
         {
             var info = v.AsGodotDictionary();
             int id = info["id"].AsInt32();
-            var p = Gs.GetPlayer(id) ?? SpawnPlayerNode(id, info["name"].AsString(), info["pos"].AsVector3());
+            var look = Appearance.FromDict(info.TryGetValue("look", out var lv) ? lv.AsGodotDictionary() : null);
+            var p = Gs.GetPlayer(id);
+            if (p == null) p = SpawnPlayerNode(id, info["name"].AsString(), info["pos"].AsVector3(), look);
+            else p.SetLook(look);
             p.Equipped = info["equipped"].AsString();
             p.Sleeping = info["sleeping"].AsBool();
         }
@@ -426,24 +429,25 @@ public partial class Net : Node
 
     // ================================================================== players
 
-    private PlayerController SpawnPlayerNode(int id, string name, Vector3 pos)
+    private PlayerController SpawnPlayerNode(int id, string name, Vector3 pos, Appearance look)
     {
         var p = GD.Load<PackedScene>("res://scenes/player/Player.tscn").Instantiate<PlayerController>();
         p.Name = id.ToString();
         p.PeerId = id;
         p.DisplayName = name;
+        p.Look = look ?? new Appearance();
         p.SpawnPoint = Gs.WorldSpawn;
         p.Position = pos;
         Gs.PlayersRoot.AddChild(p);
         return p;
     }
 
-    private void ServerAddPlayer(int id, string name)
+    private void ServerAddPlayer(int id, string name, Appearance look)
     {
         var rec = Gs.PlayerRecords.TryGetValue(name, out var r) ? r : null;
         int index = Gs.Players.Count;
         var pos = rec != null ? rec["pos"].AsVector3() : Gs.WorldSpawn + new Vector3(index * 1.2f, 0, index * 0.6f);
-        var p = SpawnPlayerNode(id, name, pos);
+        var p = SpawnPlayerNode(id, name, pos, look);
         if (rec != null)
         {
             p.SpawnPoint = rec["spawn"].AsVector3();
@@ -472,7 +476,8 @@ public partial class Net : Node
     {
         int id = info["id"].AsInt32();
         if (Gs.GetPlayer(id) != null) return;
-        var p = SpawnPlayerNode(id, info["name"].AsString(), info["pos"].AsVector3());
+        var look = Appearance.FromDict(info.TryGetValue("look", out var lv) ? lv.AsGodotDictionary() : null);
+        var p = SpawnPlayerNode(id, info["name"].AsString(), info["pos"].AsVector3(), look);
         p.Equipped = info["equipped"].AsString();
         Hud.Toast($"{p.DisplayName} joined the game");
     }
@@ -534,6 +539,40 @@ public partial class Net : Node
     public void RequestEat() => ToServer(MethodName.S_Eat);
     public void RequestDodge(Vector3 dir) => ToServer(MethodName.S_Dodge, dir);
 
+    // ---------------------------------------------------------------- appearance
+
+    /// <summary>Local player: change how we look (from the pause menu's character creator).</summary>
+    public void RequestLook(Appearance look) => ToServer(MethodName.S_Look, look.ToDict());
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Look(GDict look)
+    {
+        var p = SenderPlayer();
+        if (p == null) return;
+        var a = Appearance.FromDict(look); // sanitised
+        if (a.Class != p.Look.Class)
+        {
+            if (!Supplies.AtHome(p))
+            {
+                a.Class = p.Look.Class;
+                ToastTo(p.PeerId, "You can only change class at home.");
+            }
+            else
+            {
+                if (p.Vanished) ServerEndVanish(p);
+                p.Ability.ServerReadyAt = 0;
+                ToastTo(p.PeerId, $"You are now a {PlayerClasses.Get(a.Class).Name}.");
+            }
+        }
+        if (IsDedicated) p.Look = a; // (no body to rebuild, but later joiners get it)
+        else p.SetLook(a);
+        var clean = a.ToDict();
+        foreach (var peer in _joined) RpcId(peer, MethodName.C_Look, p.PeerId, clean);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Look(int id, GDict look) => Gs.GetPlayer(id)?.SetLook(Appearance.FromDict(look));
+
     // ---------------------------------------------------------------- dodge roll
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
@@ -541,7 +580,7 @@ public partial class Net : Node
     {
         var p = SenderPlayer();
         if (p == null || p.Health.IsDead) return;
-        p.DodgeUntil = Now + DodgeIFrames;
+        p.DodgeUntil = Now + DodgeIFrames * p.Class.DodgeIFrames;
         foreach (var peer in _joined)
             if (peer != p.PeerId) RpcId(peer, MethodName.C_Dodge, p.PeerId, dir);
         if (!p.IsLocal && !IsDedicated) p.PlayDodge(dir);
@@ -587,7 +626,7 @@ public partial class Net : Node
                 break;
             case HitResult.Blocked:
                 p.Health.TakeDamage(amount * BlockedDamageFactor, source);
-                ToPeer(p.PeerId, MethodName.C_Guard, false, 8f + amount * 0.8f);
+                ToPeer(p.PeerId, MethodName.C_Guard, false, (8f + amount * 0.8f) * p.Class.GuardCost);
                 break;
             case HitResult.Parried:
                 ToPeer(p.PeerId, MethodName.C_Guard, true, 0f);
@@ -666,8 +705,8 @@ public partial class Net : Node
         }
         if (!Supplies.TryConsume(p, food.Id)) return;
         if (food.HasBuff) ServerBuff(p, food.BuffKind, food.BuffAmount, food.BuffSeconds);
-        if (food.FoodHeal > 0) ServerRestore(p, food.FoodHeal);
-        ToastTo(p.PeerId, $"Ate {food.DisplayName}" + (food.FoodHeal > 0 ? $" (+{food.FoodHeal:0} health)" : "") +
+        if (food.FoodHeal > 0) ServerRestore(p, food.FoodHeal * p.Class.FoodHealing);
+        ToastTo(p.PeerId, $"Ate {food.DisplayName}" + (food.FoodHeal > 0 ? $" (+{food.FoodHeal * p.Class.FoodHealing:0} health)" : "") +
                           (food.HasBuff ? $". {food.BuffText} for {food.BuffSeconds / 60f:0} min" : ""));
     }
 

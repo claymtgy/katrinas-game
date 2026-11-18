@@ -67,6 +67,13 @@ public partial class Health : Node
         }
     }
 
+    /// <summary>Every machine, at spawn: set the maximum and fill up, without telling anyone.</summary>
+    public void InitMax(float max)
+    {
+        Max = max;
+        Current = max;
+    }
+
     public void Reset()
     {
         if (!Authoritative) return;

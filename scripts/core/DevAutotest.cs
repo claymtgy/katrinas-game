@@ -67,6 +67,187 @@ public partial class DevAutotest : Node
         GD.Print($"[AUTOTEST] screenshot {name}.png");
     }
 
+    /// <summary>Character customisation: the creator from the pause menu, a live rebuild of the
+    /// body (Knight, painted, taller, helmet off) that keeps the weapon hand, and a bad look from
+    /// the network cleaned up.</summary>
+    private async Task Looks(GameState gs, PlayerController p)
+    {
+        var mesh = p.Body.GetNode<CharacterModel>("Mesh");
+        Check(mesh.FindChild("Rogue", false, false) != null, "the default look is the Wanderer (Rogue) body");
+        gs.TimeOfDay = 0.45f;
+        p.Rig.SetView(false, true);
+        p.Teleport(new Vector3(0, 0.1f, 20f));
+        await Wait(0.3);
+
+        var hud = Hud.Instance;
+        hud.OpenGameMenu();
+        var cc = hud.OpenCreator();
+        await Wait(0.3);
+        cc.Set(a =>
+        {
+            a.Body = Appearance.Knight; a.Skin = "#a06a44"; a.Hair = "#e0b45a";
+            a.Outfit = "#2c5c8c"; a.Trim = "#d8b048"; a.Helmet = false; a.Cape = true; a.Height = 1.08f;
+        });
+        await Wait(0.6);
+        Check(cc.PreviewBody?.Name == "Knight", "the creator's preview shows the Knight body");
+        await Shot("24_character_creator");
+        cc.Done();
+        hud.CloseMenus();
+        Check(await Until(() => p.Look.Body == Appearance.Knight, 3), "Done gives the player the new look");
+        Check(Appearance.Local.Outfit == "#2c5c8c" && Mathf.IsEqualApprox(p.Look.Height, 1.08f), "...colours and height included");
+        await Wait(0.2);
+        Check(mesh.FindChild("Knight", false, false) != null && mesh.FindChild("Rogue", false, false) == null, "the body was rebuilt as a Knight");
+        var bodyMesh = mesh.FindChild("Knight_Body", true, false) as MeshInstance3D;
+        var mat = bodyMesh?.GetSurfaceOverrideMaterial(0) as ShaderMaterial;
+        Check(mat != null && mat.GetShaderParameter("slot_mask_2").AsInt32() != 0 && mat.GetShaderParameter("slot_mask_3").AsInt32() != 0,
+            "outfit and armour colours are painted onto the body");
+        Check(mesh.FindChild("Knight_Helmet", true, false) is Node3D helmet && !helmet.Visible, "the helmet is off, as chosen");
+        Check(mesh.RightHandSlot?.GetNodeOrNull("Hand") != null, "the weapon hand moved to the new body's hand");
+
+        var bad = Appearance.FromDict(new Godot.Collections.Dictionary { ["body"] = "dragon", ["skin"] = "not a colour", ["height"] = 5f, ["outfit"] = 7 });
+        Check(bad.Body == Appearance.Rogue && bad.Skin == "" && bad.Outfit == "" && Mathf.IsEqualApprox(bad.Height, Appearance.MaxHeight),
+            "a bad look from the network is cleaned up");
+    }
+
+    /// <summary>Classes (GDD §6): passives, each ability doing its job on the server, and the
+    /// rule that class changes only happen at home.</summary>
+    private async Task Classes(GameState gs, PlayerController p)
+    {
+        var wild = Wildlife.Instance;
+        gs.TimeOfDay = 0.45f;
+        var home = gs.WorldSpawn + new Vector3(3, 0.1f, 4);
+
+        async Task Become(string id)
+        {
+            var a = p.Look.Clone();
+            a.Class = id;
+            Appearance.Local = a;
+            Net.Instance.RequestLook(a);
+            await Until(() => p.Class.Id == id, 3);
+            p.Ability.ResetCooldown();
+            p.Ability.ServerReadyAt = 0;
+            p.RestoreStamina();
+            p.Health.Reset();
+        }
+        // A wolf standing still (Frozen) in front of us, at a distance.
+        async Task<Wolf> Target(Vector3 at)
+        {
+            var w = wild.SpawnPack(at, 1)[0];
+            w.Frozen = true;
+            await Wait(0.3);
+            w.GlobalPosition = at;
+            return w;
+        }
+        void AimAt(Vector3 point)
+        {
+            var d = point - p.Rig.Camera.GlobalPosition;
+            p.Rig.SetLook(Mathf.Atan2(-d.X, -d.Z), Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length()));
+        }
+        void Kill(Wolf w) { if (IsInstanceValid(w) && !w.Health.IsDead) w.Health.TakeDamage(1000, null); }
+
+        p.Teleport(home);
+        p.Rig.SetView(true, true);
+        await Wait(0.3);
+        await Become(PlayerClasses.WarriorId);
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + 30f), $"a Warrior has +30 health ({p.Health.Max})");
+
+        // Away from home the class stays.
+        p.Teleport(HomeCliffs.AshbyCenter + new Vector3(0, 0.1f, 10));
+        await Wait(0.3);
+        var away = p.Look.Clone();
+        away.Class = PlayerClasses.WizardId;
+        Net.Instance.RequestLook(away);
+        await Wait(0.3);
+        Check(p.Class.Id == PlayerClasses.WarriorId && Appearance.Local.Class == PlayerClasses.WarriorId, "the class can't be changed away from home");
+        p.Teleport(home);
+        await Wait(0.3);
+
+        // Warrior: Whirlwind hits all around.
+        var fwd = new Vector3(0, 0, -1);
+        var w1 = await Target(p.GlobalPosition + fwd * 2f);
+        var w2 = await Target(p.GlobalPosition - fwd * 2f);
+        Check(p.Ability.TryUse(), "Warrior uses Whirlwind");
+        Check(await Until(() => w1.Health.Current < w1.Health.Max && w2.Health.Current < w2.Health.Max, 2), "Whirlwind strikes the wolves in front and behind");
+        Kill(w1); Kill(w2);
+
+        // Archer: an arrow carries, and hits harder from far away.
+        await Become(PlayerClasses.ArcherId);
+        var far = await Target(p.GlobalPosition + fwd * 18f);
+        AimAt(far.GlobalPosition + Vector3.Up * 0.45f);
+        await Wait(0.1);
+        int before = Projectile.Spawned;
+        Check(p.Ability.TryUse(), "Archer shoots");
+        await Wait(0.12);
+        await Shot("26_arrow");
+        Check(Projectile.Spawned > before, "an arrow flies");
+        Check(await Until(() => far.Health.Current < far.Health.Max, 3), $"the arrow hits a wolf 18 m away");
+        Check(Mathf.IsEqualApprox(far.Health.Max - far.Health.Current, Projectile.ArrowDamage * Projectile.ArrowLongBonus),
+            $"...for the long-shot damage ({far.Health.Max - far.Health.Current:0.#})");
+        Kill(far);
+
+        // Wizard: a firebolt bursts on its target and scorches the one beside it.
+        await Become(PlayerClasses.WizardId);
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth - 20f), "a Wizard has -20 health");
+        var bolt1 = await Target(p.GlobalPosition + fwd * 10f);
+        var bolt2 = await Target(p.GlobalPosition + fwd * 10f + new Vector3(1.4f, 0, 0));
+        AimAt(bolt1.GlobalPosition + Vector3.Up * 0.45f);
+        await Wait(0.1);
+        Check(p.Ability.TryUse(), "Wizard casts Firebolt");
+        await Wait(0.18);
+        await Shot("27_firebolt");
+        Check(await Until(() => bolt1.Health.Current < bolt1.Health.Max, 3), "the firebolt hits");
+        Check(Mathf.IsEqualApprox(bolt1.Health.Max - bolt1.Health.Current, Projectile.BoltDamage)
+              && Mathf.IsEqualApprox(bolt2.Health.Max - bolt2.Health.Current, Projectile.BoltSplashDamage),
+            $"direct hit {bolt1.Health.Max - bolt1.Health.Current:0.#}, splash {bolt2.Health.Max - bolt2.Health.Current:0.#}");
+        Kill(bolt1); Kill(bolt2);
+
+        // Healer: Mend, then regeneration out of combat.
+        await Become(PlayerClasses.HealerId);
+        p.Rig.SetView(false, true);
+        p.Health.TakeDamage(60, null);
+        float hurt = p.Health.Current;
+        Check(p.Ability.TryUse(), "Healer casts Mend");
+        Check(await Until(() => p.Health.Current >= hurt + Net.MendHeal - 0.01f, 2), $"Mend heals 30 ({hurt:0} -> {p.Health.Current:0})");
+        await Wait(0.25);
+        await Shot("28_mend");
+        float mended = p.Health.Current;
+        Check(await Until(() => p.Health.Current > mended, 9), "a Healer regenerates out of combat");
+
+        // Rogue: cheaper rolls, Vanish (the wolf gives up), and a double-damage strike out of it.
+        await Become(PlayerClasses.RogueId);
+        float st = p.Stamina;
+        p.TryDodge(new Vector2(0, 1));
+        Check(Mathf.IsEqualApprox(st - p.Stamina, p.DodgeCost * 0.6f), $"a Rogue's roll costs less ({st - p.Stamina:0.#})");
+        await Wait(0.8);
+        p.Rig.SetView(true, true);
+        gs.TimeOfDay = 0.9f; // wolves hunt at night
+        var hunt = new Vector3(-12, 0.1f, 30);
+        p.Teleport(hunt);
+        var stalker = wild.SpawnPack(hunt + new Vector3(0, 0, -8), 1)[0];
+        Check(await Until(() => stalker.Target == p, 6), "a wolf hunts the rogue");
+        p.Ability.ResetCooldown();
+        p.RestoreStamina();
+        Check(p.Ability.TryUse(), "Rogue vanishes");
+        Check(await Until(() => p.Vanished && stalker.Target != p, 2), "while vanished the wolf loses track");
+        stalker.Frozen = true;
+        await Wait(0.2);
+        p.Teleport(stalker.GlobalPosition + new Vector3(0, 0.1f, 1.4f));
+        await Wait(0.15);
+        Face(p, stalker.GlobalPosition);
+        float hpBefore = stalker.Health.Current;
+        float expected = p.Combat.LightDamage * 2f;
+        p.RestoreStamina();
+        p.Combat.TryAttack(false);
+        Check(await Until(() => stalker.Health.Current < hpBefore, 2), "the rogue strikes out of Vanish");
+        Check(Mathf.IsEqualApprox(hpBefore - stalker.Health.Current, expected) && !p.Vanished,
+            $"...for double damage ({hpBefore - stalker.Health.Current:0.#} of {expected:0.#}), which ends Vanish");
+        Kill(stalker);
+
+        p.Teleport(home);
+        await Become(PlayerClasses.WarriorId);
+        p.Rig.SetView(false, true);
+    }
+
     /// <summary>Audio (art pass round 2): the ambience bed is running and the game's actions
     /// asked for their sounds along the way.</summary>
     private void Audio()
@@ -77,7 +258,7 @@ public partial class DevAutotest : Node
         var root = GetTree().CurrentScene;
         Check(root.FindChildren("*", "AudioStreamPlayer3D", true, false).Count(n => ((AudioStreamPlayer3D)n).Stream == Sfx.Get("amb_waterfall")) >= 4, "every waterfall roars");
         Check(root.FindChild("Volcano", true, false)?.GetNodeOrNull("Sound_amb_lava") != null, "the volcano rumbles");
-        foreach (var s in new[] { "chop", "mine", "step", "swing_light", "hit_flesh", "build", "eat", "water", "chest", "pickup", "dodge", "parry" })
+        foreach (var s in new[] { "chop", "mine", "step", "swing_light", "hit_flesh", "build", "eat", "water", "chest", "pickup", "dodge", "parry", "whirlwind", "bow", "firebolt", "explode", "heal", "vanish" })
             Check(Sfx.Played.GetValueOrDefault(s) > 0, $"sound '{s}' played ({Sfx.Played.GetValueOrDefault(s)}x)");
     }
 
@@ -450,12 +631,12 @@ public partial class DevAutotest : Node
         Check(p.Health.Current >= p.Health.Max - 0.01f && Have("bread") == 0, "eating bread (F) heals");
         Check(p.BuffAmount(PlayerController.BuffStamina) > 0.4f, "bread gives a stamina-regen buff");
         Net.Instance.RequestEat();
-        Check(Have("roast_turnip") == 0 && Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + 25f),
+        Check(Have("roast_turnip") == 0 && Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.Class.BonusHealth + 25f),
             $"at full health a roast turnip is still worth it: +25 max health ({p.Health.Max})");
         Net.Instance.RequestEat();
         Check(Have("roast_turnip") == 0, "nothing more to gain: no eating");
         p.ApplyBuff(PlayerController.BuffVigor, 0f, 0f); // (test) let it wear off
-        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth) && p.Health.Current <= p.Health.Max, "when the buff wears off max health goes back");
+        Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.Class.BonusHealth) && p.Health.Current <= p.Health.Max, "when the buff wears off max health goes back");
         p.ClearBuffs();
     }
 
@@ -752,6 +933,8 @@ public partial class DevAutotest : Node
         await Ashby(gs, p);
         await Farming(gs, p);
         await Cottage(gs, p);
+        await Looks(gs, p);
+        await Classes(gs, p);
 
         // Night look.
         gs.TimeOfDay = 0.745f;

@@ -2,7 +2,8 @@ using Godot;
 
 namespace KatrinasGame;
 
-/// <summary>Visual body of the player: the animated KayKit Rogue. Picks idle / walk / run /
+/// <summary>Visual body of the player: an animated KayKit Rogue or Knight, painted and sized by
+/// the player's <see cref="Appearance"/> (rebuilt live when it changes). Picks idle / walk / run /
 /// jump from the controller's motion and plays one-shot attack animations on request.
 /// Exposes the right-hand bone slot so weapons can be held in third person.</summary>
 public partial class CharacterModel : Node3D
@@ -22,24 +23,45 @@ public partial class CharacterModel : Node3D
     private static readonly string[] LoopAnims =
         { "Idle", "Unarmed_Idle", "Walking_A", "Running_A", "Jump_Idle", "Blocking", "Lie_Idle" };
 
-    // Rogue comes with props attached to its hands; we show our own weapons instead.
-    private static readonly string[] HiddenProps = { "Knife_Offhand", "1H_Crossbow", "2H_Crossbow", "Knife", "Throwable" };
+    /// <summary>The look the body was last built from.</summary>
+    public Appearance Look { get; private set; }
+
+    /// <summary>Raised after the body is rebuilt (new look): the hand slot is a new node.</summary>
+    public event System.Action Rebuilt;
 
     public override void _Ready()
     {
         _player = GetParent().GetParent<PlayerController>(); // Player/Body/Mesh
+        SetLook(_player.Look);
+    }
 
-        _model = Models.Instance(Models.Hero);
-        _model.Name = "Rogue";
-        _model.RotationDegrees = new Vector3(0, 180, 0); // glTF faces +Z, we face -Z
+    /// <summary>(Re)build the body for a look: model, hidden parts, paint, height, animations,
+    /// hand slot. Whatever hangs from the old hand slot (the held weapon) is kept.</summary>
+    public void SetLook(Appearance look)
+    {
+        look ??= new Appearance();
+        Look = look.Clone();
+        var held = new System.Collections.Generic.List<Node>();
+        if (RightHandSlot != null)
+            foreach (var child in RightHandSlot.GetChildren())
+            {
+                child.Reparent(this, false);
+                held.Add(child);
+            }
+        if (_model != null)
+        {
+            RemoveChild(_model);
+            _model.QueueFree();
+        }
+        RightHandSlot = null;
+
+        _model = BuildBody(Look);
         AddChild(_model);
-        foreach (var prop in HiddenProps)
-            if (_model.FindChild(prop, true, false) is Node3D n) n.Visible = false;
-        StyleMaterials.ApplyCharacter(_model);
-
-        FitHeight();
+        FitHeight(_model, TargetHeight * Look.Height, GlobalPosition.Y);
 
         _anim = FindAnimationPlayer(_model);
+        _current = "";
+        _oneShotTimer = 0;
         if (_anim != null)
         {
             foreach (var name in LoopAnims)
@@ -53,26 +75,57 @@ public partial class CharacterModel : Node3D
             var attach = new BoneAttachment3D { Name = "RightHandSlot", BoneName = "handslot.r" };
             skeleton.AddChild(attach);
             RightHandSlot = attach;
+            foreach (var child in held) child.Reparent(attach, false);
         }
+        if (_fade > 0) SetFade(_fade);
+        Rebuilt?.Invoke();
     }
 
-    private void FitHeight()
+    private float _fade;
+
+    /// <summary>See-through amount (0 solid … 1 invisible), e.g. the Rogue's Vanish. Survives rebuilds.</summary>
+    public void SetFade(float fade)
     {
+        _fade = fade;
+        if (_model == null) return;
+        foreach (var node in _model.FindChildren("*", "GeometryInstance3D", true, false))
+            ((GeometryInstance3D)node).Transparency = fade;
+    }
+
+    /// <summary>A styled, painted body for a look (also used by the character creator's preview).
+    /// Faces -Z; not yet scaled (see <see cref="FitHeight"/>).</summary>
+    public static Node3D BuildBody(Appearance look)
+    {
+        var model = Models.Instance(look.ModelPath);
+        model.Name = look.Body == Appearance.Knight ? "Knight" : "Rogue";
+        model.RotationDegrees = new Vector3(0, 180, 0); // glTF faces +Z, we face -Z
+        foreach (var part in look.HiddenParts())
+            if (model.FindChild(part, true, false) is Node3D n) n.Visible = false;
+        StyleMaterials.ApplyCharacter(model, look);
+        return model;
+    }
+
+    /// <summary>Scale a body so head-to-toe (not counting helmet or cape) is <paramref name="height"/>
+    /// metres, feet at the parent's origin. Call once it's in the tree.</summary>
+    public static void FitHeight(Node3D model, float height, float groundY)
+    {
+        model.Scale = Vector3.One;
         float minY = float.MaxValue, maxY = float.MinValue;
-        foreach (var node in _model.FindChildren("*", "MeshInstance3D", true, false))
+        foreach (var node in model.FindChildren("*", "MeshInstance3D", true, false))
         {
             var mi = (MeshInstance3D)node;
-            if (!mi.IsVisibleInTree()) continue;
+            string n = mi.Name;
+            if (!(n.EndsWith("_Body") || n.EndsWith("_Head") || n.Contains("_Leg"))) continue;
             var box = mi.GlobalTransform * mi.GetAabb();
             minY = Mathf.Min(minY, box.Position.Y);
             maxY = Mathf.Max(maxY, box.End.Y);
         }
-        float height = maxY - minY;
-        if (height > 0.1f && height < 100f)
+        float h = maxY - minY;
+        if (h > 0.1f && h < 100f)
         {
-            float s = TargetHeight / height;
-            _model.Scale = Vector3.One * s;
-            _model.Position = new Vector3(0, -(minY - GlobalPosition.Y) * s, 0);
+            float s = height / h;
+            model.Scale = Vector3.One * s;
+            model.Position = new Vector3(0, -(minY - groundY) * s, 0);
         }
     }
 

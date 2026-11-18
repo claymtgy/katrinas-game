@@ -15,7 +15,7 @@ public partial class Hud : CanvasLayer
     private static readonly Color Blush = new(1f, 0.7f, 0.78f);
 
     private ProgressBar _health, _stamina;
-    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help, _session, _sleep, _playerList, _buffs;
+    private Label _inventory, _hotbar, _prompt, _buildInfo, _clock, _crosshair, _help, _session, _sleep, _playerList, _buffs, _ability;
     private int _packVersion = -1;
     private PanelContainer _gameMenu;
     private VBoxContainer _toasts;
@@ -47,6 +47,9 @@ public partial class Hud : CanvasLayer
         _buffs = MakeLabel(15);
         _buffs.Modulate = Gold;
         Place(root, _buffs, 0, 1, 0, 1, 24, -132, 600, -88);
+        // Class and ability, right of the bars.
+        _ability = MakeLabel(17);
+        Place(root, _ability, 0, 1, 0, 1, 340, -86, 900, -40);
 
         // Inventory — top right.
         _inventory = MakeLabel(17, HorizontalAlignment.Right);
@@ -97,7 +100,7 @@ public partial class Hud : CanvasLayer
         _help = MakeLabel(17);
         _help.Text =
             "CONTROLS   (F1 to toggle)\n" +
-            "WASD move · Shift sprint · Space jump · Ctrl / C dodge roll · Mouse look\n" +
+            "WASD move · Shift sprint · Space jump · Ctrl / C dodge roll · R class ability · Mouse look\n" +
             "V  first / third person\n" +
             "LMB light attack · Q / MMB heavy attack · hold RMB block (just in time = parry) · 1-5 weapons\n" +
             "E  interact (workbench, campfire, bed, plots, wells, chest, trader, signs) · F eat\n" +
@@ -168,6 +171,8 @@ public partial class Hud : CanvasLayer
     {
         _craftPanel.Visible = false;
         _gameMenu.Visible = false;
+        foreach (var c in GetChildren())
+            if (c is CharacterCreator cc) cc.QueueFree();
         _station = null;
         _trader = null;
         GameState.Instance.SetUiOpen(false);
@@ -305,8 +310,18 @@ public partial class Hud : CanvasLayer
 
     private bool _wasHome;
 
+    private void UpdateAbility(PlayerController player)
+    {
+        var cls = player.Class;
+        float left = player.Ability.CooldownLeft;
+        string state = player.Vanished ? "hidden" : left > 0 ? $"{left:0.0}s" : player.Stamina < cls.AbilityStamina ? "tired" : "ready";
+        _ability.Text = $"{cls.Name}   [R] {cls.AbilityName}: {state}";
+        _ability.Modulate = state == "ready" ? cls.Tint : new Color(0.75f, 0.72f, 0.8f);
+    }
+
     private void UpdateBuffs(PlayerController player)
     {
+        UpdateAbility(player);
         bool home = Supplies.AtHome(player);
         if (home != _wasHome) { _wasHome = home; _inventoryDirty = true; }
         if (player.Buffs.Count == 0) { _buffs.Text = ""; return; }
@@ -421,7 +436,7 @@ public partial class Hud : CanvasLayer
         style.SetBorderWidthAll(2);
         style.SetCornerRadiusAll(8);
         _gameMenu.AddThemeStyleboxOverride("panel", style);
-        Place(root, _gameMenu, 0.5f, 0.5f, 0.5f, 0.5f, -180, -120, 180, 120);
+        Place(root, _gameMenu, 0.5f, 0.5f, 0.5f, 0.5f, -180, -140, 180, 140);
 
         var vbox = new VBoxContainer();
         vbox.AddThemeConstantOverride("separation", 10);
@@ -433,6 +448,9 @@ public partial class Hud : CanvasLayer
         var resume = new Button { Text = "Resume  [Esc]" };
         resume.Pressed += CloseMenus;
         vbox.AddChild(resume);
+        var looks = new Button { Text = "Character…" };
+        looks.Pressed += () => OpenCreator();
+        vbox.AddChild(looks);
         var leave = new Button { Text = "Leave to main menu" };
         leave.Pressed += () => Net.Instance.Leave();
         vbox.AddChild(leave);
@@ -443,6 +461,23 @@ public partial class Hud : CanvasLayer
             GetTree().Quit();
         };
         vbox.AddChild(quit);
+    }
+
+    /// <summary>Pause menu: change your look mid-game. Done saves it and shows it to everyone.</summary>
+    public CharacterCreator OpenCreator()
+    {
+        bool fromMenu = _gameMenu.Visible;
+        _gameMenu.Visible = false;
+        void Back() { if (fromMenu && GameState.Instance.UiOpen) _gameMenu.Visible = true; }
+        var creator = new CharacterCreator(Appearance.Local, look =>
+        {
+            Appearance.Local = look;
+            Appearance.SaveLocal();
+            Net.Instance.RequestLook(look);
+            Back();
+        }, Back) { InGame = true };
+        AddChild(creator);
+        return creator;
     }
 
     // ------------------------------------------------------------------ helpers
