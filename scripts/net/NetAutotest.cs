@@ -198,6 +198,16 @@ public partial class NetAutotest : Node
         net.ServerAwardXp(other, Math.Max(0, Levels.StartOf(3) - other.Xp), "a test");
         Check(await Until(() => Talents.Has(other, Talents.LongDraw), 40), "the client's talent pick (Long Draw) reached the server");
 
+        // The host becomes a level-12 Healer (for Rekindle, below).
+        me.Teleport(gs.WorldSpawn + new Vector3(3, 0.1f, 4));
+        await Wait(0.3);
+        var look = me.Look.Clone();
+        look.Class = PlayerClasses.HealerId;
+        Appearance.Local = look;
+        net.RequestLook(look);
+        Check(await Until(() => me.Class.Id == PlayerClasses.HealerId, 3), "the host becomes a Healer at home");
+        net.ServerLoadXp(me, Levels.StartOf(12));
+
         // Downed and revived (GDD §16). The client waits in the meadow; the host stands beside it.
         var spot = DownedSpot;
         async Task<bool> DownClient()
@@ -236,6 +246,20 @@ public partial class NetAutotest : Node
             $"...with 30% health ({other.Health.Current:0}/{other.Health.Max:0})");
         await Wait(1.5);   // let the client see its 30% before we top it up
         other.Health.Reset();
+
+        // Down again: the host's Rekindle raises it from a distance, at once, with half health.
+        Check(await DownClient(), "downed for Rekindle");
+        me.Teleport(spot + new Vector3(0, 0.1f, 8f));
+        await Wait(1.5);   // let the client see itself go down
+        me.RestoreStamina();
+        me.Ability3.ResetCooldown();
+        Check(me.Ability3.TryUse(), "the host casts Rekindle from 8 m");
+        Check(await Until(() => !other.Downed, 1), "...and the client is up at once");
+        Check(Mathf.IsEqualApprox(other.Health.Current, other.Health.Max * Net.RekindleHealth, 0.5f),
+            $"...with half its health ({other.Health.Current:0}/{other.Health.Max:0})");
+        await Wait(1.5);
+        other.Health.Reset();
+        me.Teleport(spot + new Vector3(0, 0.1f, 1.8f));
 
         // Down again: the client gives up (holds Jump) and goes home.
         Check(await DownClient(), "downed again");
@@ -518,9 +542,9 @@ public partial class NetAutotest : Node
             await Shot("08_talents");
             Hud.Instance.CloseMenus();
 
-            // Downed (GDD §16): wait in the meadow four times. 1: revived by the host;
-            // 2: give up (hold Jump); 3: the timer runs out; 4: the host leaves.
-            for (int round = 1; round <= 4; round++)
+            // Downed (GDD §16): wait in the meadow five times. 1: revived by the host; 2: the
+            // host's Rekindle; 3: give up (hold Jump); 4: the timer runs out; 5: the host leaves.
+            for (int round = 1; round <= 5; round++)
             {
                 me.Teleport(DownedSpot);
                 me.Rig.SetLook(0, -0.1f);
@@ -543,13 +567,20 @@ public partial class NetAutotest : Node
                 }
                 if (round == 2)
                 {
+                    Check(await Until(() => !me.Downed, 20), "the host's Rekindle got the client up");
+                    Check(me.Health.Current > me.Health.Max * 0.4f && me.Health.Current < me.Health.Max * 0.6f, $"...with half its health ({me.Health.Current:0})");
+                    await Wait(1.0);
+                    continue;
+                }
+                if (round == 3)
+                {
                     for (int i = 0; i < 60 && me.Downed; i++) { Input.ActionPress("jump"); await Wait(0.05); }
                     Input.ActionRelease("jump");
                 }
                 Check(await Until(() => !me.Downed, 15), round switch
                 {
-                    2 => "holding Jump gives up",
-                    3 => "the timer ran out",
+                    3 => "holding Jump gives up",
+                    4 => "the timer ran out",
                     _ => "nobody left to help: defeated",
                 });
                 Check(await Until(() => Net.FlatDistance(me.GlobalPosition, DownedSpot) > 8f && Mathf.IsEqualApprox(me.Health.Current, me.Health.Max), 5),

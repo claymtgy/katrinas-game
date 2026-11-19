@@ -233,7 +233,8 @@ public partial class CharacterCreator : Control
         var about = new Label
         {
             Text = cls.Blurb + "\n[R] " + cls.AbilityName + ": " + cls.AbilityText
-                + (cls.Second is { } s ? $"\n[T, level {s.UnlockLevel}] {s.Name}: {s.Text}" : ""),
+                + (cls.Second is { } s ? $"\n[T, level {s.UnlockLevel}] {s.Name}: {s.Text}" : "")
+                + (cls.Third is { } t ? $"\n[G, level {t.UnlockLevel}] {t.Name}: {t.Text}" : ""),
             AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(500, 0),
         };
         about.AddThemeFontSizeOverride("font_size", 14);

@@ -241,7 +241,7 @@ public partial class Hud : CanvasLayer
         (string Action, string What)[] left =
         {
             ("move", "Move · {sprint} sprint · {jump} jump"), ("dodge", "Dodge roll"), ("look", "Look · {toggle_view} first / third person"),
-            ("attack", "Light attack"), ("heavy_attack", "Heavy attack"), ("block", "Block (just in time = parry)"), ("ability", "Class ability"), ("ability_2", "Level-5 ability"),
+            ("attack", "Light attack"), ("heavy_attack", "Heavy attack"), ("block", "Block (just in time = parry)"), ("ability", "Class ability"), ("ability_2", "Level-5 ability"), ("ability_3", "Level-12 ability"),
             ("weapons", "Weapons"), ("interact", "Use: stations, beds, chests, plots, traders, signs"), ("eat", "Eat"),
         };
         (string Action, string What)[] right =
@@ -671,9 +671,9 @@ void fragment() {
                 : player.Stamina < def.Stamina ? "tired" : "ready";
             return $"{Gamepad.ButtonName(a.Action)}  {def.Name}: {state}";
         }
-        string first = AbilityState(player.Ability), second = AbilityState(player.Ability2);
-        _ability.Text = $"{cls.Name}   ·   {first}" + (second != "" ? $"   ·   {second}" : "");
-        _ability.AddThemeColorOverride("font_color", first.EndsWith("ready") || second.EndsWith("ready") ? cls.Tint.Lerp(UiTheme.GoldBright, 0.35f) : UiTheme.Muted);
+        string first = AbilityState(player.Ability), second = AbilityState(player.Ability2), third = AbilityState(player.Ability3);
+        _ability.Text = $"{cls.Name}   ·   {first}" + (second != "" ? $"   ·   {second}" : "") + (third != "" ? $"   ·   {third}" : "");
+        _ability.AddThemeColorOverride("font_color", first.EndsWith("ready") || second.EndsWith("ready") || third.EndsWith("ready") ? cls.Tint.Lerp(UiTheme.GoldBright, 0.35f) : UiTheme.Muted);
 
         bool home = Supplies.AtHome(player);
         if (home != _wasHome) { _wasHome = home; _inventoryDirty = true; }
@@ -1098,6 +1098,10 @@ void fragment() {
             Stat(me.Level >= second.UnlockLevel
                 ? $"{second.Name} on {Gamepad.ButtonName("ability_2")}"
                 : $"{second.Name} unlocks at level {second.UnlockLevel}");
+        if (me.Class.Third is { } third)
+            Stat(me.Level >= third.UnlockLevel
+                ? $"{third.Name} on {Gamepad.ButtonName("ability_3")}"
+                : $"{third.Name} unlocks at level {third.UnlockLevel}");
 
         // Pack: everything you carry; armour is clickable to wear.
         var items = me.Pack.Items.OrderBy(kv => (ItemDb.Get(kv.Key)?.IsWearable ?? false) ? 0 : 1).ThenBy(kv => ItemDb.NameOf(kv.Key)).ToList();

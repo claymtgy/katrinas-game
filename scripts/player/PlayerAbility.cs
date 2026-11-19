@@ -15,7 +15,7 @@ public partial class PlayerAbility : Node
     private PlayerController _player;
     private double _readyAt;
 
-    /// <summary>0 = R, 1 = T (level 5).</summary>
+    /// <summary>0 = R, 1 = T (level 5), 2 = G (level 12).</summary>
     public int Slot { get; init; }
 
     /// <summary>Server clock: when this player may use the ability again (anti-spam).</summary>
@@ -31,7 +31,7 @@ public partial class PlayerAbility : Node
     public bool Unlocked => Def is { } d && _player.Level >= d.UnlockLevel;
 
     /// <summary>The input action for this slot (key-cap prompts).</summary>
-    public string Action => Slot == 0 ? "ability" : "ability_2";
+    public string Action => Slot switch { 0 => "ability", 1 => "ability_2", _ => "ability_3" };
 
     public override void _Ready()
     {
@@ -42,11 +42,18 @@ public partial class PlayerAbility : Node
     public override void _UnhandledInput(InputEvent e)
     {
         if (_player.Build?.Active ?? false) return;
-        // Pad: Y alone is the first ability; hold LB and press Y for the second.
-        bool chordY = e is InputEventJoypadButton && e.IsActionPressed("ability") && Gamepad.ModifierHeld;
-        bool pressed = Slot == 0 ? e.IsActionPressed("ability") && !chordY : e.IsActionPressed("ability_2") || chordY;
+        // Pad: Y alone is the first ability; hold LB and press Y for the second, X for the third.
+        bool pad = e is InputEventJoypadButton && Gamepad.ModifierHeld;
+        bool chordY = pad && e.IsActionPressed("ability");
+        bool chordX = pad && e.IsActionPressed("interact");
+        bool pressed = Slot switch
+        {
+            0 => e.IsActionPressed("ability") && !chordY,
+            1 => e.IsActionPressed("ability_2") || chordY,
+            _ => e.IsActionPressed("ability_3") || chordX,
+        };
         if (!pressed) return;
-        if (chordY) Gamepad.ChordUsed = true;
+        if (chordY || chordX) Gamepad.ChordUsed = true;
         TryUse();
         GetViewport().SetInputAsHandled();
     }
@@ -71,6 +78,16 @@ public partial class PlayerAbility : Node
             return false;
         }
         if (def.Id == PlayerClasses.ChargeId && (!_player.IsOnFloor() || _player.Gliding)) return false;
+        if (def.Id == PlayerClasses.RekindleId && Net.RekindleTarget(_player) == null)
+        {
+            Hud.Toast("No one is down within 12 m.");
+            return false;
+        }
+        if (def.Id == PlayerClasses.MarkId && Net.MarkTarget(_player, aim) == null)
+        {
+            Hud.Toast("No enemy in your sights within 40 m.");
+            return false;
+        }
         if (!_player.TrySpendStamina(def.Stamina))
         {
             Hud.Toast($"Too tired for {def.Name}!");
@@ -170,6 +187,38 @@ public partial class PlayerAbility : Node
                 Sfx.At("bow", at + Vector3.Up * 1.3f, 2f);
                 Sfx.At("bow", at + Vector3.Up * 1.3f, -2f, 0.15f);
                 break;
+
+            // ---- slot 2 (level 12)
+            case PlayerClasses.WarCryId:
+                model?.PlayOneShot("Spellcast_Raise", 1.6f);
+                Sfx.At("raid_horn", at + Vector3.Up * 1.5f, -4f, 0.04f);
+                Fx.Ring(root, at, new Color(1f, 0.5f, 0.25f, 0.85f), Net.WarCryRadius, 0.6f);
+                Fx.Sparks(root, at + Vector3.Up * 1.2f, new Color(1f, 0.6f, 0.3f), 40, 4f, 0.4f, 0.6f);
+                break;
+            case PlayerClasses.VenomId:
+                Sfx.At("vanish", at + Vector3.Up, 0f, 0.1f);
+                Fx.Sparks(root, at + Vector3.Up * 1f, new Color(0.45f, 0.9f, 0.3f, 0.85f), 36, 1.6f, 0.5f, 0.9f);
+                break;
+            case PlayerClasses.MeteorId:
+                model?.PlayOneShot("Spellcast_Shoot", 1.4f);
+                Fx.Sparks(root, at + Vector3.Up * 1.6f, new Color(1f, 0.5f, 0.2f), 20, 2.5f, 0.3f, 0.5f);
+                break;
+            case PlayerClasses.RekindleId:
+            {
+                model?.PlayOneShot("Spellcast_Raise", 1.3f);
+                Sfx.At("heal", at + Vector3.Up, 3f, 0.05f);
+                var target = Net.RekindleTarget(_player);
+                Fx.Sparks(root, (target?.GlobalPosition ?? at) + Vector3.Up * 0.4f, new Color(1f, 0.75f, 0.85f), 50, 2.5f, 0.6f, 1.2f);
+                break;
+            }
+            case PlayerClasses.MarkId:
+            {
+                model?.PlayOneShot("1H_Ranged_Shoot", 1.6f);
+                Sfx.At("arrow_hit", at + Vector3.Up * 1.3f, 0f);
+                var e = Net.MarkTarget(_player, aim);
+                if (e != null) Fx.Sparks(root, e.GlobalPosition + Vector3.Up * 1.4f, new Color(1f, 0.3f, 0.25f), 24, 1.5f, 0.3f, 0.6f);
+                break;
+            }
         }
     }
 }

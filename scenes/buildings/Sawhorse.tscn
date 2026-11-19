@@ -1,0 +1,114 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/crafting/CraftingStation.cs" id="1_station"]
+
+[sub_resource type="BoxMesh" id="Mesh_leg"]
+size = Vector3(0.1, 0.95, 0.1)
+
+[sub_resource type="BoxMesh" id="Mesh_beam"]
+size = Vector3(1.5, 0.1, 0.12)
+
+[sub_resource type="CylinderMesh" id="Mesh_log"]
+top_radius = 0.17
+bottom_radius = 0.17
+height = 1.3
+radial_segments = 8
+
+[sub_resource type="BoxMesh" id="Mesh_blade"]
+size = Vector3(0.62, 0.14, 0.02)
+
+[sub_resource type="BoxMesh" id="Mesh_handle"]
+size = Vector3(0.16, 0.08, 0.05)
+
+[sub_resource type="BoxMesh" id="Mesh_plank"]
+size = Vector3(1.1, 0.05, 0.22)
+
+[sub_resource type="StandardMaterial3D" id="Mat_frame"]
+albedo_color = Color(0.45, 0.3, 0.18, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_log"]
+albedo_color = Color(0.5, 0.33, 0.19, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_plank"]
+albedo_color = Color(0.78, 0.6, 0.38, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_iron"]
+albedo_color = Color(0.62, 0.64, 0.7, 1)
+metallic = 0.6
+roughness = 0.45
+
+[sub_resource type="BoxShape3D" id="Shape_horse"]
+size = Vector3(1.6, 0.9, 0.8)
+
+[node name="Sawhorse" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_station")
+StationId = "sawhorse"
+StationName = "Sawhorse"
+
+[node name="LegA1" type="MeshInstance3D" parent="."]
+position = Vector3(-0.6, 0.42, -0.14)
+rotation = Vector3(0.35, 0, 0)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_frame")
+
+[node name="LegA2" type="MeshInstance3D" parent="."]
+position = Vector3(-0.6, 0.42, 0.14)
+rotation = Vector3(-0.35, 0, 0)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_frame")
+
+[node name="LegB1" type="MeshInstance3D" parent="."]
+position = Vector3(0.6, 0.42, -0.14)
+rotation = Vector3(0.35, 0, 0)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_frame")
+
+[node name="LegB2" type="MeshInstance3D" parent="."]
+position = Vector3(0.6, 0.42, 0.14)
+rotation = Vector3(-0.35, 0, 0)
+mesh = SubResource("Mesh_leg")
+surface_material_override/0 = SubResource("Mat_frame")
+
+[node name="Beam" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.84, 0)
+mesh = SubResource("Mesh_beam")
+surface_material_override/0 = SubResource("Mat_frame")
+
+[node name="Log" type="MeshInstance3D" parent="."]
+position = Vector3(0.05, 1.05, 0)
+rotation = Vector3(0, 0, 1.5708)
+mesh = SubResource("Mesh_log")
+surface_material_override/0 = SubResource("Mat_log")
+
+[node name="SawBlade" type="MeshInstance3D" parent="."]
+position = Vector3(0.25, 1.24, 0.02)
+rotation = Vector3(0, 0, -0.5)
+mesh = SubResource("Mesh_blade")
+surface_material_override/0 = SubResource("Mat_iron")
+
+[node name="SawHandle" type="MeshInstance3D" parent="."]
+position = Vector3(0.53, 1.41, 0.02)
+rotation = Vector3(0, 0, -0.5)
+mesh = SubResource("Mesh_handle")
+surface_material_override/0 = SubResource("Mat_frame")
+
+[node name="Plank1" type="MeshInstance3D" parent="."]
+position = Vector3(0.1, 0.03, 0.55)
+rotation = Vector3(0, 0.1, 0)
+mesh = SubResource("Mesh_plank")
+surface_material_override/0 = SubResource("Mat_plank")
+
+[node name="Plank2" type="MeshInstance3D" parent="."]
+position = Vector3(0.05, 0.08, 0.57)
+rotation = Vector3(0, -0.05, 0)
+mesh = SubResource("Mesh_plank")
+surface_material_override/0 = SubResource("Mat_plank")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.45, 0)
+shape = SubResource("Shape_horse")

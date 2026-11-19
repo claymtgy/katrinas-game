@@ -748,6 +748,35 @@ def icon_altar(ic):
     ic.line(sd_segment(x, y, 32, 18, 32, 34, 1.0), (0.5, 0.9, 1.0))
 
 
+def icon_clay(ic):
+    x, y = ic.x, ic.y
+    ic.fill(union(sd_ellipse(x, y, 30, 40, 20, 12), sd_ellipse(x, y, 40, 30, 13, 10)), (0.72, 0.46, 0.32), dome=0.9)
+    ic.line(sd_segment(x, y, 20, 38, 30, 34, 0.6), (0.45, 0.27, 0.18), 0.6)
+    ic.line(sd_segment(x, y, 36, 28, 46, 30, 0.6), (0.45, 0.27, 0.18), 0.6)
+
+
+def icon_planks(ic):
+    x, y = ic.x, ic.y
+    for k, (cy, dx) in enumerate(((44, -2), (34, 2), (24, -1))):
+        ic.fill(sd_box(x, y, 32 + dx, cy, 22, 4.5, 1), (0.8, 0.62, 0.38) if k % 2 == 0 else (0.72, 0.54, 0.32), grad=0.2)
+        ic.line(sd_segment(x, y, 14 + dx, cy, 48 + dx, cy - 0.5, 0.4), (0.5, 0.33, 0.18), 0.5)
+
+
+def icon_bricks(ic):
+    x, y = ic.x, ic.y
+    for cx, cy in ((22, 44), (42, 44), (32, 34), (22, 24), (42, 24)):
+        if cy == 24 and cx == 42:
+            continue
+        ic.fill(sd_box(x, y, cx, cy, 9.5, 4.5, 1), (0.72, 0.33, 0.24), grad=0.25)
+
+
+def icon_charcoal(ic):
+    x, y = ic.x, ic.y
+    for cx, cy, r in ((24, 40, 9), (40, 42, 8), (33, 28, 8.5)):
+        ic.fill(sd_poly(x, y, [(cx - r, cy + 2), (cx - r * 0.4, cy - r), (cx + r * 0.7, cy - r * 0.6), (cx + r, cy + 3), (cx + r * 0.2, cy + r * 0.8)]), (0.2, 0.19, 0.19), grad=0.4)
+    ic.line(sd_segment(x, y, 27, 25, 36, 24, 0.5), (0.85, 0.4, 0.15), 0.7)
+
+
 ICONS = {
     "wooden_sword": lambda ic: icon_sword(ic, blade=(0.78, 0.58, 0.34), wooden=True),
     "stone_club": icon_club,
@@ -787,6 +816,10 @@ ICONS = {
     "rune_shard": icon_shard,
     "rune_altar": icon_altar,
     "fists": lambda ic: icon_glove(ic, (0.88, 0.66, 0.5)),
+    "clay": icon_clay,
+    "planks": icon_planks,
+    "bricks": icon_bricks,
+    "charcoal": icon_charcoal,
 }
 
 

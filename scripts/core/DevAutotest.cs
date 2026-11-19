@@ -1689,6 +1689,95 @@ public partial class DevAutotest : Node
     /// <summary>Tools and iron: axes chop and pickaxes mine far faster than a sword or fists; iron
     /// ore takes a pickaxe; ore smelts into ingots at the hearth; the iron tier. Also the hearth,
     /// the equipment screen's weapons, and the first-person hand and tools.</summary>
+    /// <summary>Tier 1 filled in (GDD §11, step 0): clay to dig, the Sawhorse (planks), the Kiln
+    /// (bricks, charcoal, better iron) and the Brick Oven (twice the food); the watchtower is
+    /// priced in planks now. Runs in --only=home-menus too.</summary>
+    private async Task TierOne(GameState gs, PlayerController p)
+    {
+        string heldBefore = p.Equipped;
+        var stockBefore = new[] { "planks", "bricks", "charcoal", "iron_ingot", "bread", "clay" }.ToDictionary(id => id, id => gs.Inventory.Count(id));
+        int packClay = p.Pack.Count("clay");
+        foreach (var id in new[] { "clay", "planks", "bricks", "charcoal" })
+            Check(ItemDb.Get(id) is { SellPrice: > 0 } && ResourceLoader.Exists($"res://assets/ui/icons/{id}.png"), $"{ItemDb.NameOf(id)} is an item with an icon that Marta buys");
+        foreach (var id in new[] { "sawhorse", "kiln", "brick_oven" })
+            Check(ItemDb.GetBuilding(id) != null, $"the {id.Replace('_', ' ')} can be built");
+        Check(ItemDb.GetBuilding("kiln").Cost.ContainsKey("clay") && ItemDb.GetBuilding("brick_oven").Cost.ContainsKey("bricks")
+              && ItemDb.GetBuilding("watchtower").Cost.ContainsKey("planks"), "the kiln takes clay, the oven bricks, the watchtower planks");
+
+        // Clay: banks by the valley river and round the vale pond; any swing digs it.
+        var banks = GetTree().GetNodesInGroup("clay").OfType<Harvestable>().ToList();
+        Check(banks.Count == HomeCliffs.ClaySpots.Length, $"clay banks in the world ({banks.Count})");
+        var bank = banks.OrderBy(b => b.GlobalPosition.DistanceSquaredTo(HomeCliffs.ClayPond)).First();
+        Net.Instance.RequestEquip("");
+        await Wait(0.1);
+        p.Teleport(bank.GlobalPosition + new Vector3(0, 0.1f, 1.9f));
+        await Wait(0.3);
+        Face(p, bank.GlobalPosition + Vector3.Up * 0.4f);
+        int clay = p.Pack.Count("clay");
+        for (int i = 0; i < 10 && p.Pack.Count("clay") < clay + 2; i++)
+        {
+            p.RestoreStamina();
+            p.Combat.TryAttack(false);
+            await Wait(0.7);
+        }
+        Check(p.Pack.Count("clay") >= clay + 2, $"digging a clay bank gives clay ({p.Pack.Count("clay") - clay})");
+        p.Teleport(HomeCliffs.ClayPond + new Vector3(9, 0.1f, 7));
+        Face(p, HomeCliffs.ClayPond);
+        p.Rig.SetLook(p.Rig.Look.Yaw, -0.25f);
+        await Wait(0.4);
+        await Shot("10_clay_pond");
+
+        // The stations, in the yard.
+        var yard = new Vector3(4, 0, -6);
+        p.Teleport(yard + new Vector3(0, 0.1f, 4));
+        await Wait(0.3);
+        var placed = new System.Collections.Generic.List<GameState.PlacedBuilding>();
+        CraftingStation Place(string id, Vector3 at)
+        {
+            var b = gs.PlaceBuilding(ItemDb.GetBuilding(id), at, 0f);
+            if (b != null) placed.Add(b);
+            return b?.Node as CraftingStation;
+        }
+        var saw = Place("sawhorse", yard + new Vector3(-3, 0, 0));
+        var kiln = Place("kiln", yard);
+        var oven = Place("brick_oven", yard + new Vector3(3, 0, 0));
+        Check(saw is { StationId: "sawhorse" } && kiln is { StationId: "kiln" } && oven is { StationId: "oven" }, "sawhorse, kiln and oven stand in the yard");
+        await Wait(0.3);
+        Face(p, yard);
+        p.Rig.SetLook(p.Rig.Look.Yaw, -0.3f);
+        await Wait(0.3);
+        await Shot("11_tier1_stations");
+
+        async Task<bool> Craft(CraftingStation st, string recipeId, string output, int expect)
+        {
+            var r = ItemDb.Recipes.First(x => x.Id == recipeId);
+            foreach (var kv in r.GetInputs()) gs.Inventory.Add(kv.Key, kv.Value);
+            int before = Have(output);
+            st.RequestCraft(r);
+            await Wait(0.2);
+            return Have(output) - before == expect;
+        }
+        Check(saw != null && saw.Recipes.Any(r => r.OutputItem == "planks") && await Craft(saw, "saw_planks", "planks", 2), "the sawhorse turns 3 wood into 2 planks");
+        Check(kiln != null && await Craft(kiln, "fire_bricks", "bricks", 2), "the kiln fires clay into bricks");
+        Check(kiln != null && await Craft(kiln, "burn_charcoal", "charcoal", 2), "...and burns wood into charcoal");
+        Check(kiln != null && await Craft(kiln, "kiln_iron_ingot", "iron_ingot", 2), "...and smelts 3 ore into 2 ingots with charcoal (a campfire: 2 ore for 1)");
+        Check(oven != null && await Craft(oven, "bake_bread", "bread", 2), "the brick oven bakes 2 loaves where a campfire bakes 1");
+        Hud.Instance.CloseMenus();
+        foreach (var b in placed) Net.Instance.ServerRemoveBuilding(b, false);
+
+        // Put things back as they were for the tests that follow (weapon in hand, stockpile, pack).
+        foreach (var kv in stockBefore)
+            if (gs.Inventory.Count(kv.Key) > kv.Value) gs.Inventory.Remove(kv.Key, gs.Inventory.Count(kv.Key) - kv.Value);
+        if (p.Pack.Count("clay") > packClay) p.Pack.Remove("clay", p.Pack.Count("clay") - packClay);
+        if (heldBefore != "" && p.Equipped != heldBefore)
+        {
+            if (Have(heldBefore) == 0) gs.Inventory.Add(heldBefore, 1);
+            Net.Instance.RequestEquip(heldBefore);
+            await Wait(0.1);
+        }
+        Check(p.Equipped == heldBefore, $"...and back to the {ItemDb.NameOf(heldBefore)} in hand");
+    }
+
     private async Task ToolsAndIron(GameState gs, PlayerController p)
     {
         string heldBefore = p.Equipped;
@@ -2044,6 +2133,132 @@ public partial class DevAutotest : Node
         p.Teleport(home);
     }
 
+    /// <summary>The level-12 abilities (GDD §6) on G: locked below 12, then War Cry, Venom, Meteor
+    /// and Mark doing their jobs (Rekindle needs a friend: NetAutotest).</summary>
+    private async Task LevelTwelve(GameState gs, PlayerController p)
+    {
+        var net = Net.Instance;
+        var wild = Wildlife.Instance;
+        var home = gs.WorldSpawn + new Vector3(3, 0.1f, 4);
+        var field = new Vector3(-12, 0.1f, 30);
+        var fwd = new Vector3(0, 0, -1);
+        async Task Become(string id)
+        {
+            p.Teleport(home);
+            await Wait(0.2);
+            var a = p.Look.Clone();
+            a.Class = id;
+            Appearance.Local = a;
+            net.RequestLook(a);
+            await Until(() => p.Class.Id == id, 3);
+            p.Ability3.ResetCooldown();
+            p.RestoreStamina();
+            p.Health.Reset();
+            p.Teleport(field);
+            p.Rig.SetLook(0f, -0.05f); // face -Z
+            await Wait(0.3);
+        }
+        async Task<Wolf> Target(Vector3 at)
+        {
+            var w = wild.SpawnPack(at, 1)[0];
+            w.Frozen = true;
+            w.Health.Armor = 0;
+            await Wait(0.3);
+            w.GlobalPosition = at;
+            return w;
+        }
+        void Kill(Enemy w) { if (IsInstanceValid(w) && !w.Health.IsDead) w.Health.TakeDamage(1000, null); }
+        void Aim(Enemy e)
+        {
+            var d = e.GlobalPosition + Vector3.Up * 0.7f - p.Rig.Camera.GlobalPosition;
+            p.Rig.SetLook(Mathf.Atan2(-d.X, -d.Z), Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length()));
+        }
+
+        int xp = p.Xp;
+        await Become(PlayerClasses.WarriorId);
+        Check(p.Level < 12 && !p.Ability3.Unlocked && !p.Ability3.TryUse(), $"the level-12 ability is locked at level {p.Level}");
+        Check(PlayerClasses.All.All(c => c.Third is { UnlockLevel: 12 }) && Gamepad.ButtonName("ability_3") == "G", "every class has a level-12 ability, on G");
+        net.ServerLoadXp(p, Levels.StartOf(12));
+        await Wait(0.2);
+        Check(p.Level == 12 && p.Ability3.Unlocked, "...and unlocked at level 12");
+        p.Health.Reset();
+        p.RestoreStamina();
+
+        // Warrior: War Cry staggers what's close and adds 20% to your hits.
+        p.Rig.SetView(false, true);
+        var cried = await Target(p.GlobalPosition + fwd * 2.2f);
+        Check(p.Ability3.TryUse(), "Warrior lets out a War Cry");
+        await Wait(0.2);
+        Check(cried.Current == Enemy.State.Stagger, "the wolf beside you staggers");
+        Check(p.WarCryUntil > Net.Now, "the cry lifts you");
+        Face(p, cried.GlobalPosition);
+        float hp = cried.Health.Current;
+        p.RestoreStamina();
+        p.Combat.TryAttack(false);
+        Check(await Until(() => cried.Health.Current < hp, 2), "the warrior strikes");
+        Check(Mathf.IsEqualApprox(hp - cried.Health.Current, p.Combat.LightDamage * (1f + Net.WarCryBonus), 0.05f),
+            $"...20% harder ({hp - cried.Health.Current:0.#} vs {p.Combat.LightDamage:0.#})");
+        await Shot("51_war_cry");
+        Kill(cried);
+
+        // Rogue: Venom poisons, and the poison ticks.
+        await Become(PlayerClasses.RogueId);
+        var bitten = await Target(p.GlobalPosition + fwd * 2.2f);
+        Check(p.Ability3.TryUse(), "Rogue coats its blade in Venom");
+        await Wait(0.2);
+        Face(p, bitten.GlobalPosition);
+        hp = bitten.Health.Current;
+        p.RestoreStamina();
+        p.Combat.TryAttack(false);
+        Check(await Until(() => bitten.Health.Current < hp, 2) && bitten.PoisonStacks == 1, $"a hit poisons ({bitten.PoisonStacks} stack)");
+        float afterHit = bitten.Health.Current;
+        await Wait(2.3);
+        Check(afterHit - bitten.Health.Current >= Net.VenomDps * 2 - 0.01f, $"the poison ticks ({afterHit - bitten.Health.Current:0} more damage)");
+        await Shot("52_venom");
+        Kill(bitten);
+
+        // Wizard: Meteor lands where you look, a second later, for 60.
+        await Become(PlayerClasses.WizardId);
+        var struck = await Target(p.GlobalPosition + fwd * 12f);
+        Aim(struck);
+        await Wait(0.1);
+        var spot = Net.MeteorPoint(p, -p.Rig.Camera.GlobalBasis.Z);
+        Check(Net.FlatDistance(spot, struck.GlobalPosition) < Net.MeteorRadius, $"Meteor aims at the wolf ({Net.FlatDistance(spot, struck.GlobalPosition):0.0} m off)");
+        Check(p.Ability3.TryUse(), "Wizard calls a Meteor");
+        await Wait(0.5);
+        Check(Mathf.IsEqualApprox(struck.Health.Current, struck.Health.Max), "...it hasn't landed yet");
+        await Shot("53_meteor_falling");
+        Check(await Until(() => struck.Health.Current < struck.Health.Max, 2), "the meteor lands on the wolf");
+        Check(Mathf.IsEqualApprox(struck.Health.Max - struck.Health.Current, Net.MeteorDamage), $"...for 60 ({struck.Health.Max - struck.Health.Current:0})");
+        Kill(struck);
+
+        // Healer: nobody down, so no Rekindle (and no stamina spent).
+        await Become(PlayerClasses.HealerId);
+        float st = p.Stamina;
+        Check(!p.Ability3.TryUse() && Mathf.IsEqualApprox(p.Stamina, st), "Rekindle needs a downed friend nearby");
+
+        // Archer: Mark an enemy; everyone hits it 25% harder, and its marker shows.
+        await Become(PlayerClasses.ArcherId);
+        var marked = await Target(p.GlobalPosition + fwd * 18f);
+        p.Rig.SetLook(Mathf.Pi, 0f);
+        Check(!p.Ability3.TryUse(), "no Mark without an enemy in your sights");
+        Aim(marked);
+        await Wait(0.1);
+        Check(p.Ability3.TryUse(), "Archer marks the wolf");
+        Check(await Until(() => marked.Marked, 1), "the wolf is marked");
+        Check(marked.GetNodeOrNull<Label3D>("MarkLabel")?.Visible == true, "...with a marker over it");
+        await Wait(0.2);
+        await Shot("54_mark");
+        hp = marked.Health.Current;
+        marked.Health.TakeDamage(10f, p);
+        Check(Mathf.IsEqualApprox(hp - marked.Health.Current, 10f * (1f + Net.MarkBonus)), $"a marked wolf takes 25% more ({hp - marked.Health.Current:0.#} from 10)");
+        Kill(marked);
+
+        net.ServerLoadXp(p, xp);
+        await Become(PlayerClasses.WarriorId);
+        p.Teleport(home);
+    }
+
     /// <summary>Talents (GDD §6): pick on the Talents tab, changes only at home, the effects,
     /// save/load; and alone, a killing blow still defeats you (no one to revive you).</summary>
     private async Task TalentPicks(GameState gs, PlayerController p)
@@ -2303,6 +2518,7 @@ public partial class DevAutotest : Node
         {
             await HomeAndMenus(gs, p);
             await ToolsAndIron(gs, p);
+            await TierOne(gs, p);
             GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
             GetTree().Quit(_fails == 0 ? 0 : 1);
             return;
@@ -2426,6 +2642,7 @@ public partial class DevAutotest : Node
 
         await HomeAndMenus(gs, p);
         await ToolsAndIron(gs, p);
+        await TierOne(gs, p);
         await Packs(gs, p);
         await Navigation(gs, p);
         await Dodge(gs, p);
@@ -2446,6 +2663,7 @@ public partial class DevAutotest : Node
         await Xp(gs, p);
         await LevelFive(gs, p);
         await TalentPicks(gs, p);
+        await LevelTwelve(gs, p);
 
         // Night look.
         gs.TimeOfDay = 0.745f;

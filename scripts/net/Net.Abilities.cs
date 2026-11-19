@@ -68,7 +68,8 @@ public partial class Net
         aim = aim.LengthSquared() > 0.01f ? aim.Normalized() : -p.Body.GlobalBasis.Z;
         var chest = p.GlobalPosition + Vector3.Up * 1.35f;
 
-        if (slot == 1) ServerSecondAbility(p, def, aim, chest);
+        if (slot == 2) ServerThirdAbility(p, def, aim);
+        else if (slot == 1) ServerSecondAbility(p, def, aim, chest);
         else switch (p.Class.Id)
         {
             case PlayerClasses.WarriorId:

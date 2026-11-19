@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 10;
+    public const int ProtocolVersion = 11;
     /// <summary>Scripted tests: force the Herbalist roll (1 = always an extra meal); null = random.</summary>
     public static float? HerbalistRoll;
     public const string MainScenePath = "res://scenes/Main.tscn";
@@ -88,6 +88,7 @@ public partial class Net : Node
         Multiplayer.ConnectionFailed += () => EndSession("Could not connect to the server.");
         Multiplayer.ServerDisconnected += () => EndSession("Lost connection to the server.");
         Gs.Inventory.Changed += () => _inventoryDirty = true;
+        Health.Bonus = ServerDamageBonus;
     }
 
     // ================================================================== starting / leaving
@@ -584,6 +585,8 @@ public partial class Net : Node
                 if (p.Vanished) ServerEndVanish(p);
                 p.Ability.ServerReadyAt = 0;
                 p.Ability2.ServerReadyAt = 0;
+                p.Ability3.ServerReadyAt = 0;
+                p.WarCryUntil = p.VenomUntil = 0;
                 p.CritUntil = 0;
                 ToastTo(p.PeerId, $"You are now a {PlayerClasses.Get(a.Class).Name}.");
             }

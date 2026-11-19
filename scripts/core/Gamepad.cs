@@ -70,7 +70,7 @@ public partial class Gamepad : Node
         InputMap.ActionSetDeadzone("block", 0.45f);
         Button("heavy_attack", JoyButton.RightShoulder);
         Button("rotate_build", JoyButton.RightShoulder);
-        // LB / L1: tap to eat; hold it and press Y / △ for the level-5 ability. Eating happens when
+        // LB / L1: tap to eat; hold it and press Y / △ for the level-5 ability, X / □ for the level-12 one. Eating happens when
         // it's let go without another button (PlayerCombat), so a chord doesn't also eat.
         Button("pad_modifier", JoyButton.LeftShoulder);
         Button("tab_prev", JoyButton.LeftShoulder);
@@ -223,6 +223,7 @@ public partial class Gamepad : Node
         ["interact"] = ("E", "X", "□"),
         ["ability"] = ("R", "Y", "△"),
         ["ability_2"] = ("T", "LB + Y", "L1 + △"),
+        ["ability_3"] = ("G", "LB + X", "L1 + □"),
         ["attack"] = ("LMB", "RT", "R2"),
         ["heavy_attack"] = ("Q", "RB", "R1"),
         ["block"] = ("RMB", "LT", "L2"),

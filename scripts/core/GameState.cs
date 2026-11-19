@@ -493,6 +493,7 @@ public partial class GameState : Node
         AddMouse("ability", MouseButton.Xbutton1);
         AddKey("ability_2", Key.T);
         AddMouse("ability_2", MouseButton.Xbutton2);
+        AddKey("ability_3", Key.G);
         AddMouse("next_build", MouseButton.WheelDown);
         AddMouse("prev_build", MouseButton.WheelUp);
         AddKey("next_build", Key.Period);

@@ -169,7 +169,12 @@ public partial class PlayerController : CharacterBody3D
     public PlayerAbility Ability2 { get; private set; }
 
     /// <summary>A slot's ability node (0 = R, 1 = T).</summary>
-    public PlayerAbility AbilitySlot(int slot) => slot == 1 ? Ability2 : Ability;
+    public PlayerAbility Ability3 { get; private set; }
+    public PlayerAbility AbilitySlot(int slot) => slot switch { 1 => Ability2, 2 => Ability3, _ => Ability };
+    /// <summary>Server clock: War Cry's damage bonus lasts until then.</summary>
+    public double WarCryUntil { get; set; }
+    /// <summary>Server clock: Venom's poisoned hits last until then.</summary>
+    public double VenomUntil { get; set; }
 
     /// <summary>A slot's ability as this player has it: the class's, with talents applied.</summary>
     public AbilityDef AbilityDef(int slot) => Talents.Tune(this, Class.Ability(slot));
@@ -540,6 +545,8 @@ public partial class PlayerController : CharacterBody3D
         AddChild(Ability);
         Ability2 = new PlayerAbility { Name = "Ability2", Slot = 1 };
         AddChild(Ability2);
+        Ability3 = new PlayerAbility { Name = "Ability3", Slot = 2 };
+        AddChild(Ability3);
         Interactor = GetNode<Interactor>("Interactor");
         IsLocal = PeerId == Multiplayer.GetUniqueId() && !Net.Instance.IsDedicated;
         SetMultiplayerAuthority(PeerId);

@@ -62,7 +62,7 @@ public partial class Interactor : Node
                 if (d <= best) { best = d; ReviveTarget = o; }
             }
         }
-        bool hold = ReviveTarget != null && !gs.UiOpen && (HoldRevive || Input.IsActionPressed("interact"));
+        bool hold = ReviveTarget != null && !gs.UiOpen && (HoldRevive || Input.IsActionPressed("interact") && !Gamepad.ModifierHeld);
         var want = hold ? ReviveTarget : null;
         if (want == _reviving) return;
         if (_reviving != null && IsInstanceValid(_reviving)) Net.Instance.RequestRevive(_reviving, false);
@@ -72,6 +72,7 @@ public partial class Interactor : Node
 
     public override void _UnhandledInput(InputEvent e)
     {
+        if (e is InputEventJoypadButton && Gamepad.ModifierHeld) return; // LB + X is the level-12 ability
         if (e.IsActionPressed("interact") && ReviveTarget != null)
         {
             GetViewport().SetInputAsHandled(); // the hold is read every frame (UpdateRevive)

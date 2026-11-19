@@ -53,7 +53,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Claim radius:** you can only build near your home. Upgrading the house tier widens the claim. Later, outposts make new claims.
 - **House tiers:** Shack → Cottage → Longhouse → Keep. Each tier unlocks building types and worker slots.
   - **Cottage (built):** pay at the **Home Plans** board by the shack: 40 wood, 20 stone, 6 iron nails, 3 wolf pelts and the Cottage Blueprint (from the bandit captain). The shack is replaced by a timber-and-plaster cottage you can walk into, with two beds. Your land claim grows from 30 m to 42 m. The cottage's footprint is kept clear of new buildings while you still live in the shack; anything already there is packed up and refunded when it goes up. The tier is saved and sent to every player.
-- **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot. Built so far: Workbench, Campfire (cooking and smelting), the **Hearth** in the shack and the cottage (rest to heal 50, cook, smelt; the shack's chimney stands on its mantel), Palisade, Bedroll, the farm plots, **Well** and **Storage Chest** (8 wood; one already stands by the shack).
+- **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot. Built so far: Workbench, Campfire (cooking and smelting), the **Hearth** in the shack and the cottage (rest to heal 50, cook, smelt; the shack's chimney stands on its mantel), Palisade, Bedroll, the farm plots, **Well** and **Storage Chest** (8 wood; one already stands by the shack), and the tier-1 refining stations: **Sawhorse**, **Kiln** and **Brick Oven** (see §11, step 0).
 - **Defense:** palisade → stone wall → gatehouse → watchtower. Bandit raids target bases above a "wealth" threshold.
 
 ## 6. Weapons & combat
@@ -140,13 +140,14 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Built:** `Levels` holds the curve and the XP table. A player's progress is one number, their total XP, and the level is worked out from it. The server awards XP (`Net.Xp.cs`: `ServerAwardXp`, `ServerXpForKill`, `ServerXpForCraft`) and sends every machine the new total (`Net.C_Xp`). The total is part of each player's info in the snapshot (protocol 9). Each character's "firsts" (first wolf, first glider) are saved with it, so a first is paid once per character. Journal goals count as world milestones: everyone online gets them.
 - **Built:** the level-5 abilities are data in `PlayerClasses` (`AbilityDef`, with its own stamina, cooldown and `UnlockLevel`), and `PlayerAbility` has one node per slot (`Ability` on R, `Ability2` on T). The server re-checks the level. Numbers chosen for them: Charge 25 stamina / 9 s (strikes for a light attack's damage); Shadowstep 20 / 10 s (a critical hit is double damage); Frost Nova 24 / 12 s; Blossom Ward 35 / 24 s (it's a temporary sanctuary, so enemies also stop hunting anyone inside it); Volley 22 / 6 s.
 - **Built:** talents are data in `Talents` (`TalentDef`; `Has`, `Unpicked`, and `Tune`, which applies cost and cooldown talents to an `AbilityDef`). A player's picks are a map from "class:level" to talent id, saved with the character, sent in each player's info (`"talents"`) and by `Net.C_Talents` (`Net.Talents.cs`; the server checks class, level and home in `S_Talent`). Protocol 10. Reaching level 3 or 8 tells you to open the Talents tab.
-- Still to build: the level-12 abilities on the third slot (Rekindle among them), and the level-15 and 20 talents.
+- **Built:** the level-12 abilities, on the third slot (`Ability3`; `Net.Abilities12.cs`). Numbers: War Cry 30 stamina / 30 s; Venom 25 / 25 s; Meteor 40 / 18 s; Rekindle 40 / 45 s; Mark 15 / 15 s. War Cry and Mark are damage multipliers on any hit a player lands on an enemy (`Health.Bonus`, before armour; they stack). Venom's poison ticks once a second through armour (`Enemy.Status.cs`). Meteor comes down on what you look at, or the ground under the 25 m point, with a warning circle on every screen (`C_Meteor`). Mark puts a red marker over the enemy that shows through walls (`C_EnemyStatus`, protocol 11). Rekindle and Mark won't spend stamina without a target. Reaching level 5 or 12 tells you the new ability and its key.
+- Still to build: the level-15 and 20 talents.
 - The HUD has an XP bar under the stamina bar with the level beside it, a "+50 XP" note for anything but a repeat kill, and a "Level up" banner (built). The character sheet (I) has three tabs: Equipment, Talents and Journal (the pad's bumpers cycle them).
 
 **Controls.**
 - Keyboard: **R** (or mouse button 4) for the first ability, as now, then **T** for the level-5 ability and **G** for the level-12 ability.
 - Pad: **Y / △** for the first ability, as now. **Hold LB / L1 and press Y / △** for the level-5 ability, and **hold LB / L1 and press X / □** for the level-12 ability. Tapping LB alone still eats. Eating moves to when LB is *released* without another button pressed, so holding it for an ability doesn't also eat.
-- The level-5 key is built (in the controls table, §13); the level-12 one (G, LB + X) comes with those abilities.
+- Both keys are built (in the controls table, §13). With LB held, X is the ability, not Interact.
 
 **Blessings vs. levels (decided).** Blessings (§10) stay separate. They're bought at sanctuaries with Blossom Petals and give small stat boosts that every class shares (max health, max stamina, pack size). Levels give abilities and talents. Neither replaces the other.
 - **Enemies:**
@@ -158,7 +159,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - **Who:** raiders, bandits carrying torches (55 health, 10 damage). There are 3 for one player, and more with more players (`Difficulty.PackSize`). They gather on the vale road and march north.
   - **What they do:** they fight players who come within 11 m. Otherwise they go for the nearest building, chests first, because they want the stockpile. Each blow on a chest steals up to 4 items (12 coins) from the stockpile. Buildings take damage and are wrecked when it runs out, with no refund. Hit points: palisade 150, watchtower 300, well 140, storage chest 120, workbench 90, campfire 60, plots 50, bedroll 40.
   - **Walls:** raiders prefer anything but walls. When a wall blocks their way (they stop making progress), they hack it down.
-  - **Watchtower (built):** 16 wood and 6 stone, on a 2.4 m footprint. The server looses an arrow every 1.3 s at the nearest hostile it can see within 26 m: raiders, wolves or harpies. It leads moving targets and allows for drop. Tower arrows never hurt players, even with PVP on. Its kills' loot goes into the stockpile.
+  - **Watchtower (built):** 8 planks and 6 stone, on a 2.4 m footprint. The server looses an arrow every 1.3 s at the nearest hostile it can see within 26 m: raiders, wolves or harpies. It leads moving targets and allows for drop. Tower arrows never hurt players, even with PVP on. Its kills' loot goes into the stockpile.
   - **Ending a raid:** killing a raider returns what it stole to the stockpile, plus its coins. When all of them are dead the raid is beaten off. Survivors slink off in the morning with their loot.
   - **Repairs:** at dawn every damaged building is patched up for free.
   - Code: `Wildlife` (`MaybeRaid`, `StartRaid`, `RaidStrike`), `Bandit` (raider objective), `Watchtower`.
@@ -353,16 +354,19 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 | Step | Region | Metal tier | New stations | Sanctuary | Boss → drop | House |
 |---|---|---|---|---|---|---|
-| 0 | (fill in tier 1) | Clay, planks, bricks | Sawhorse, Kiln | — | — | Cottage (built) |
+| 0 | (fill in tier 1, built) | Clay, planks, bricks, charcoal | Sawhorse, Kiln, Brick Oven | — | — | Cottage (built) |
 | 1 | Hollow Mine | Bronze (copper + tin, charcoal) | Smelter, Anvil | Mine Blossom, in a sunlit shaft | Crawler Mother → Bellows Plans | Stone walls |
 | 2 | Spire Cliffs | Iron | Bellows (smelter upgrade) | Spire Blossom, on the tallest spire | Storm Harpy Queen → Longhouse Blueprint | **Longhouse** |
 | 3 | Cinder Foothills | Steel (coal + iron) | Blast Forge | Ashen Blossom, by a cool spring | Bandit Warlord → Keep Blueprint, Ember Pass key | **Keep** |
 | 4 | Volcano / Ember Wastes | Ember steel | Sacred Forge | (the last sanctuary, at the crater rim) | Ember Warden → the Warden's crown | — |
 
-#### Step 0: fill in tier 1 (no new region)
-- **Clay** from the riverbanks in the vale and Falls Valley. **Sawhorse** (wood → planks) and **Kiln** (clay → bricks; wood → charcoal).
-- Move the Cottage's iron nails onto a recipe later (nails from iron ingots at the anvil), but keep Marta selling them so the cottage stays reachable before the mine.
-- Small, but it gives tiers 2–4 the refined goods they're priced in.
+#### Step 0: fill in tier 1 (built)
+- **Clay:** soft banks of it along the Falls Valley river (six) and round a reedy pond in the Ashby vale, west of the road (three). Any swing digs it; a pickaxe digs it fastest. Banks come back after 3 minutes. Code: `HomeCliffs.Clay.cs`.
+- **Sawhorse** (5 wood, 1 stone): 3 wood → 2 planks.
+- **Kiln** (8 stone, 4 clay): 3 clay + 1 wood → 2 bricks; 3 wood → 2 charcoal; 3 iron ore + 1 charcoal → 2 iron ingots, a better yield than the campfire's 2 ore for 1. So the kiln is the first upgrade to the iron path.
+- **Brick Oven** (6 bricks, 2 stone): bakes 2 loaves from 3 wheat and roasts 2 turnips from 2, twice what a campfire makes.
+- **Prices:** Marta buys clay (1), planks (2), charcoal (2) and bricks (4). The watchtower now costs 8 planks and 6 stone, so planks have a use from the start.
+- Still to do: move the Cottage's iron nails onto a recipe (nails from iron ingots at the anvil, step 1), while Marta keeps selling them so the cottage stays reachable before the mine. Later tiers (stone walls, the Longhouse) are priced in bricks and planks.
 
 #### Step 1: Hollow Mine (bronze)
 - **Where:** off the Forest Road past Ashby, an old mine dug into the valley wall. The road is the trip there (a short forest walk with wild boars, whose hides make the **furs** planned in §6); the mine is the region.
@@ -477,6 +481,7 @@ Keyboard and mouse, or a controller (Xbox, PlayStation / DualSense, or anything 
 | Block (time it to parry) | RMB (hold) | LT (hold) | L2 (hold) |
 | Class ability | R or mouse button 4 | Y | △ |
 | Level-5 ability | T or mouse button 5 | hold LB + Y | hold L1 + △ |
+| Level-12 ability | G | hold LB + X | hold L1 + □ |
 | Climb (walk into pale rock) / leap off | W into the rock / Space | stick into the rock / A | stick into the rock / ✕ |
 | Open / fold the glider (in the air) | Space | A | ✕ |
 | Interact (stations, beds, plots, wells, chests, trader, signs) | E | X | □ |
@@ -497,7 +502,7 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner, levels on nameplates, the level-5 abilities, the second ability key, talents at levels 3 and 8 and the downed state are built; the level-12 abilities are next) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner, levels on nameplates, the level-5 and level-12 abilities and their keys, talents at levels 3 and 8 and the downed state are built: this step is done apart from the level-15 and 20 talents, which come with their regions) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
 9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.
@@ -553,7 +558,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
   - Being defeated drops **half of each stack** in your pack. Packs are saved with the player and mirrored only to their owner.
 - Players are saved by name: rejoining puts you back where you logged out, with your respawn shrine and your pack.
 
-### Downed and revived (built, except Rekindle)
+### Downed and revived (built)
 - **Why:** in co-op a lost fight should be something a friend can save. It also gives the Healer's **Rekindle** (§6, level 12) something to do.
 - **Going down:** at 0 health you're **downed** instead of defeated at once, as long as another player who isn't downed is within 60 m. Playing alone, or with nobody near, you're defeated at once, as now.
 - **While downed:**
@@ -568,7 +573,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
   - For the downed player: the screen greys and darkens at the edges, and the timer counts down in the middle with "Hold Jump to give up".
   - For everyone else: a marker over the downed player shows through walls and terrain, with their name and the timer. Within reach the prompt reads "Hold E to revive *name*".
   - A downed pose: KayKit's lying-down clips if it has them, otherwise built from the skeleton, as the climb is.
-- **Code (built):** `Health` has two server hooks: `BeforeLethal` (a killing blow leaves the player on 1 health and downs them, if `Net.HasHelper`) and `Absorb` (no hit lands while downed). `Net.Downed.cs` runs it on the server: `ServerTryDown`, the 30 s timer, the revive hold (`S_Revive`, a hit on the helper or stepping away breaks it), give up (`S_GiveUp`), and defeat, which goes through the normal death path. Every machine hears `C_Downed` and `C_ReviveProgress` (protocol 10). Downed players lie in KayKit's death pose and crawl; `Enemy` targeting skips them; the `Interactor` finds a downed friend within 2.6 m and holds the revive. Still to build: Rekindle (level 12).
+- **Code (built):** `Health` has two server hooks: `BeforeLethal` (a killing blow leaves the player on 1 health and downs them, if `Net.HasHelper`) and `Absorb` (no hit lands while downed). `Net.Downed.cs` runs it on the server: `ServerTryDown`, the 30 s timer, the revive hold (`S_Revive`, a hit on the helper or stepping away breaks it), give up (`S_GiveUp`), and defeat, which goes through the normal death path. Every machine hears `C_Downed` and `C_ReviveProgress` (protocol 10). Downed players lie in KayKit's death pose and crawl; `Enemy` targeting skips them; the `Interactor` finds a downed friend within 2.6 m and holds the revive. Rekindle (level 12) calls the same `ServerRevive`.
 
 ### Sleeping
 - Using a bed puts you to sleep. You can get up with E or by moving.

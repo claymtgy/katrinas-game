@@ -42,6 +42,9 @@ public partial class Health : Node
     /// <summary>Server: asked before a killing blow; true keeps this alive at 1 health instead (a
     /// player going down, GDD §16).</summary>
     public Func<Node, bool> BeforeLethal;
+    /// <summary>Server: what a hit from a source is multiplied by before armour (War Cry, Mark:
+    /// Net.ServerDamageBonus).</summary>
+    public static Func<Health, Node, float> Bonus;
 
     public override void _Ready()
     {
@@ -62,6 +65,7 @@ public partial class Health : Node
     {
         if (!Authoritative || IsDead || amount <= 0f) return;
         if (Absorb != null && Absorb(source)) return;
+        if (Bonus != null && source != null) amount *= Bonus(this, source);
         if (!ignoreArmor) amount = AfterArmor(amount);
         if (Current - amount <= 0f && BeforeLethal != null && BeforeLethal(source))
         {

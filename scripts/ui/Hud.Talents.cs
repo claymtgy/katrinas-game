@@ -99,6 +99,10 @@ public partial class Hud
     /// <summary>A level with a talent to pick: say where to pick it.</summary>
     private void TalentLevelHint(int level)
     {
+        var me = GameState.Instance.LocalPlayer;
+        for (int slot = 1; slot <= 2 && me != null; slot++)
+            if (me.Class.Ability(slot) is { } a && a.UnlockLevel == level)
+                Toast($"New ability: {a.Name} on {Gamepad.ButtonName(slot == 1 ? "ability_2" : "ability_3")}.");
         if (Talents.Levels.Contains(level))
             Toast("A new talent to choose: open the character sheet (I), Talents tab.");
     }

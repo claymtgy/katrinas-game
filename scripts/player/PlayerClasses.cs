@@ -4,7 +4,7 @@ using Godot;
 namespace KatrinasGame;
 
 /// <summary>One ability: its own stamina cost, cooldown and the level that unlocks it (GDD §6,
-/// *Levels and abilities*). Slot 0 is on R, slot 1 (level 5) on T.</summary>
+/// *Levels and abilities*). Slot 0 is on R, slot 1 (level 5) on T, slot 2 (level 12) on G.</summary>
 public sealed record AbilityDef(string Id, string Name, string Text, float Stamina, float Cooldown, int UnlockLevel);
 
 /// <summary>One player class: passive tweaks to the shared moveset, plus its abilities: the first
@@ -29,13 +29,15 @@ public sealed record ClassDef(
     float StaminaRegen = 1f,
     float FoodHealing = 1f,
     float HealthRegen = 0f,
-    AbilityDef Second = null)
+    AbilityDef Second = null,
+    AbilityDef Third = null)
 {
     /// <summary>The ability in a slot (0 = R, 1 = T), or null if the class has none there.</summary>
     public AbilityDef Ability(int slot) => slot switch
     {
         0 => new AbilityDef(Id + "_1", AbilityName, AbilityText, AbilityStamina, AbilityCooldown, 1),
         1 => Second,
+        2 => Third,
         _ => null,
     };
 }
@@ -46,6 +48,9 @@ public static class PlayerClasses
     /// <summary>Slot 1 abilities (level 5).</summary>
     public const string ChargeId = "charge", ShadowstepId = "shadowstep", FrostNovaId = "frost_nova", BlossomWardId = "blossom_ward", VolleyId = "volley";
     public const int SecondAbilityLevel = 5;
+    /// <summary>Slot 2 abilities (level 12).</summary>
+    public const string WarCryId = "war_cry", VenomId = "venom", MeteorId = "meteor", RekindleId = "rekindle", MarkId = "mark";
+    public const int ThirdAbilityLevel = 12;
 
     public static readonly ClassDef Warrior = new(
         WarriorId, "Warrior",
@@ -54,7 +59,9 @@ public static class PlayerClasses
         AbilityStamina: 30f, AbilityCooldown: 7f, Tint: new Color(0.9f, 0.45f, 0.3f),
         BonusHealth: 30f, HeavyDamage: 1.25f, GuardCost: 0.7f,
         Second: new(ChargeId, "Charge", "Rush 8 m forward. The first enemy in your way is struck and knocked down for 1.2 s.",
-            25f, 9f, SecondAbilityLevel));
+            25f, 9f, SecondAbilityLevel),
+        Third: new(WarCryId, "War Cry", "You and players within 9 m deal 20% more damage for 8 s, and enemies within 5 m stagger.",
+            30f, 30f, ThirdAbilityLevel));
 
     public static readonly ClassDef Rogue = new(
         RogueId, "Rogue",
@@ -63,7 +70,9 @@ public static class PlayerClasses
         AbilityStamina: 25f, AbilityCooldown: 14f, Tint: new Color(0.55f, 0.5f, 0.75f),
         MoveSpeed: 1.1f, LightDamage: 1.2f, DodgeCost: 0.6f, DodgeIFrames: 1.35f,
         Second: new(ShadowstepId, "Shadowstep", "Appear behind the enemy you're looking at, within 12 m. Your next strike within 2 s is a critical hit (double damage).",
-            20f, 10f, SecondAbilityLevel));
+            20f, 10f, SecondAbilityLevel),
+        Third: new(VenomId, "Venom", "For 10 s your hits poison: 4 damage a second for 5 s, stacking up to 3 times.",
+            25f, 25f, ThirdAbilityLevel));
 
     public static readonly ClassDef Wizard = new(
         WizardId, "Wizard",
@@ -72,7 +81,9 @@ public static class PlayerClasses
         AbilityStamina: 16f, AbilityCooldown: 0.9f, Tint: new Color(1f, 0.55f, 0.2f),
         BonusHealth: -20f, StaminaRegen: 1.25f,
         Second: new(FrostNovaId, "Frost Nova", "A burst of frost: enemies within 5 m are slowed by half for 3 s.",
-            24f, 12f, SecondAbilityLevel));
+            24f, 12f, SecondAbilityLevel),
+        Third: new(MeteorId, "Meteor", "Call down a meteor where you look, within 25 m. A second later it lands for 60 damage within 4 m.",
+            40f, 18f, ThirdAbilityLevel));
 
     public static readonly ClassDef Healer = new(
         HealerId, "Healer",
@@ -81,7 +92,9 @@ public static class PlayerClasses
         AbilityStamina: 30f, AbilityCooldown: 10f, Tint: new Color(0.45f, 0.9f, 0.55f),
         FoodHealing: 1.5f, HealthRegen: 1.5f,
         Second: new(BlossomWardId, "Blossom Ward", "A 5 m circle of petals for 8 s. Like a sanctuary, enemies won't enter it or hunt anyone inside.",
-            35f, 24f, SecondAbilityLevel));
+            35f, 24f, SecondAbilityLevel),
+        Third: new(RekindleId, "Rekindle", "A downed friend within 12 m gets up at once with half their health.",
+            40f, 45f, ThirdAbilityLevel));
 
     public static readonly ClassDef Archer = new(
         ArcherId, "Archer",
@@ -90,7 +103,9 @@ public static class PlayerClasses
         AbilityStamina: 8f, AbilityCooldown: 0.7f, Tint: new Color(0.95f, 0.85f, 0.45f),
         MoveSpeed: 1.04f,
         Second: new(VolleyId, "Volley", "Loose 5 arrows in a 30° fan, 10 damage each.",
-            22f, 6f, SecondAbilityLevel));
+            22f, 6f, SecondAbilityLevel),
+        Third: new(MarkId, "Mark", "Tag the enemy you aim at, within 40 m, for 10 s. Everyone hits it 25% harder and sees it through walls.",
+            15f, 15f, ThirdAbilityLevel));
 
     public static readonly ClassDef[] All = { Warrior, Rogue, Wizard, Healer, Archer };
 

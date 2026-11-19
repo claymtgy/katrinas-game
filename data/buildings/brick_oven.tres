@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/BrickOven.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "brick_oven"
+DisplayName = "Brick Oven"
+Description = "Bakes twice the bread and roasts twice the turnips of a campfire."
+Scene = ExtResource("2_scene")
+Cost = {"bricks": 6, "stone": 2}
+Footprint = Vector3(1.5, 1.4, 1.5)
+SortOrder = 13

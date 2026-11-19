@@ -84,6 +84,7 @@ public partial class HomeCliffs : Node3D
         BuildHomeChest();
         BuildFallsValley(); // its scatter uses the shared random numbers
         BuildOreVeins();    // after everything else, so the other resource names don't shift
+        BuildClay();
         ClearTrailsOfScatter();
 
         AddChild(new Weather { Name = "Weather" });

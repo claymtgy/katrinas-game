@@ -1,0 +1,88 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/crafting/CraftingStation.cs" id="1_station"]
+
+[sub_resource type="BoxMesh" id="Mesh_base"]
+size = Vector3(1.4, 0.6, 1.4)
+
+[sub_resource type="SphereMesh" id="Mesh_dome"]
+radius = 0.62
+height = 1.0
+radial_segments = 10
+rings = 5
+is_hemisphere = true
+
+[sub_resource type="BoxMesh" id="Mesh_mouth"]
+size = Vector3(0.44, 0.3, 0.1)
+
+[sub_resource type="CylinderMesh" id="Mesh_chimney"]
+top_radius = 0.11
+bottom_radius = 0.13
+height = 0.45
+radial_segments = 8
+
+[sub_resource type="BoxMesh" id="Mesh_ledge"]
+size = Vector3(0.7, 0.06, 0.3)
+
+[sub_resource type="StandardMaterial3D" id="Mat_brick"]
+albedo_color = Color(0.7, 0.33, 0.25, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_stone"]
+albedo_color = Color(0.52, 0.52, 0.56, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+albedo_color = Color(1, 0.55, 0.2, 1)
+emission_enabled = true
+emission = Color(1, 0.45, 0.12, 1)
+emission_energy_multiplier = 2.0
+
+[sub_resource type="StandardMaterial3D" id="Mat_wood"]
+albedo_color = Color(0.55, 0.38, 0.22, 1)
+roughness = 1.0
+
+[sub_resource type="BoxShape3D" id="Shape_oven"]
+size = Vector3(1.4, 1.3, 1.4)
+
+[node name="BrickOven" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_station")
+StationId = "oven"
+StationName = "Brick Oven"
+
+[node name="Base" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.3, 0)
+mesh = SubResource("Mesh_base")
+surface_material_override/0 = SubResource("Mat_stone")
+
+[node name="Dome" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.6, 0)
+mesh = SubResource("Mesh_dome")
+surface_material_override/0 = SubResource("Mat_brick")
+
+[node name="Mouth" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.76, 0.58)
+mesh = SubResource("Mesh_mouth")
+surface_material_override/0 = SubResource("Mat_glow")
+
+[node name="Chimney" type="MeshInstance3D" parent="."]
+position = Vector3(0.25, 1.2, -0.2)
+mesh = SubResource("Mesh_chimney")
+surface_material_override/0 = SubResource("Mat_brick")
+
+[node name="Ledge" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.63, 0.82)
+mesh = SubResource("Mesh_ledge")
+surface_material_override/0 = SubResource("Mat_wood")
+
+[node name="Glow" type="OmniLight3D" parent="."]
+position = Vector3(0, 0.8, 1.0)
+light_color = Color(1, 0.6, 0.3, 1)
+light_energy = 0.7
+omni_range = 2.5
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.65, 0)
+shape = SubResource("Shape_oven")

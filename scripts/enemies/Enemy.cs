@@ -99,6 +99,7 @@ public abstract partial class Enemy : CharacterBody3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
+        TickStatus(dt);
         if (Current != State.Dead && !Frozen)
         {
             if (Net.Instance.IsServer) Think(dt);

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RecipeDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/RecipeDef.cs" id="1_recipe"]
+
+[resource]
+script = ExtResource("1_recipe")
+Id = "bake_bread"
+DisplayName = "Bread (oven)"
+Station = "oven"
+Inputs = {"wheat": 3}
+OutputItem = "bread"
+OutputCount = 2
+SortOrder = 20

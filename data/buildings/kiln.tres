@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Kiln.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "kiln"
+DisplayName = "Kiln"
+Description = "Fire clay into bricks and wood into charcoal; smelts iron better than a campfire."
+Scene = ExtResource("2_scene")
+Cost = {"stone": 8, "clay": 4}
+Footprint = Vector3(1.6, 2.0, 1.6)
+SortOrder = 12
