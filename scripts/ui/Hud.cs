@@ -41,11 +41,16 @@ public partial class Hud : CanvasLayer
 
     // character sheet
     private readonly Dictionary<string, ItemSlot> _wornSlots = new();
-    private GridContainer _sheetPack;
+    private GridContainer _sheetPack, _sheetArms;
+    /// <summary>The paper doll's weapon slot (what you hold; not armour).</summary>
+    private const string MainHand = "main_hand";
+    /// <summary>The equipment screen's slots: the main hand, then weapons and tools (tests).</summary>
+    public IEnumerable<ItemSlot> EquipmentSlots =>
+        new[] { _wornSlots[MainHand] }.Concat(_sheetArms.GetChildren().OfType<ItemSlot>().Where(s => s.Visible));
     private VBoxContainer _sheetStats;
     private Label _sheetName;
     private int _sheetVersion = -1;
-    private Button _tabCharacter, _tabJournal;
+    private Button _tabCharacter, _tabJournal;   // (and _tabTalents, Hud.Talents)
     private Control _sheetCharacter, _sheetJournal;
     private Label _sheetHint;
     private bool _journalTab;
@@ -243,7 +248,7 @@ public partial class Hud : CanvasLayer
         {
             ("inventory", Gamepad.UsingPad ? "Character sheet & journal ({tabs} switch)" : "Character: armour and pack"),
             ("journal", "Journal: goals and errands"),
-            ("build_mode", "Build mode ({next_build} change, {rotate_build} rotate)"), ("jump", "In the air: open the glider"),
+            ("build_mode", "Build mode ({next_build} change, {rotate_build} rotate)"), ("jump", "In the air: open the glider (look down to dive)"),
             ("move", "Into pale rock: climb ({jump} leaps off)"), ("player_list", "Players"), ("save", "Save / load (host)"), ("menu", "Menu"),
         };
         cols.AddChild(KeyList(left));
@@ -386,7 +391,7 @@ public partial class Hud : CanvasLayer
         _sheet.Visible = false;
         _help.Visible = false;
         foreach (var c in GetChildren())
-            if (c is CharacterCreator cc) cc.QueueFree();
+            if (c is CharacterCreator or GraphicsMenu) c.QueueFree();
         _station = null;
         _trader = null;
         _shrine = null;
@@ -432,7 +437,7 @@ public partial class Hud : CanvasLayer
         }
         else if (_sheet.Visible && (e.IsActionPressed("tab_prev") || e.IsActionPressed("tab_next")))
         {
-            ShowSheetTab(!_journalTab);
+            ShowSheetPage(_sheetPage + (e.IsActionPressed("tab_next") ? 1 : -1));
             GetViewport().SetInputAsHandled();
         }
         else if (e.IsAction("player_list"))
@@ -447,6 +452,51 @@ public partial class Hud : CanvasLayer
         }
     }
 
+    // ================================================================== downed (GDD §16)
+
+    private ColorRect _downedShade;
+    private Label _downedText;
+
+    /// <summary>Downed: the screen greys and darkens, with the time left and how to give up.</summary>
+    private void UpdateDowned(PlayerController player)
+    {
+        if (_downedShade == null)
+        {
+            _downedShade = new ColorRect
+            {
+                Name = "DownedShade", MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false,
+                Material = new ShaderMaterial { Shader = new Shader { Code = @"shader_type canvas_item;
+uniform sampler2D screen : hint_screen_texture, filter_linear;
+void fragment() {
+    vec3 c = texture(screen, SCREEN_UV).rgb;
+    float g = dot(c, vec3(0.3, 0.59, 0.11));
+    vec2 d = SCREEN_UV - 0.5;
+    float vig = smoothstep(0.25, 0.75, length(d * vec2(1.4, 1.0)));
+    COLOR = vec4(mix(vec3(g) * 0.8, vec3(0.08, 0.0, 0.0), vig * 0.75), 1.0);
+}" } },
+            };
+            _downedShade.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            AddChild(_downedShade);
+            MoveChild(_downedShade, 0);
+            _downedText = UiTheme.Label("", "Heading", HorizontalAlignment.Center);
+            _downedText.AddThemeFontSizeOverride("font_size", 30);
+            _downedText.AddThemeColorOverride("font_color", new Color(1f, 0.9f, 0.85f));
+            _downedText.AddThemeConstantOverride("outline_size", 8);
+            _downedText.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.8f));
+            _downedText.SetAnchorsPreset(Control.LayoutPreset.Center);
+            _downedText.GrowHorizontal = Control.GrowDirection.Both;
+            _downedText.GrowVertical = Control.GrowDirection.Both;
+            _downedShade.AddChild(_downedText);
+        }
+        _downedShade.Visible = player.Downed;
+        if (!player.Downed) return;
+        float left = Mathf.Max(0f, (float)(player.DownedUntil - Net.Now));
+        string help = player.ReviveProgress > 0.01f ? $"Being revived… {player.ReviveProgress * 100f:0}%" : "Wait for a friend to revive you";
+        string giveUp = player.GiveUpHeld > 0 ? $"Giving up… {player.GiveUpHeld / PlayerController.GiveUpSeconds * 100f:0}%"
+                                              : $"Hold {Gamepad.ButtonName("jump")} to give up";
+        _downedText.Text = $"You're down\n{left:0}\n{help}\n{giveUp}";
+    }
+
     // ================================================================== per-frame
 
     public override void _Process(double delta)
@@ -454,6 +504,7 @@ public partial class Hud : CanvasLayer
         if (Instance != this) return;
         var gs = GameState.Instance;
         var net = Net.Instance;
+        PadScroll((float)delta);
         UpdateSession(gs, net);
         var player = gs.LocalPlayer;
         if (player == null) return;
@@ -471,11 +522,17 @@ public partial class Hud : CanvasLayer
         if (_inventoryDirty) RefreshInventory();
         UpdateBuffs(player);
         UpdateHotbar(gs, player);
-        if (_sheet.Visible && _sheetVersion != player.Pack.Version * 1000 + player.WornVersion) RefreshSheet();
+        if (_sheet.Visible && _sheetVersion != SheetVersion(player)) RefreshSheet();
+        if (TalentsTabOpen && _talentsVersion != TalentsVersion(player)) RefreshTalents();
         UpdateGuidance(gs, player);
 
         var target = player.Interactor.Target;
-        _prompt.Text = target != null && !gs.UiOpen ? target.InteractPrompt : "";
+        var rescue = player.Interactor.ReviveTarget;
+        _prompt.Text = gs.UiOpen ? ""
+            : rescue != null ? $"Hold {Gamepad.ButtonName("interact")} to revive {rescue.DisplayName}"
+                               + (rescue.ReviveProgress > 0.01f ? $"  ({rescue.ReviveProgress * 100f:0}%)" : "")
+            : target != null ? target.InteractPrompt : "";
+        UpdateDowned(player);
         _promptRow.Visible = _prompt.Text != "";
 
         var build = player.Build;
@@ -629,13 +686,56 @@ public partial class Hud : CanvasLayer
         }));
     }
 
+    private float _scrollCarry;
+
+    /// <summary>Controller: the right stick scrolls the open board's list (trade, crafting, pack, journal).</summary>
+    private void PadScroll(float dt)
+    {
+        if (!GameState.Instance.UiOpen) { _scrollCarry = 0; return; }
+        float y = Input.GetAxis("look_up", "look_down");
+        if (Mathf.Abs(y) < 0.05f) { _scrollCarry = 0; return; }
+        var board = new[] { _craftPanel, _sheet, _help }.FirstOrDefault(b => b.Visible);
+        var scroll = board == null ? null : FirstScroll(board);
+        if (scroll == null) return;
+        _scrollCarry += y * 1100f * dt;
+        int step = (int)_scrollCarry;
+        _scrollCarry -= step;
+        scroll.ScrollVertical += step;
+    }
+
+    /// <summary>Godot's wheel step is an eighth of the view (about 58 px here): long lists like the
+    /// trade board took dozens of notches. Scroll about one row per notch instead.</summary>
+    private static void FastWheel(ScrollContainer scroll)
+    {
+        scroll.GuiInput += e =>
+        {
+            if (e is not InputEventMouseButton { Pressed: true } mb) return;
+            int dir = mb.ButtonIndex switch { MouseButton.WheelDown => 1, MouseButton.WheelUp => -1, _ => 0 };
+            if (dir == 0) return;
+            scroll.ScrollVertical += Mathf.RoundToInt(dir * 110 * (mb.Factor > 0 ? mb.Factor : 1f));
+            scroll.AcceptEvent();
+        };
+    }
+
+    private static ScrollContainer FirstScroll(Node root)
+    {
+        foreach (var child in root.GetChildren())
+        {
+            if (child is not Control c || !c.IsVisibleInTree()) continue;
+            if (c is ScrollContainer s) return s;
+            if (FirstScroll(c) is { } inner) return inner;
+        }
+        return null;
+    }
+
     // ================================================================== crafting / trade / enchanting
 
     private void BuildCraftPanel()
     {
         _craftPanel = Board(680, 620, "Workbench", out var body, out var footer);
-        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, FollowFocus = true };
         body.AddChild(scroll);
+        FastWheel(scroll);
         _craftList = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _craftList.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(_craftList);
@@ -850,25 +950,30 @@ public partial class Hud : CanvasLayer
 
     private void BuildSheet()
     {
-        _sheet = Board(1020, 660, "Character", out var body, out var footer);
+        _sheet = Board(1080, 700, "Character & Equipment", out var body, out var footer);
         // Tabs: Character | Journal (I / J, or LB / RB on a controller).
         var tabs = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         tabs.AddThemeConstantOverride("separation", 10);
         body.AddChild(tabs);
-        _tabCharacter = new Button { Text = "Character", ToggleMode = true, CustomMinimumSize = new Vector2(170, 40) };
+        _tabCharacter = new Button { Text = "Equipment", ToggleMode = true, CustomMinimumSize = new Vector2(170, 40) };
+        _tabTalents = new Button { Text = "Talents", ToggleMode = true, CustomMinimumSize = new Vector2(170, 40) };
         _tabJournal = new Button { Text = "Journal", ToggleMode = true, CustomMinimumSize = new Vector2(170, 40) };
         var group = new ButtonGroup();
         _tabCharacter.ButtonGroup = group;
+        _tabTalents.ButtonGroup = group;
         _tabJournal.ButtonGroup = group;
-        _tabCharacter.Pressed += () => ShowSheetTab(false, focus: false);
-        _tabJournal.Pressed += () => ShowSheetTab(true, focus: false);
+        _tabCharacter.Pressed += () => ShowSheetPage(0, focus: false);
+        _tabTalents.Pressed += () => ShowSheetPage(1, focus: false);
+        _tabJournal.Pressed += () => ShowSheetPage(2, focus: false);
         tabs.AddChild(_tabCharacter);
+        tabs.AddChild(_tabTalents);
         tabs.AddChild(_tabJournal);
 
         var row = new HBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         row.AddThemeConstantOverride("separation", 24);
         body.AddChild(row);
         _sheetCharacter = row;
+        body.AddChild(BuildTalents());
         _sheetJournal = BuildJournal();
         body.AddChild(_sheetJournal);
 
@@ -880,7 +985,7 @@ public partial class Hud : CanvasLayer
         grid.AddThemeConstantOverride("h_separation", 8);
         grid.AddThemeConstantOverride("v_separation", 8);
         doll.AddChild(grid);
-        string[] layout = { "", Gear.Head, "", Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, "", Gear.Feet };
+        string[] layout = { "", Gear.Head, MainHand, Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, "", Gear.Feet };
         foreach (var slotId in layout)
         {
             if (slotId == "") { grid.AddChild(new Control { CustomMinimumSize = new Vector2(84, 84) }); continue; }
@@ -888,11 +993,20 @@ public partial class Hud : CanvasLayer
             var sid = slotId;
             slot.Pressed += () =>
             {
-                if (GameState.Instance.LocalPlayer?.Worn.ContainsKey(sid) ?? false) { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTakeOff(sid); }
+                var me = GameState.Instance.LocalPlayer;
+                if (sid == MainHand) { if (me != null && me.Equipped != "") { Sfx.Ui("ui_click", -6f); Net.Instance.RequestEquip(""); } }
+                else if (me?.Worn.ContainsKey(sid) ?? false) { Sfx.Ui("ui_click", -6f); Net.Instance.RequestTakeOff(sid); }
             };
             grid.AddChild(slot);
             _wornSlots[slotId] = slot;
         }
+        // Weapons and tools you can take in hand (they're kept in the stockpile).
+        doll.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
+        doll.AddChild(UiTheme.Label("Weapons & tools", "Heading", HorizontalAlignment.Center));
+        _sheetArms = new GridContainer { Columns = 4 };
+        _sheetArms.AddThemeConstantOverride("h_separation", 4);
+        _sheetArms.AddThemeConstantOverride("v_separation", 4);
+        doll.AddChild(_sheetArms);
         row.AddChild(doll);
 
         // Stats.
@@ -905,11 +1019,12 @@ public partial class Hud : CanvasLayer
         // Pack.
         var packCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         packCol.AddChild(UiTheme.Label("Pack", "Heading"));
-        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, FollowFocus = true };
         _sheetPack = new GridContainer { Columns = 5 };
         _sheetPack.AddThemeConstantOverride("h_separation", 4);
         _sheetPack.AddThemeConstantOverride("v_separation", 4);
         scroll.AddChild(_sheetPack);
+        FastWheel(scroll);
         packCol.AddChild(scroll);
         row.AddChild(packCol);
 
@@ -921,16 +1036,45 @@ public partial class Hud : CanvasLayer
         footer.AddChild(close);
     }
 
+    /// <summary>Changes when anything the sheet shows does: pack, armour, held weapon, stockpile.</summary>
+    private static int SheetVersion(PlayerController me) =>
+        System.HashCode.Combine(me.Pack.Version, me.WornVersion, me.Equipped, GameState.Instance.Inventory.Version);
+
     private void RefreshSheet()
     {
         var me = GameState.Instance.LocalPlayer;
         if (me == null) return;
-        _sheetVersion = me.Pack.Version * 1000 + me.WornVersion;
+        _sheetVersion = SheetVersion(me);
         _sheetName.Text = $"{me.DisplayName} · {me.Class.Name}";
         foreach (var (slotId, slot) in _wornSlots)
         {
+            if (slotId == MainHand)
+            {
+                slot.SetItem(me.Equipped, 1, "Main hand");
+                if (me.Equipped != "") slot.TooltipText += "\n(click to put it away)";
+                continue;
+            }
             slot.SetItem(me.Worn.TryGetValue(slotId, out var id) ? id : "", 1, Gear.SlotName(slotId));
             if (id != null) slot.TooltipText += "\n(click to take off)";
+        }
+
+        // Weapons & tools: fists, then everything in the stockpile, weakest first; click to hold.
+        var arms = GameState.Instance.WeaponSlots(me);
+        while (_sheetArms.GetChildCount() < arms.Count)
+        {
+            var slot = new ItemSlot(60);
+            slot.Pressed += () => { Sfx.Ui("ui_click", -6f); Net.Instance.RequestEquip(slot.ItemId == "fists" ? "" : slot.ItemId); };
+            _sheetArms.AddChild(slot);
+        }
+        for (int i = 0; i < _sheetArms.GetChildCount(); i++)
+        {
+            var slot = (ItemSlot)_sheetArms.GetChild(i);
+            slot.Visible = i < arms.Count;
+            if (i >= arms.Count) continue;
+            slot.SetItem(arms[i] == "" ? "fists" : arms[i], 1);
+            if (arms[i] == "") slot.TooltipText = "Fists";
+            slot.Selected = arms[i] == me.Equipped;
+            slot.TooltipText += arms[i] == me.Equipped ? "\n(in hand)" : "\n(click to hold)";
         }
 
         foreach (var c in _sheetStats.GetChildren()) c.QueueFree();
@@ -982,11 +1126,11 @@ public partial class Hud : CanvasLayer
 
     private void BuildGameMenu()
     {
-        _gameMenu = Board(400, 450, "Menu", out var body, out _);
+        _gameMenu = Board(400, 500, "Menu", out var body, out _);
         var resume = new Button { Text = "Resume" };
         resume.Pressed += CloseMenus;
         body.AddChild(resume);
-        var sheet = new Button { Text = "Character & armour" };
+        var sheet = new Button { Text = "Character & equipment" };
         sheet.Pressed += OpenCharacter;
         body.AddChild(sheet);
         var looks = new Button { Text = "Appearance & class…" };
@@ -998,6 +1142,9 @@ public partial class Hud : CanvasLayer
         var help = new Button { Text = "Controls & help" };
         help.Pressed += () => ShowBoard(_help);
         body.AddChild(help);
+        var graphics = new Button { Text = "Graphics…" };
+        graphics.Pressed += () => OpenGraphics();
+        body.AddChild(graphics);
         body.AddChild(UiTheme.Divider(300));
         var leave = new Button { Text = "Leave to main menu" };
         leave.Pressed += () => Net.Instance.Leave();
@@ -1027,6 +1174,22 @@ public partial class Hud : CanvasLayer
         }, Back) { InGame = true };
         AddChild(creator);
         return creator;
+    }
+
+    /// <summary>Pause menu: window mode, size and vsync. Back returns to the menu.</summary>
+    public GraphicsMenu OpenGraphics()
+    {
+        bool fromMenu = _gameMenu.Visible;
+        _gameMenu.Visible = false;
+        GameState.Instance.SetUiOpen(true);
+        var menu = new GraphicsMenu(() =>
+        {
+            if (!fromMenu || !GameState.Instance.UiOpen) return;
+            _gameMenu.Visible = true;
+            if (Gamepad.UsingPad) Callable.From(() => FocusFirst(_gameMenu)).CallDeferred();
+        });
+        AddChild(menu);
+        return menu;
     }
 
     // ================================================================== helpers

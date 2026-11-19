@@ -17,7 +17,9 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 9;
+    public const int ProtocolVersion = 10;
+    /// <summary>Scripted tests: force the Herbalist roll (1 = always an extra meal); null = random.</summary>
+    public static float? HerbalistRoll;
     public const string MainScenePath = "res://scenes/Main.tscn";
     public const string MenuScenePath = "res://scenes/ui/MainMenu.tscn";
     private const float StateSendInterval = 1f / 30f;
@@ -364,7 +366,7 @@ public partial class Net : Node
     {
         ["id"] = p.PeerId, ["name"] = p.DisplayName, ["pos"] = p.GlobalPosition,
         ["equipped"] = p.Equipped, ["sleeping"] = p.Sleeping, ["look"] = p.Look.ToDict(), ["worn"] = Gear.ToDict(p.Worn),
-        ["xp"] = p.Xp,
+        ["xp"] = p.Xp, ["talents"] = Talents.ToDict(p.TalentPicks),
     };
 
     private void ApplySnapshot(GDict s)
@@ -398,6 +400,7 @@ public partial class Net : Node
             p.Sleeping = info["sleeping"].AsBool();
             p.SetWorn(Gear.FromDict(info.TryGetValue("worn", out var wv) ? wv.AsGodotDictionary() : null));
             p.SetXp(info.TryGetValue("xp", out var xv) ? xv.AsInt32() : 0);
+            p.TalentPicks = Talents.FromDict(info.TryGetValue("talents", out var tv) ? tv.AsGodotDictionary() : null);
         }
 
         Gs.SetHomeTier(s["home_tier"].AsInt32());
@@ -488,6 +491,7 @@ public partial class Net : Node
         p.Equipped = info["equipped"].AsString();
         p.SetWorn(Gear.FromDict(info.TryGetValue("worn", out var wv) ? wv.AsGodotDictionary() : null));
         p.SetXp(info.TryGetValue("xp", out var xv) ? xv.AsInt32() : 0);
+        p.TalentPicks = Talents.FromDict(info.TryGetValue("talents", out var tv) ? tv.AsGodotDictionary() : null);
         Hud.Toast($"{p.DisplayName} joined the game");
     }
 
@@ -635,6 +639,7 @@ public partial class Net : Node
     public HitResult ServerDamagePlayer(PlayerController p, float amount, Node source)
     {
         var result = HitResult.Hit;
+        if (p.Downed) return HitResult.Dodged;            // nothing hurts a downed player further
         if (Now < p.DodgeUntil) return HitResult.Dodged; // rolled clear
         float raw = amount;
         amount *= 1f - Gear.Reduction(p); // armour
@@ -716,7 +721,7 @@ public partial class Net : Node
     private void S_Eat()
     {
         var p = SenderPlayer();
-        if (p == null || p.Health.IsDead) return;
+        if (p == null || p.Health.IsDead || p.Downed) return;
         var foods = ItemDb.Items.Values.Where(d => d.IsFood && Supplies.Count(p, d.Id) > 0).ToList();
         if (foods.Count == 0)
         {
@@ -837,6 +842,9 @@ public partial class Net : Node
 
         var item = ItemDb.Get(recipe.OutputItem);
         int count = recipe.OutputCount;
+        // The Healer's Herbalist talent: now and then the pot stretches to one more meal.
+        bool extraMeal = item is { IsFood: true } && Talents.Has(p, Talents.Herbalist) && GD.Randf() < (HerbalistRoll ?? Talents.HerbalistChance);
+        if (extraMeal) count++;
         Journal.Fact($"crafted:{recipe.OutputItem}");
         ServerXpForCraft(p, recipe.OutputItem);
         if (item is { IsWeapon: true }) Journal.Fact("crafted_weapon");
@@ -855,7 +863,8 @@ public partial class Net : Node
             return;
         }
         if (count > 0) Gs.Inventory.Add(recipe.OutputItem, count);
-        ToastTo(p.PeerId, item != null && item.IsWeapon ? $"Crafted and equipped {recipe.DisplayName}" : $"Crafted {recipe.DisplayName}");
+        ToastTo(p.PeerId, item != null && item.IsWeapon ? $"Crafted and equipped {recipe.DisplayName}"
+            : extraMeal ? $"Crafted {recipe.DisplayName}, with enough for one more (Herbalist)" : $"Crafted {recipe.DisplayName}");
     }
 
     // ---------------------------------------------------------------- armour (Gear)
@@ -1048,6 +1057,7 @@ public partial class Net : Node
 
     private void ServerRespawn(PlayerController p, string message)
     {
+        if (p.Downed) ServerSetDowned(p, false);
         if (p.Sleeping) SetSleeping(p, false);
         p.Health.Reset();
         ToPeer(p.PeerId, MethodName.C_Respawn, p.SpawnPoint, message);
@@ -1223,6 +1233,7 @@ public partial class Net : Node
     {
         if (!InSession || !IsServer) return;
         float dt = (float)delta;
+        TickDowned(dt);
 
         if (_inventoryDirty)
         {

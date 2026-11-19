@@ -64,7 +64,7 @@ public partial class NetAutotest : Node
     private async Task Run()
     {
         // Overall watchdog so a hung test never blocks forever.
-        GetTree().CreateTimer(400).Timeout += () => { Check(false, "finished within 400 s"); Finish(); };
+        GetTree().CreateTimer(540).Timeout += () => { Check(false, "finished within 540 s"); Finish(); };
         try
         {
             if (_role == "host") await Host();
@@ -122,17 +122,23 @@ public partial class NetAutotest : Node
         Check(net.Pvp, "PVP is on for this session");
         Check(await Until(() => me.Health.Current < me.Health.Max, 60), $"PVP: the client's punches hurt the host (HP {me.Health.Current})");
 
-        // Wolves: 2 players -> packs of 3. The client walks out to the yard; a pack comes for it.
+        // Wolves: 2 players -> packs of 3. The client walks out to the meadow (away from its
+        // campfire: wolves won't come near a fire); a pack comes for it. The host keeps the
+        // client on its feet: three dire wolves would otherwise down it.
         var wild = Wildlife.Instance;
         Check(Difficulty.PackSize(Wildlife.SoloPackSize) == 3, "with 2 players wolf packs have 3 wolves");
-        Check(await Until(() => other.GlobalPosition.DistanceTo(new Vector3(14, 0, -12)) < 3f, 60), "client is out in the yard");
+        Check(await Until(() => Net.FlatDistance(other.GlobalPosition, DownedSpot) < 3f, 60), "client is out in the meadow");
+        bool keepUp = true;
+        async Task KeepUp() { while (keepUp) { if (!other.Downed && other.Health.Current < other.Health.Max) other.Health.Reset(); await Wait(0.3); } }
+        _ = KeepUp();
         gs.TimeOfDay = 0.9f;
         var pack = wild.SpawnPack(other.GlobalPosition + new Vector3(0, 0, 12), Difficulty.PackSize(Wildlife.SoloPackSize));
         Check(pack.Count == 3, "spawned a pack of 3");
         Check(await Until(() => wild.Bites > 0, 40), "the pack hunts and bites");
         Check(await Until(() => pack.Any(w => w.Health.Current < w.Health.Max), 40), "the client's sword hits a wolf (resolved on the host)");
         await Wait(1.0);
-        foreach (var w in wild.Wolves.Values) wild.Despawn(w);
+        foreach (var w in wild.Wolves.Values.ToList()) wild.Despawn(w);
+        keepUp = false;
         gs.TimeOfDay = 0.4f;
 
         // Vertical slice in co-op. Supplies for the client's errands: coins in its pack (trading
@@ -188,10 +194,75 @@ public partial class NetAutotest : Node
         Check(await Until(() => other.Worn.GetValueOrDefault(Gear.Body) == "leather_jerkin@ward", 40), "the host sees the client put on its enchanted jerkin");
         Check(Mathf.IsEqualApprox(Gear.Armor(other), 10f), $"...and the server counts its armour ({Gear.Armor(other)})");
 
+        // Talents in co-op: the host levels the client to 3 and the client picks one.
+        net.ServerAwardXp(other, Math.Max(0, Levels.StartOf(3) - other.Xp), "a test");
+        Check(await Until(() => Talents.Has(other, Talents.LongDraw), 40), "the client's talent pick (Long Draw) reached the server");
+
+        // Downed and revived (GDD §16). The client waits in the meadow; the host stands beside it.
+        var spot = DownedSpot;
+        async Task<bool> DownClient()
+        {
+            await Until(() => Net.FlatDistance(other.GlobalPosition, spot) < 1.5f && Mathf.IsEqualApprox(other.Health.Current, other.Health.Max), 60);
+            await Wait(0.5);
+            other.Health.TakeDamage(other.Health.Current + 100f, null, true);
+            return other.Downed && !other.Health.IsDead && other.Health.Current >= 1f;
+        }
+        me.Teleport(spot + new Vector3(0, 0.1f, 1.8f));
+        me.Health.Reset();
+        Check(await Until(() => Net.FlatDistance(other.GlobalPosition, spot) < 1.5f, 60), "the client waits in the meadow");
+        other.Health.Reset();
+        Check(await DownClient(), "a killing blow with a friend nearby downs the client instead");
+        other.Health.TakeDamage(50f, null, true);
+        Check(other.Downed && other.Health.Current >= 1f && !other.Health.IsDead, "...and nothing hurts it while it's down");
+        gs.TimeOfDay = 0.9f;
+        var stalker = wild.SpawnPack(spot + new Vector3(0, 0, -9), 1)[0];
+        await Wait(3.0);
+        Check(stalker.Target != other, "a wolf leaves the downed player alone");
+        wild.Despawn(stalker);
+        gs.TimeOfDay = 0.4f;
+        me.Health.Reset();
+        me.Teleport(spot + new Vector3(0, 0.1f, 1.8f));
+        await Wait(0.5);
+        Check(me.Interactor.ReviveTarget == other, "the host is close enough to revive the client");
+        var tc = other.GlobalPosition - me.GlobalPosition;
+        me.Rig.SetLook(Mathf.Atan2(-tc.X, -tc.Z), -0.3f);
+        await Wait(0.2);
+        await Shot("08_downed_friend");
+        me.Interactor.HoldRevive = true;
+        Check(await Until(() => other.ReviveProgress > 0.3f, 3), "holding Interact fills the revive");
+        Check(await Until(() => !other.Downed, Net.ReviveSeconds + 2), "...and gets the client back up");
+        me.Interactor.HoldRevive = false;
+        Check(Mathf.IsEqualApprox(other.Health.Current, other.Health.Max * Net.ReviveHealth, 0.5f),
+            $"...with 30% health ({other.Health.Current:0}/{other.Health.Max:0})");
+        await Wait(1.5);   // let the client see its 30% before we top it up
+        other.Health.Reset();
+
+        // Down again: the client gives up (holds Jump) and goes home.
+        Check(await DownClient(), "downed again");
+        Check(await Until(() => !other.Downed, 15), "the client gave up");
+        Check(Mathf.IsEqualApprox(other.Health.Current, other.Health.Max), "...was defeated and restored");
+        Check(await Until(() => Net.FlatDistance(other.GlobalPosition, spot) > 8f, 10), "...and sent home");
+
+        // Again: nobody revives it in time.
+        Check(await DownClient(), "downed a third time");
+        other.DownedUntil = Net.Now + 1.0;
+        Check(await Until(() => !other.Downed, 4) && Mathf.IsEqualApprox(other.Health.Current, other.Health.Max), "the downed timer runs out: defeated");
+        await Until(() => Net.FlatDistance(other.GlobalPosition, spot) > 8f, 10);
+
+        // And again: the host walks off, leaving nobody to help.
+        Check(await DownClient(), "downed a fourth time");
+        await Wait(1.0);   // let the client see it go down
+        me.Teleport(spot + new Vector3(70, 0.1f, 0));
+        Check(await Until(() => !other.Downed, 3), "with nobody left within 60 m, the client is defeated");
+        me.Teleport(spot + new Vector3(0, 0.1f, 1.8f));
+
         // The client leaves at the end.
         Check(await Until(() => gs.Players.Count == 1, 60), "client left; the host keeps running");
         Check(FileAccess.FileExists(GameState.SavePath), "the host wrote the save file");
     }
+
+    /// <summary>Where the downed tests happen: open meadow north of the shack.</summary>
+    private static readonly Vector3 DownedSpot = new(6, 0.1f, 24);
 
     // ------------------------------------------------------------------ client
 
@@ -324,8 +395,8 @@ public partial class NetAutotest : Node
             }
             Check(host.Health.Current < hp, $"PVP: the client's punch damaged the host ({hp} -> {host.Health.Current})");
 
-            // Wolves: wait in the yard for the host's pack, then fight back.
-            me.Teleport(new Vector3(14, 0.1f, -12));
+            // Wolves: wait in the meadow (away from our campfire) for the host's pack, then fight back.
+            me.Teleport(DownedSpot);
             var wild = Wildlife.Instance;
             Check(await Until(() => wild.Wolves.Count == 3, 60), $"client sees the pack of 3 ({wild.Wolves.Count})");
             await Until(() => wild.Wolves.Values.Any(w => w.GlobalPosition.DistanceTo(me.GlobalPosition) < 8f), 20);
@@ -435,6 +506,56 @@ public partial class NetAutotest : Node
             await Wait(0.5);
             await Shot("07_character_sheet");
             Hud.Instance.CloseMenus();
+
+            // Talents: the host levels us to 3; take Long Draw on the Talents tab.
+            Check(await Until(() => me.Level >= 3, 30), $"client reached level 3 ({me.Level})");
+            Hud.Instance.OpenTalents();
+            await Wait(0.4);
+            var draw = Hud.Instance.TalentButton(Talents.LongDraw);
+            Check(draw != null && !draw.Disabled, "client's Talents tab offers Long Draw");
+            draw?.EmitSignal(BaseButton.SignalName.Pressed);
+            Check(await Until(() => Talents.Has(me, Talents.LongDraw), 10), "client took Long Draw (the server's word came back)");
+            await Shot("08_talents");
+            Hud.Instance.CloseMenus();
+
+            // Downed (GDD §16): wait in the meadow four times. 1: revived by the host;
+            // 2: give up (hold Jump); 3: the timer runs out; 4: the host leaves.
+            for (int round = 1; round <= 4; round++)
+            {
+                me.Teleport(DownedSpot);
+                me.Rig.SetLook(0, -0.1f);
+                Check(await Until(() => me.Downed, 60), $"round {round}: the client is downed");
+                await Wait(0.3);
+                Check(Hud.Instance.DownedScreenShown, $"round {round}: the downed screen is up");
+                if (round == 1)
+                {
+                    var start = me.GlobalPosition;
+                    Input.ActionPress("move_forward");
+                    await Wait(0.8);
+                    Input.ActionRelease("move_forward");
+                    Check(Net.FlatDistance(me.GlobalPosition, start) < 1.5f, $"downed, you only crawl ({Net.FlatDistance(me.GlobalPosition, start):0.0} m)");
+                    me.Teleport(DownedSpot);
+                    await Shot("09_downed");
+                    Check(await Until(() => !me.Downed, 20), "the host revived the client");
+                    Check(me.Health.Current < me.Health.Max * 0.5f && !Hud.Instance.DownedScreenShown, $"...up with some health ({me.Health.Current:0})");
+                    await Wait(1.0);
+                    continue;
+                }
+                if (round == 2)
+                {
+                    for (int i = 0; i < 60 && me.Downed; i++) { Input.ActionPress("jump"); await Wait(0.05); }
+                    Input.ActionRelease("jump");
+                }
+                Check(await Until(() => !me.Downed, 15), round switch
+                {
+                    2 => "holding Jump gives up",
+                    3 => "the timer ran out",
+                    _ => "nobody left to help: defeated",
+                });
+                Check(await Until(() => Net.FlatDistance(me.GlobalPosition, DownedSpot) > 8f && Mathf.IsEqualApprox(me.Health.Current, me.Health.Max), 5),
+                    $"round {round}: ...and home at the blossom tree, healed");
+                await Wait(0.5);
+            }
         }
         else
         {

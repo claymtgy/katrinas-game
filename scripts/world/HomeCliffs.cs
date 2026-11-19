@@ -62,6 +62,7 @@ public partial class HomeCliffs : Node3D
         gs.ClaimRadius = 30f;
         gs.WorldSpawn = BlossomPos + new Vector3(2.5f, 0.2f, 3.5f);
 
+        ClearPathRecords();
         BuildGround();
         BuildCliffFace();
         BuildSideWalls();
@@ -81,7 +82,9 @@ public partial class HomeCliffs : Node3D
         BuildAshby();
         BuildBanditCamp();
         BuildHomeChest();
-        BuildFallsValley(); // last: its scatter uses the shared random numbers
+        BuildFallsValley(); // its scatter uses the shared random numbers
+        BuildOreVeins();    // after everything else, so the other resource names don't shift
+        ClearTrailsOfScatter();
 
         AddChild(new Weather { Name = "Weather" });
         AddChild(new Ambience { Name = "Ambience" });
@@ -145,7 +148,7 @@ public partial class HomeCliffs : Node3D
         // Main plateau: x -60..60, z -30..90, top at y = 0.
         GroundAround(new Vector3(0, -6, 30), new Vector3(120, 12, 120), HomePool);
         // Dirt yard around the shack.
-        Visual(new BoxMesh { Size = new Vector3(14, 0.05f, 12) }, StyleMaterials.Toon(Dirt.Darkened(0.25f), 0), ShackPos + new Vector3(0, 0.02f, 4), Vector3.Zero);
+        PathPatch(ShackPos + new Vector3(0, 0.03f, 4), new Vector2(15, 13), Dirt.Darkened(0.3f), Dirt.Darkened(0.15f));
     }
 
     private void BuildCliffFace()
@@ -302,10 +305,14 @@ public partial class HomeCliffs : Node3D
         AddChild(_clouds);
         _clouds.Build(_rng);
 
-        // Slow drifting mist puffs just below the lip.
+        // Slow drifting mist just below the lip and out over the near clouds, so the banks fade
+        // into each other instead of standing out as separate puffs.
         var mist = Particles(140, 14f, new Vector3(90, 4, 40), new Vector3(0, -48, -90),
             new Color(1f, 0.9f, 0.95f, 0.25f), 10f, 22f, new Vector3(0.6f, 0.05f, 0));
         mist.Name = "CloudMist";
+        var veil = Particles(90, 22f, new Vector3(160, 6, 70), new Vector3(0, -30, -110),
+            new Color(1f, 0.88f, 0.92f, 0.16f), 30f, 60f, new Vector3(0.8f, 0.02f, 0));
+        veil.Name = "CloudVeil";
     }
 
     // ================================================================== landmarks
@@ -325,10 +332,22 @@ public partial class HomeCliffs : Node3D
         Block(new Vector3(-1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);   // front-left
         Block(new Vector3(1.4f, 1.4f, 2.1f), new Vector3(1.6f, 2.8f, 0.2f), Vector3.Zero, Wood, root, visible: false);    // front-right
         Block(new Vector3(0, 2.6f, 2.1f), new Vector3(1.2f, 0.4f, 0.2f), Vector3.Zero, Wood, root, visible: false);      // lintel
+        // The floor is a 0.2 m step: a shallow ramp at the door lets you walk in instead of jumping.
+        // Its top runs from the floor's edge (z 2.2, y 0.2) down to the ground at z 3.0.
+        float rampAngle = Mathf.Atan2(0.2f, 0.8f);
+        var rampTop = new Vector3(0, 0.1f, 2.6f);
+        var rampNormal = new Vector3(0, Mathf.Cos(rampAngle), Mathf.Sin(rampAngle));
+        Block(rampTop - rampNormal * 0.05f, new Vector3(1.6f, 0.1f, Mathf.Sqrt(0.8f * 0.8f + 0.2f * 0.2f)),
+            new Vector3(rampAngle, 0, 0), WoodDark, root, visible: false);
         // Crates by the door (the cottage takes their spot).
         Prop(Models.Village("Prop_Crate"), new Vector3(3.2f, 0, 1.2f), 0.4f, 0.9f, root);
         Prop(Models.Village("Prop_Crate"), new Vector3(3.3f, 0, 2.4f), 1.2f, 0.75f, root);
         root.AddChild(new OmniLight3D { Position = new Vector3(0, 2.2f, 0), LightColor = new Color(1f, 0.7f, 0.45f), LightEnergy = 1.2f, OmniRange = 6f });
+
+        // The hearth in the back-east corner, opening toward the door, under the model's chimney.
+        var hearth = Hearth.Create();
+        hearth.Position = new Vector3(1.3f, 0.2f, -2.0f + Hearth.Depth / 2f);
+        root.AddChild(hearth);
 
         // Bed inside.
         var bed = new Bed { Name = "Bed", Position = new Vector3(-1.2f, 0.2f, -1.1f), CollisionLayer = GameState.LayerProps, CollisionMask = 0 };
@@ -545,10 +564,8 @@ void fragment() {
 
     private void BuildRoadAndSign()
     {
-        // Dirt road from the yard south through the gap in the wall.
-        var road = Mat(Dirt.Darkened(0.05f));
-        Visual(new BoxMesh { Size = new Vector3(4, 0.04f, 80) }, road, new Vector3(2, 0.02f, 40), new Vector3(0, -0.08f, 0));
-        Visual(new BoxMesh { Size = new Vector3(4, 0.04f, 22) }, road, new Vector3(6, 0.02f, -4), new Vector3(0, 0.35f, 0));
+        // Every road and track, home to Ashby, the camp and Falls Valley (HomeCliffs.Trails).
+        BuildTrails();
 
         var sign = new InfoSign
         {
@@ -561,7 +578,8 @@ void fragment() {
         };
         AddChild(sign);
         sign.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.6f, 2.2f, 0.4f) }, Position = new Vector3(0, 1.1f, 0) });
-        Visual(new BoxMesh { Size = new Vector3(0.15f, 2f, 0.15f) }, Mat(WoodDark), new Vector3(0, 1, 0), Vector3.Zero, sign);
+        // The post stands behind the board, so it doesn't cover the lettering.
+        Visual(new BoxMesh { Size = new Vector3(0.15f, 2f, 0.15f) }, Mat(WoodDark), new Vector3(0, 1, 0.115f), Vector3.Zero, sign);
         Visual(new BoxMesh { Size = new Vector3(1.5f, 0.5f, 0.08f) }, Mat(Wood), new Vector3(0, 1.8f, 0), Vector3.Zero, sign);
         sign.AddChild(new Label3D { Text = "ASHBY →", Position = new Vector3(0, 1.8f, -0.06f), FontSize = 48, PixelSize = 0.006f, Rotation = new Vector3(0, Mathf.Pi, 0), Modulate = new Color(0.15f, 0.1f, 0.08f) });
 
@@ -649,6 +667,46 @@ void fragment() {
         placed.Add(pos);
     }
 
+    // ================================================================== iron ore
+
+    /// <summary>Where iron ore crops out: around the foot of the mesa in Falls Valley, and one by
+    /// at the west end of the home plateau. Only a pickaxe breaks it.</summary>
+    public static readonly Vector3[] OreSpots =
+    {
+        new(128, 0, 6), new(164, 0, 4), new(138, 0, 42), new(117, 0, 24), new(-50, 0, -22),
+    };
+
+    private void BuildOreVeins()
+    {
+        var rock = GD.Load<PackedScene>("res://scenes/props/Rock.tscn");
+        var ore = StyleMaterials.Rock(new Color(0.3f, 0.23f, 0.22f), new Color(0.58f, 0.33f, 0.2f), 0.55f, 0.5f);
+        var nugget = StyleMaterials.Toon(new Color(0.85f, 0.52f, 0.28f), 0.6f);
+        for (int i = 0; i < OreSpots.Length; i++)
+        {
+            var n = rock.Instantiate<Harvestable>();
+            n.Name = $"Res_{_resourceCount++}";
+            n.DropItemId = "iron_ore";
+            n.RequiresTool = true;
+            n.DamagePerDrop = 20f;
+            n.BonusOnBreak = 2;
+            n.RespawnSeconds = 300f;
+            n.AddToGroup("iron_ore");
+            AddChild(n);
+            n.Position = OreSpots[i];
+            n.Rotation = new Vector3(0, i * 1.9f, 0);
+            var visual = n.GetNode<Node3D>("Visual");
+            foreach (var m in visual.FindChildren("*", "MeshInstance3D", true, false))
+                ((MeshInstance3D)m).MaterialOverride = ore;
+            // Rusty nuggets poking out of the rock: tells it apart from plain stone.
+            for (int k = 0; k < 7; k++)
+            {
+                float a = k * 2.4f + i, r = 0.55f + 0.1f * (k % 3);
+                Visual(new BoxMesh { Size = Vector3.One * (0.16f + 0.05f * (k % 2)) }, nugget,
+                    new Vector3(Mathf.Cos(a) * r, 0.35f + 0.22f * (k % 3), Mathf.Sin(a) * r), new Vector3(a, a * 0.7f, 0.4f), visual);
+            }
+        }
+    }
+
     // ================================================================== helpers
 
     private StandardMaterial3D Mat(Color c)
@@ -702,6 +760,29 @@ void fragment() {
         node.Scale = Vector3.One * scale;
         (parent ?? this).AddChild(node);
         return node;
+    }
+
+    /// <summary>A dirt road or track: a flat strip <paramref name="length"/> long along its yaw, with
+    /// ragged grassy edges, ruts and pebbles (<see cref="StyleMaterials.PathShader"/>). Give
+    /// overlapping strips slightly different heights so they don't flicker.</summary>
+    private MeshInstance3D Road(Vector3 center, float length, float yaw, float width, bool ruts = true, Color? tone = null, Node3D parent = null)
+    {
+        var dirt = tone ?? Dirt;
+        var size = new Vector2(width, length);
+        var mi = Visual(new PlaneMesh { Size = size }, StyleMaterials.Path(size, dirt.Darkened(0.12f), dirt.Lightened(0.06f), ruts: ruts),
+            center, new Vector3(0, yaw, 0), parent);
+        mi.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        return mi;
+    }
+
+    /// <summary>Trodden ground with a rounded, ragged edge (a yard, a square, a camp).</summary>
+    private MeshInstance3D PathPatch(Vector3 center, Vector2 size, Color dirtA, Color dirtB, Node3D parent = null)
+    {
+        var mi = Visual(new PlaneMesh { Size = size }, StyleMaterials.Path(size, dirtA, dirtB, patch: true), center, Vector3.Zero, parent);
+        mi.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        var at = center + (parent?.Position ?? Vector3.Zero);
+        Patches.Add((new Vector2(at.X, at.Z), size / 2f));
+        return mi;
     }
 
     private MeshInstance3D Visual(Mesh mesh, Material mat, Vector3 pos, Vector3 rot, Node3D parent = null)

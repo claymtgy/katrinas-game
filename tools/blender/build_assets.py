@@ -557,9 +557,10 @@ def build_shack():
             hgt = rise * (1 - abs(x) / span)
             add_box(bm, (0.24, 0.09, hgt), (x, y, H + 0.22 + hgt / 2), mat_index=WOOD)
 
-    # Chimney on the back-east corner.
-    for k in range(9):
-        add_box(bm, (0.62, 0.62, 0.33), (1.3 + rng.uniform(-0.03, 0.03), 1.4, 0.4 + k * 0.42),
+    # Chimney stack on the back-east corner. It starts on the hearth's mantel (1.5 m): the hearth
+    # itself (firebox, fire, mantel) is built in Godot (scripts/world/Hearth.cs) under it.
+    for k in range(6):
+        add_box(bm, (0.62, 0.62, 0.33), (1.3 + rng.uniform(-0.03, 0.03), 1.65, 1.665 + k * 0.42),
                 rot=(0, 0, rng.uniform(-0.08, 0.08)), bevel=0.05, mat_index=STONE)
 
     ob = obj_from_bmesh("Shack", bm, ["Wood", "WoodDark", "Roof", "Stone", "WindowGlow"], smooth=False)

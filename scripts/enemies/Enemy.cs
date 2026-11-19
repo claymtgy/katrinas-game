@@ -128,7 +128,9 @@ public abstract partial class Enemy : CharacterBody3D
     {
         if (p == null || !IsInstanceValid(p) || !p.IsInsideTree() || p.Health.IsDead) return false;
         if (p.Vanished) return false; // Rogue's Vanish
+        if (p.Downed) return false;   // a downed player is left alone (GDD §16)
         if (GameState.Instance.InSafeZone(p.GlobalPosition)) return false;
+        if (FearsFire && Campfire.WardAt(p.GlobalPosition) != null) return false;
         if (GlobalPosition.DistanceTo(p.GlobalPosition) >= LeashRange) return false;
         if (HomeLeash > 0 && Flat(Wildlife.Instance.GroupAnchor(Group, GlobalPosition) - p.GlobalPosition).Length() > HomeLeash) return false;
         return true;
@@ -260,7 +262,7 @@ public abstract partial class Enemy : CharacterBody3D
         }
 
         if (desired.LengthSquared() > 0.0001f) desired = desired.Normalized();
-        desired += wildlife.Separation(this) + Avoid(desired) + SafeZonePush(pos);
+        desired += wildlife.Separation(this) + Avoid(desired) + SafeZonePush(pos) + (FearsFire ? FirePush(pos) : Vector3.Zero);
         if (desired.LengthSquared() > 1f) desired = desired.Normalized();
 
         var v = Velocity;
@@ -311,6 +313,18 @@ public abstract partial class Enemy : CharacterBody3D
         if (hit.Count == 0 || hit["collider"].AsGodotObject() is Enemy) return Vector3.Zero;
         var side = new Vector3(-dir.Z, 0, dir.X);
         return side * ((NetId & 1) == 0 ? 1.2f : -1.2f);
+    }
+
+    /// <summary>Animals that keep away from a campfire or hearth (wolves).</summary>
+    protected virtual bool FearsFire => false;
+
+    /// <summary>Away from the nearest fire, for animals that fear it.</summary>
+    protected static Vector3 FirePush(Vector3 pos)
+    {
+        var fire = Campfire.WardAt(pos, 1.5f);
+        if (fire == null) return Vector3.Zero;
+        var off = Flat(pos - fire.GlobalPosition);
+        return (off.LengthSquared() < 0.01f ? Vector3.Right : off.Normalized()) * 2f;
     }
 
     /// <summary>Hostiles won't enter a sanctuary (blossom shrine, the village).</summary>

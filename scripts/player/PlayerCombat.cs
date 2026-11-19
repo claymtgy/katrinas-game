@@ -27,6 +27,9 @@ public partial class PlayerCombat : Node
     private CharacterModel _model;
     private Node3D _hand;
     private Node3D _weapon;
+    private const float FirstPersonSwordScale = 0.44f;
+    /// <summary>The look the first-person fist was coloured for (rebuilt when it changes).</summary>
+    private Appearance _shownLook;
     private string _shownWeapon = null;
     private string _shownClass = null;
     private BowView _bow;
@@ -87,7 +90,7 @@ public partial class PlayerCombat : Node
         float dt = (float)delta;
         if (_cooldown > 0) _cooldown -= dt;
         if (_guardLock > 0) _guardLock -= dt;
-        if (_shownWeapon != _player.Equipped || _shownClass != _player.Class.Id) RebuildWeapon(_player.Equipped);
+        if (_shownWeapon != _player.Equipped || _shownClass != _player.Class.Id || _shownLook != _player.Look) RebuildWeapon(_player.Equipped);
         if (_player.IsLocal) UpdateGuard();
     }
 
@@ -98,7 +101,7 @@ public partial class PlayerCombat : Node
         var gs = GameState.Instance;
         bool input = !gs.UiOpen && Input.MouseMode == Input.MouseModeEnum.Captured && !_player.Build.Active
                      && Input.IsActionPressed("block");
-        bool want = (input || HoldGuard) && !_player.Dodging && !_player.Sleeping && !_player.Health.IsDead && _guardLock <= 0 && _player.Stamina > 0.5f;
+        bool want = (input || HoldGuard) && !_player.Dodging && !_player.Downed && !_player.Sleeping && !_player.Health.IsDead && _guardLock <= 0 && _player.Stamina > 0.5f;
         if (want != GuardUp) SetGuard(want);
     }
 
@@ -125,7 +128,7 @@ public partial class PlayerCombat : Node
         if (parried)
         {
             Parries++;
-            _player.DrainStamina(-20f); // a clean parry gives breath back
+            _player.DrainStamina(-20f - (Talents.Has(_player, Talents.Bulwark) ? Talents.BulwarkStamina : 0f)); // a clean parry gives breath back
             Hud.Instance?.FlashHitMarker();
             Hud.Toast("Parried!");
             Gamepad.Rumble(0.8f, 0.3f, 0.12f);
@@ -171,7 +174,8 @@ public partial class PlayerCombat : Node
     private void RebuildBow()
     {
         _bowTween?.Kill();
-        _bow?.QueueFree();
+        // The bow may already be gone: it rides in the model's hand, and a rebuilt model frees it.
+        if (IsInstanceValid(_bow)) _bow.QueueFree();
         _bow = null;
         if (!IsArcher || Net.Instance.IsDedicated) return;
         Node3D parent = FirstPerson ? _player.Rig.Camera : _model?.LeftHandSlot;
@@ -213,7 +217,8 @@ public partial class PlayerCombat : Node
     {
         _shownWeapon = itemId;
         _shownClass = _player.Class.Id;
-        _weapon?.QueueFree();
+        _shownLook = _player.Look;
+        if (IsInstanceValid(_weapon)) _weapon.QueueFree();
         _weapon = null;
         RebuildBow();
         var def = ItemDb.Get(itemId);
@@ -221,17 +226,27 @@ public partial class PlayerCombat : Node
         if (def == null)
         {
             if (!FirstPerson || IsArcher) return; // the model already has hands; the archer's are on the bow
-            _weapon = new MeshInstance3D
-            {
-                Mesh = new BoxMesh { Size = new Vector3(0.14f, 0.16f, 0.14f) },
-                MaterialOverride = StyleMaterials.Toon(new Color(0.93f, 0.72f, 0.6f)),
-            };
+            var (skin, sleeve) = HeldModels.Colors(_player.Look);
+            _weapon = HeldModels.Fist(skin, sleeve, holding: false);
+            _weapon.Scale = Vector3.One * 1.2f;   // a bare fist reads small at the screen's edge
         }
+        else if (def.ToolKind == "axe") _weapon = HeldModels.Axe(def.IconColor);
+        else if (def.ToolKind == "pick") _weapon = HeldModels.Pickaxe(def.IconColor);
+        else if (itemId.Contains("club")) _weapon = HeldModels.Club(def.IconColor);
         else if (itemId.Contains("sword"))
         {
-            _weapon = Models.Instance(Models.Sword, style: false);
-            foreach (var n in _weapon.FindChildren("*", "MeshInstance3D", true, false))
+            var sword = Models.Instance(Models.Sword, style: false);
+            foreach (var n in sword.FindChildren("*", "MeshInstance3D", true, false))
                 ((MeshInstance3D)n).MaterialOverride = StyleMaterials.Toon(def.IconColor, 0.3f);
+            if (FirstPerson)
+            {
+                // The KayKit sword is sized for its chunky characters (1.8 m, a 6 cm grip). In your
+                // own fist it's shrunk to a one-handed length with the grip's middle on the origin.
+                sword.Scale = Vector3.One * FirstPersonSwordScale;
+                sword.Position = new Vector3(0, 0.03f * FirstPersonSwordScale, 0);
+            }
+            _weapon = new Node3D { Name = "Sword" };
+            _weapon.AddChild(sword);
         }
         else
         {
@@ -244,6 +259,12 @@ public partial class PlayerCombat : Node
             };
         }
         _hand.AddChild(_weapon);
+        // First person: your own fist round the grip of whatever you hold.
+        if (def != null && FirstPerson)
+        {
+            var (skin, sleeve) = HeldModels.Colors(_player.Look);
+            _weapon.AddChild(HeldModels.Fist(skin, sleeve, holding: true));
+        }
     }
 
     public override void _UnhandledInput(InputEvent e)
@@ -299,7 +320,7 @@ public partial class PlayerCombat : Node
     /// <summary>Local player: swing now (animation, stamina) and ask the server to resolve the hit.</summary>
     public void TryAttack(bool heavy)
     {
-        if (_cooldown > 0 || GuardUp || _player.Dodging || _player.Mode != PlayerController.MoveMode.Normal) return;
+        if (_cooldown > 0 || GuardUp || _player.Dodging || _player.Downed || _player.Mode != PlayerController.MoveMode.Normal) return;
         if (!_player.TrySpendStamina(heavy ? HeavyStamina : LightStamina))
         {
             Hud.Toast("Too tired to swing!");
@@ -334,7 +355,7 @@ public partial class PlayerCombat : Node
     {
         var def = ItemDb.Get(_player.Equipped);
         var cls = _player.Class;
-        float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier * cls.HeavyDamage : cls.LightDamage) * Gear.MeleeDamageMult(_player);
+        float damage = (def?.Damage ?? FistDamage) * (heavy ? HeavyMultiplier * cls.HeavyDamage * (Talents.Has(_player, Talents.Brute) ? Talents.BruteHeavy : 1f) : cls.LightDamage) * Gear.MeleeDamageMult(_player);
         float reach = def?.Reach ?? FistReach;
         float cooldown = (def?.AttackCooldown ?? 0.4f) * (heavy ? 1.8f : 1f);
         return (damage, reach, heavy ? 0.38f : 0.2f, cooldown);
@@ -345,7 +366,7 @@ public partial class PlayerCombat : Node
     {
         var stats = Stats(heavy);
         if (aim.LengthSquared() < 0.01f) aim = -_player.Body.GlobalBasis.Z;
-        GetTree().CreateTimer(stats.Windup).Timeout += () => DoHit(stats.Damage, stats.Reach, aim);
+        GetTree().CreateTimer(stats.Windup).Timeout += () => DoHit(stats.Damage, stats.Reach, aim, heavy);
     }
 
     private void PlaySwing(float windup, bool heavy)
@@ -359,7 +380,7 @@ public partial class PlayerCombat : Node
         _swingTween.TweenProperty(_hand, "rotation", FirstPersonRest, 0.28).SetTrans(Tween.TransitionType.Sine);
     }
 
-    private void DoHit(float damage, float reach, Vector3 aim)
+    private void DoHit(float damage, float reach, Vector3 aim, bool heavy = false)
     {
         if (!IsInstanceValid(_player) || !_player.IsInsideTree()) return;
         // Rogue: the first blow out of Vanish lands double, and ends it.
@@ -377,7 +398,7 @@ public partial class PlayerCombat : Node
         }
         // Sphere in front of the chest, along the aim (works in both views).
         var center = _player.GlobalPosition + Vector3.Up * 1.2f + aim * (reach * 0.65f);
-        int hits = ServerStrikeArea(center, 0.45f + reach * 0.3f, damage);
+        int hits = ServerStrikeArea(center, 0.45f + reach * 0.3f, damage, heavy);
         if (crit && hits > 0) Net.Instance.ToastTo(_player.PeerId, "Critical hit!");
     }
 
@@ -386,7 +407,7 @@ public partial class PlayerCombat : Node
 
     /// <summary>Server: damage everything with health in a sphere (enemies, dummies, resource
     /// nodes, and other players when PVP is on). Returns how many things were hit.</summary>
-    public int ServerStrikeArea(Vector3 center, float radius, float damage)
+    public int ServerStrikeArea(Vector3 center, float radius, float damage, bool heavy = false)
     {
         bool pvp = Net.Instance.Pvp;
         var query = new PhysicsShapeQueryParameters3D
@@ -411,6 +432,18 @@ public partial class PlayerCombat : Node
             {
                 if (Net.Instance.ServerDamagePlayer(target, damage, _player) == Net.HitResult.Parried)
                     Net.Instance.StaggerPlayer(_player, 1.0f);
+            }
+            else if (collider is Harvestable node)
+            {
+                // Trees want an axe, rock and ore a pickaxe (iron ore will take nothing else).
+                float dealt = node.HarvestDamage(ItemDb.Get(_player.Equipped), damage, heavy);
+                if (dealt <= 0f)
+                {
+                    hits--;
+                    Net.Instance.ToastTo(_player.PeerId, $"You need a {(node.ToolNeeded == "axe" ? "axe" : "pickaxe")} for {ItemDb.NameOf(node.DropItemId).ToLowerInvariant()}.");
+                    continue;
+                }
+                health.TakeDamage(dealt, _player);
             }
             else
             {

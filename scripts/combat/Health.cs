@@ -19,6 +19,13 @@ public partial class Health : Node
     public enum ChangeKind { Damage, Heal, Revive }
 
     [Export] public float Max { get; set; } = 100f;
+    /// <summary>Flat damage soaked off every hit (bandits' mail), never below <see cref="ArmorFloor"/>
+    /// of the hit. Players' armour works differently (Gear), so theirs stays 0.</summary>
+    [Export] public float Armor { get; set; } = 0f;
+    public const float ArmorFloor = 0.2f;
+
+    /// <summary>What a hit of <paramref name="amount"/> does after armour.</summary>
+    public float AfterArmor(float amount) => Armor <= 0f ? amount : Mathf.Max(amount - Armor, amount * ArmorFloor);
 
     public float Current { get; private set; }
     public bool IsDead => Current <= 0f;
@@ -30,6 +37,12 @@ public partial class Health : Node
     /// <summary>Back to full after being dead (respawned resource, rebuilt dummy, respawned player).</summary>
     public event Action Revived;
 
+    /// <summary>Server: when true for a hit's source, the hit does nothing (a downed player).</summary>
+    public Func<Node, bool> Absorb;
+    /// <summary>Server: asked before a killing blow; true keeps this alive at 1 health instead (a
+    /// player going down, GDD §16).</summary>
+    public Func<Node, bool> BeforeLethal;
+
     public override void _Ready()
     {
         Current = Max;
@@ -40,7 +53,25 @@ public partial class Health : Node
 
     public void TakeDamage(float amount, Node source)
     {
+        TakeDamage(amount, source, false);
+    }
+
+    /// <summary>A hit; <paramref name="ignoreArmor"/> for blows that go straight through (the
+    /// Archer's Piercing talent).</summary>
+    public void TakeDamage(float amount, Node source, bool ignoreArmor)
+    {
         if (!Authoritative || IsDead || amount <= 0f) return;
+        if (Absorb != null && Absorb(source)) return;
+        if (!ignoreArmor) amount = AfterArmor(amount);
+        if (Current - amount <= 0f && BeforeLethal != null && BeforeLethal(source))
+        {
+            // Kept at 1: down, not out.
+            float dealt = Mathf.Max(0f, Current - 1f);
+            Current = Mathf.Min(Current, 1f);
+            Net.Instance?.BroadcastHealth(this, ChangeKind.Damage, dealt, source);
+            Damaged?.Invoke(dealt, source);
+            return;
+        }
         Current = Mathf.Max(0f, Current - amount);
         Net.Instance?.BroadcastHealth(this, ChangeKind.Damage, amount, source);
         Damaged?.Invoke(amount, source);

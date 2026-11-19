@@ -9,3 +9,4 @@ DisplayName = "Wolf Pelt"
 Category = "material"
 IconColor = Color(0.45, 0.43, 0.5, 1)
 SellPrice = 8
+BuyPrice = 18

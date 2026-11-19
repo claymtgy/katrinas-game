@@ -216,6 +216,13 @@ public partial class CharacterModel : Node3D
         return _oneShotTimer;
     }
 
+    /// <summary>Going down (a collapse, then lying there) or getting back up.</summary>
+    public void SetDowned(bool downed)
+    {
+        if (downed) PlayOneShot(HasAnimation("Death_B") ? "Death_B" : "Lie_Down", 1.3f);
+        else PlayOneShot("Lie_StandUp", 1.4f);
+    }
+
     public void PlayAttack(bool heavy, bool armed)
     {
         string name = armed
@@ -237,7 +244,8 @@ public partial class CharacterModel : Node3D
         float speed = new Vector2(v.X, v.Z).Length();
         Footsteps(speed, (float)delta);
         bool armed = _player.Equipped != "";
-        if (_player.Sleeping && HasAnimation("Lie_Idle")) Play("Lie_Idle", 0.4);
+        if (_player.Downed) Play(HasAnimation("Death_B_Pose") ? "Death_B_Pose" : "Lie_Idle", 0.3);
+        else if (_player.Sleeping && HasAnimation("Lie_Idle")) Play("Lie_Idle", 0.4);
         else if (_player.Climbing)
         {
             // Hand over hand while moving on the face (backwards on the way down), holding on otherwise.

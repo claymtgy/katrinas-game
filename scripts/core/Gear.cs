@@ -71,7 +71,8 @@ public static class Gear
 
     public static bool HasPerk(PlayerController p, string perk) => WornDefs(p).Any(d => d.Perk == perk);
 
-    public static float Armor(PlayerController p) => WornDefs(p).Sum(d => d.Armor) + 4f * EnchantCount(p, Ward);
+    public static float Armor(PlayerController p) => WornDefs(p).Sum(d => d.Armor) + 4f * EnchantCount(p, Ward)
+        + (Talents.Has(p, Talents.IronSkin) ? Talents.IronSkinArmor : 0f);
 
     public static float Reduction(PlayerController p)
     {

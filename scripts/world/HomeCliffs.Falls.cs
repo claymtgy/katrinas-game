@@ -65,7 +65,8 @@ public partial class HomeCliffs
         AddChild(sign);
         sign.Rotation = new Vector3(0, Mathf.Pi / 2f, 0);
         sign.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.6f, 2.2f, 0.4f) }, Position = new Vector3(0, 1.1f, 0) });
-        Visual(new BoxMesh { Size = new Vector3(0.15f, 2f, 0.15f) }, Mat(WoodDark), new Vector3(0, 1, 0), Vector3.Zero, sign);
+        // The post stands behind the board, so it doesn't cover the lettering.
+        Visual(new BoxMesh { Size = new Vector3(0.15f, 2f, 0.15f) }, Mat(WoodDark), new Vector3(0, 1, -0.115f), Vector3.Zero, sign);
         Visual(new BoxMesh { Size = new Vector3(1.5f, 0.5f, 0.08f) }, Mat(Wood), new Vector3(0, 1.8f, 0), Vector3.Zero, sign);
         sign.AddChild(new Label3D { Text = label, Position = new Vector3(0, 1.8f, 0.06f), FontSize = 48, PixelSize = 0.006f, Modulate = new Color(0.15f, 0.1f, 0.08f) });
     }

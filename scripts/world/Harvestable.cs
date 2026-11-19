@@ -14,6 +14,27 @@ public partial class Harvestable : StaticBody3D
     [Export] public float RespawnSeconds { get; set; } = 90f;
     /// <summary>"fall" topples like a tree, "crumble" shrinks like a rock.</summary>
     [Export] public string BreakStyle { get; set; } = "fall";
+    /// <summary>The tool that works it: "axe" or "pick" ("" = worked out from what it drops).</summary>
+    [Export] public string Tool { get; set; } = "";
+    /// <summary>Only the right tool gets anything out of it (iron ore needs a pickaxe).</summary>
+    [Export] public bool RequiresTool { get; set; } = false;
+
+    /// <summary>"axe" for wood, "pick" for stone and ore, "" for plants (any hand will do).</summary>
+    public string ToolNeeded => Tool != "" ? Tool : DropItemId switch { "wood" => "axe", "stone" or "iron_ore" => "pick", _ => "" };
+
+    /// <summary>Most a swing does without the right tool: a sword or a club is no axe.</summary>
+    public const float BareHandsCap = 8f;
+
+    /// <summary>Server: what a swing of <paramref name="held"/> does to this node. The right tool
+    /// does <see cref="ItemDef.ToolPower"/> drops' worth a swing; anything else is capped at
+    /// <see cref="BareHandsCap"/>, and does nothing where the tool is required.</summary>
+    public float HarvestDamage(ItemDef held, float swing, bool heavy)
+    {
+        string need = ToolNeeded;
+        if (need == "") return swing;
+        if (held != null && held.ToolKind == need) return DamagePerDrop * held.ToolPower * (heavy ? 1.5f : 1f);
+        return RequiresTool ? 0f : Mathf.Min(swing, BareHandsCap);
+    }
 
     [ExportGroup("Model")]
     /// <summary>Semicolon-separated model paths; one is picked at random to replace the Visual's placeholder meshes.</summary>

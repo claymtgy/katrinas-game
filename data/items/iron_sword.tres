@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "iron_sword"
+DisplayName = "Iron Sword"
+Category = "weapon"
+IconColor = Color(0.8, 0.82, 0.88, 1)
+Damage = 32.0
+Reach = 2.2
+AttackCooldown = 0.45
+WeaponSize = Vector3(0.08, 0.1, 1.1)
+SellPrice = 14

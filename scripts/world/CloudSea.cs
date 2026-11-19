@@ -11,7 +11,7 @@ public partial class CloudSea : Node3D
     public const int MaxLavaPoints = 8;
 
     private const string CloudShader = @"shader_type spatial;
-render_mode unshaded, cull_back;
+render_mode unshaded, cull_back, blend_mix, depth_prepass_alpha;
 global uniform vec3 sun_dir;
 global uniform vec4 sun_color;
 global uniform float night;
@@ -23,21 +23,35 @@ uniform vec4 lava_points[8];
 uniform int lava_count = 0;
 varying vec3 wpos;
 varying vec3 wnrm;
+varying float lump;
+float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float vnoise(vec3 x) {
+    vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}
 void vertex() {
+    // Billows: push the sphere in and out with two octaves of noise (seeded by where the puff is),
+    // so no puff has a clean round outline. Lumps are flattened underneath.
+    vec3 seed = MODEL_MATRIX[3].xyz * 0.013;
+    float n = vnoise(VERTEX * 4.5 + seed) * 0.65 + vnoise(VERTEX * 11.0 + seed * 2.0) * 0.35;
+    lump = n;
+    float under = smoothstep(0.1, -0.35, NORMAL.y);
+    VERTEX += NORMAL * (n - 0.45) * 0.34 * (1.0 - under * 0.7);
     wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
     wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 void fragment() {
     vec3 n = normalize(wnrm);
     vec3 sd = normalize(sun_dir);
-    float l = dot(n, sd) * 0.5 + 0.5;
-    float band = smoothstep(0.38, 0.7, l);
+    float l = dot(n, sd) * 0.5 + 0.5 + (lump - 0.5) * 0.45;   // cauliflower light and shade
+    float band = smoothstep(0.3, 0.78, l);
     vec3 sun_tint = clamp(sun_color.rgb, vec3(0.0), vec3(1.4));
     vec3 col = mix(shade_color, lit_color * mix(vec3(1.0), sun_tint, 0.6), band);
     col += vec3(1.0, 0.72, 0.55) * smoothstep(0.2, 0.9, n.y) * 0.22;     // warm light pooling on the flat tops
     col *= mix(0.78, 1.0, smoothstep(-0.7, 0.2, n.y));                    // shadowed undersides: depth between puffs
     float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-    col += sun_tint * rim * 0.45;                                        // silver lining
+    col += sun_tint * rim * 0.25;                                        // silver lining
     col = mix(col, night_color * (0.75 + 0.5 * smoothstep(-0.2, 0.8, n.y)) + col * 0.08, night);  // moonlit blue, brighter tops
     float g = 0.0;
     for (int i = 0; i < lava_count; i++) {
@@ -47,6 +61,9 @@ void fragment() {
     g = clamp(g, 0.0, 1.4) * (0.55 + 0.45 * clamp(0.3 - n.y, 0.0, 1.0));
     col += lava_color * g * (1.4 + night * 0.8);
     ALBEDO = col;
+    // Feathered edges: the outline thins to nothing instead of ending in a hard white line.
+    float facing = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+    ALPHA = smoothstep(0.02, 0.5, facing) * mix(0.75, 1.0, lump);
 }";
 
     /// <summary>Lava glow sources: xyz = position, w = radius.</summary>
@@ -90,7 +107,7 @@ void fragment() {
         var mm = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
-            Mesh = new SphereMesh { Radius = 0.5f, Height = 1f, RadialSegments = 14, Rings = 7 },
+            Mesh = new SphereMesh { Radius = 0.5f, Height = 1f, RadialSegments = 24, Rings = 12 },
             InstanceCount = transforms.Count,
         };
         for (int i = 0; i < transforms.Count; i++) mm.SetInstanceTransform(i, transforms[i]);

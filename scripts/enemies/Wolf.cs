@@ -2,26 +2,35 @@ using Godot;
 
 namespace KatrinasGame;
 
-/// <summary>Night predator. A small animal: it never gets tougher with more players; the pack
-/// gets bigger instead (Difficulty.PackSize). Flees at dawn. Low-poly faceted body built in code.
-/// Brain, targeting and replication: Enemy / Wildlife.</summary>
+/// <summary>Night predator: a big, heavy-shouldered dire wolf that a fresh level-1 player can't
+/// fight head on (run, hide or parry). It never gets tougher with more players; the pack gets
+/// bigger instead (Difficulty.PackSize). Flees at dawn. Low-poly faceted body built in code,
+/// drawn at <see cref="Size"/> times its modelled size. Brain, targeting and replication:
+/// Enemy / Wildlife.</summary>
 public partial class Wolf : Enemy
 {
-    public const float MaxHealth = 40f;
-    public const float BiteDamage = 8f;
+    public const float MaxHealth = 170f;
+    public const float BiteDamage = 24f;
+    /// <summary>Thick fur: a flat amount off each hit (Health.Armor), so a wooden sword does ~9.</summary>
+    public const float Armor = 6f;
     public const float Run = 7.2f;   // a sprinting player (8 m/s) can just outrun it
     public const float BiteWindup = 0.35f;
+    /// <summary>Pelts a kill leaves: a dire wolf is a big hide, and a hard fight.</summary>
+    public const int PeltsDropped = 2;
+    /// <summary>Scale of the model and collider (the model is built at 1).</summary>
+    public const float Size = 1.6f;
 
     public override string Kind => "wolf";
     protected override float WalkSpeed => 3.2f;
     protected override float RunSpeed => Run;
     protected override float AggroRange => 22f;
     protected override float LeashRange => 34f;
-    protected override float AttackRange => 1.8f;
-    protected override float AttackReach => 2.4f;
+    protected override float AttackRange => 2.4f;
+    protected override float AttackReach => 3.2f;
     protected override float AttackWindup => BiteWindup;
-    protected override float AttackCooldown => 1.4f;
+    protected override float AttackCooldown => 1.1f;
     protected override bool FleesByDay => true;
+    protected override bool FearsFire => true;
 
     private Node3D _visual, _body, _head, _tail;
     private Node3D[] _legs, _shins;
@@ -42,7 +51,8 @@ public partial class Wolf : Enemy
     public static Wolf Create(int netId, int pack, Vector3 position, float yaw, float maxHealth = MaxHealth, float damage = BiteDamage)
     {
         var w = new Wolf { Name = $"Wolf_{netId}", Damage = damage };
-        w.Init(netId, pack, position, yaw, maxHealth, new Vector3(0.5f, 0.8f, 1.2f));
+        w.Init(netId, pack, position, yaw, maxHealth, new Vector3(0.5f, 0.8f, 1.2f) * Size);
+        w.Health.Armor = Armor;
         w.BuildVisual();
         return w;
     }
@@ -50,7 +60,7 @@ public partial class Wolf : Enemy
     public override void ServerDropLoot(Node killer)
     {
         var p = killer as PlayerController;
-        if (Supplies.Give(p, "wolf_pelt", 1) > 0 && p != null) Net.Instance.ToastTo(p.PeerId, "+1 Wolf Pelt");
+        if (Supplies.Give(p, "wolf_pelt", PeltsDropped) > 0 && p != null) Net.Instance.ToastTo(p.PeerId, $"+{PeltsDropped} Wolf Pelts");
     }
 
     // ================================================================== visual
@@ -82,8 +92,8 @@ public partial class Wolf : Enemy
         Sfx.At("wolf_snarl", GlobalPosition + Vector3.Up * 0.7f, 1f);
         _tween?.Kill();
         _tween = CreateTween();
-        _tween.TweenProperty(_visual, "position", new Vector3(0, -0.06f, 0.15f), BiteWindup * 0.7).SetEase(Tween.EaseType.Out); // crouch back
-        _tween.TweenProperty(_visual, "position", new Vector3(0, 0.08f, -0.45f), 0.09).SetTrans(Tween.TransitionType.Expo);
+        _tween.TweenProperty(_visual, "position", new Vector3(0, -0.06f, 0.15f) * Size, BiteWindup * 0.7).SetEase(Tween.EaseType.Out); // crouch back
+        _tween.TweenProperty(_visual, "position", new Vector3(0, 0.08f, -0.45f) * Size, 0.09).SetTrans(Tween.TransitionType.Expo);
         _tween.TweenProperty(_visual, "position", Vector3.Zero, 0.3).SetTrans(Tween.TransitionType.Sine);
     }
 
@@ -107,7 +117,7 @@ public partial class Wolf : Enemy
         float sp = SpeedSmoothed;
         bool gallop = sp > 5.2f;
         // Trot: diagonal pairs. Gallop: front pair then hind pair, slightly split, body rocking.
-        _gait += sp * dt * (gallop ? 2.3f : 3.4f);
+        _gait += sp * dt * (gallop ? 2.3f : 3.4f) / Size;   // longer legs, longer strides
         float amp = Mathf.Clamp(sp / 3.2f, 0f, 1f) * (gallop ? 0.95f : 0.6f);
         for (int i = 0; i < 4; i++)
         {
@@ -134,7 +144,7 @@ public partial class Wolf : Enemy
         float bob = gallop ? Mathf.Abs(Mathf.Sin(_gait)) * 0.07f : Mathf.Abs(Mathf.Sin(_gait * 2f)) * amp * 0.03f;
         float breathe = Mathf.Sin(_time * 2.1f) * 0.008f * idle;
         float pitch = (gallop ? Mathf.Sin(_gait + 0.6f) * 0.07f : 0f) + howl * 0.14f;
-        _body.Position = new Vector3(0, bob + breathe - howl * 0.05f, 0);
+        _body.Position = new Vector3(0, bob + breathe - howl * 0.05f, 0) * Size;
         _body.Rotation = new Vector3(pitch, 0, 0);
 
         float sniff = Mathf.SmoothStep(0.75f, 1f, Mathf.Max(0f, Mathf.Sin(_time * 0.45f + NetId)));
@@ -172,8 +182,8 @@ public partial class Wolf : Enemy
 
         _visual = new Node3D { Name = "Visual" };   // tweened: lunge, stagger, death
         AddChild(_visual);
-        _body = new Node3D { Name = "Body" };       // procedural: bob, gallop rock, howl
-        _visual.AddChild(_body);
+        _visual.AddChild(_body = new Node3D { Name = "Body" });   // procedural: bob, gallop rock, howl
+        _body.Scale = Vector3.One * Size;
 
         // Torso: chest to hips, then the shoulder hump and the pale chest ruff and belly.
         Seg(_body, new Vector3(0, 0.74f, -0.38f), new Vector3(0, 0.7f, 0.46f), 0.27f, 0.19f, _fur, 6);

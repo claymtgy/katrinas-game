@@ -105,6 +105,7 @@ public partial class MainMenu : Control
     {
         // Tests use their own looks and never write the player's settings.
         Appearance.Persist = false;
+        GraphicsSettings.Persist = false;
         Appearance.Local = new Appearance();
         // Scripted tests always start from a fresh world, and spawn wolves themselves.
         Wildlife.AutoSpawn = false;
@@ -195,6 +196,9 @@ public partial class MainMenu : Control
         col.AddChild(join);
 
         col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
+        var graphics = new Button { Text = "Graphics settings…" };
+        graphics.Pressed += () => AddChild(new GraphicsMenu(() => { if (Gamepad.UsingPad) Hud.FocusFirst(this); }));
+        col.AddChild(graphics);
         var quit = new Button { Text = "Quit" };
         quit.Pressed += () => GetTree().Quit();
         col.AddChild(quit);
@@ -278,6 +282,7 @@ public partial class MainMenu : Control
     private void SaveSettings()
     {
         var cfg = new ConfigFile();
+        cfg.Load(SettingsPath); // keep the other sections (graphics, tips)
         cfg.SetValue("player", "name", _name.Text);
         cfg.SetValue("player", "world", _world.Text);
         cfg.SetValue("join", "address", _address.Text);

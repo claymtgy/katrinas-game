@@ -184,8 +184,9 @@ public partial class Hud
     {
         _journalScroll = new ScrollContainer
         {
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, Visible = false,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled, Visible = false, FollowFocus = true,
         };
+        FastWheel(_journalScroll);
         var cols = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         cols.AddThemeConstantOverride("separation", 28);
         _journalScroll.AddChild(cols);
@@ -272,26 +273,36 @@ public partial class Hud
         return col;
     }
 
-    private void ShowSheetTab(bool journal, bool focus = true)
+    private void ShowSheetTab(bool journal, bool focus = true) => ShowSheetPage(journal ? 2 : 0, focus);
+
+    /// <summary>0 = Equipment, 1 = Talents, 2 = Journal.</summary>
+    private void ShowSheetPage(int page, bool focus = true)
     {
+        _sheetPage = (page % 3 + 3) % 3;
+        bool journal = _sheetPage == 2;
         _journalTab = journal;
-        _sheetCharacter.Visible = !journal;
+        _sheetCharacter.Visible = _sheetPage == 0;
+        _sheetTalents.Visible = _sheetPage == 1;
         _sheetJournal.Visible = journal;
-        _tabCharacter.SetPressedNoSignal(!journal);
+        _tabCharacter.SetPressedNoSignal(_sheetPage == 0);
+        _tabTalents.SetPressedNoSignal(_sheetPage == 1);
         _tabJournal.SetPressedNoSignal(journal);
-        BoardTitle(_sheet).Text = journal ? "Journal" : "Character";
+        BoardTitle(_sheet).Text = _sheetPage switch { 1 => "Talents", 2 => "Journal", _ => "Character & Equipment" };
         RefreshSheetHint();
         if (journal) RefreshJournal();
+        if (_sheetPage == 1) RefreshTalents();
         if (focus && Gamepad.UsingPad && _sheet.Visible) Callable.From(() => FocusFirst(_sheet)).CallDeferred();
     }
 
     private void RefreshSheetHint()
     {
-        _sheetHint.Text = Gamepad.Format(_journalTab
-            ? (Gamepad.UsingPad ? "{tabs}: character · {back} to close" : "I: character · J or {back} to close")
+        _sheetHint.Text = Gamepad.Format(_sheetPage == 1
+            ? (Gamepad.UsingPad ? "{accept} a talent to take it · {tabs}: other tabs · {back} to close" : "Click a talent to take it · I or {back} to close")
+            : _journalTab
+            ? (Gamepad.UsingPad ? "{tabs}: other tabs · {back} to close" : "I: character · J or {back} to close")
             : (Gamepad.UsingPad
-                ? "{accept} armour in your pack to wear it, or a worn piece to take it off · {tabs}: journal · {back} to close"
-                : "Click armour in your pack to wear it · click a worn piece to take it off · J: journal · I or {back} to close"));
+                ? "{accept} armour to wear it, a worn piece to take it off, a weapon or tool to hold it · {tabs}: journal · {back} to close"
+                : "Click armour to wear it, a worn piece to take it off, a weapon or tool to hold it · J: journal · I or {back} to close"));
     }
 
     private void ScrollJournalWithStick()

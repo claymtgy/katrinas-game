@@ -41,6 +41,28 @@ public partial class DevAutotest : Node
     }
 
     /// <summary>Turn the camera to face a point (for swinging at moving things).</summary>
+    // Actions the test is holding down. Godot lets go of held actions whenever the test window
+    // loses focus, so they're pressed again every physics frame until released.
+    private static readonly HashSet<string> Held = new();
+    private static void Press(string action) { Held.Add(action); Input.ActionPress(action); }
+    private static void Release(string action) { Held.Remove(action); Input.ActionRelease(action); }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        foreach (var a in Held)
+            if (!Input.IsActionPressed(a)) Input.ActionPress(a);
+    }
+
+    /// <summary>Hold an input action for a while, pressing it again every physics frame: Godot lets
+    /// go of held actions whenever the test window loses focus.</summary>
+    private async Task Hold(string action, double seconds)
+    {
+        ulong end = Time.GetTicksMsec() + (ulong)(seconds * 1000);
+        Press(action);
+        while (Time.GetTicksMsec() < end) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        Release(action);
+    }
+
     private static void Face(PlayerController p, Vector3 at)
     {
         var d = at - p.GlobalPosition;
@@ -134,6 +156,7 @@ public partial class DevAutotest : Node
         {
             var w = wild.SpawnPack(at, 1)[0];
             w.Frozen = true;
+            w.Health.Armor = 0;   // so the damage numbers below are exact
             await Wait(0.3);
             w.GlobalPosition = at;
             return w;
@@ -245,6 +268,7 @@ public partial class DevAutotest : Node
         var hunt = new Vector3(-12, 0.1f, 30);
         p.Teleport(hunt);
         var stalker = wild.SpawnPack(hunt + new Vector3(0, 0, -8), 1)[0];
+        stalker.Health.Armor = 0;   // the double-damage check below is exact
         Check(await Until(() => stalker.Target == p, 6), "a wolf hunts the rogue");
         p.Ability.ResetCooldown();
         p.RestoreStamina();
@@ -332,10 +356,10 @@ public partial class DevAutotest : Node
         p.RestoreStamina();
         p.Teleport(mid + new Vector3(0, floatY, 3f));
         p.Rig.SetLook(0, -0.9f); // facing -Z (north), down
-        Input.ActionPress("move_forward");
+        Press("move_forward");
         bool under = await Until(() => p.Underwater, 3);
         await Wait(0.8);
-        Input.ActionRelease("move_forward");
+        Release("move_forward");
         Check(under, $"looking down as you swim dives under (feet at {p.GlobalPosition.Y:0.0})");
         Check(p.Stamina < p.MaxStamina - 5f, $"holding your breath uses stamina ({p.Stamina:0})");
         p.Rig.SetLook(0, 0.2f);
@@ -347,10 +371,10 @@ public partial class DevAutotest : Node
         p.Health.Reset();
         p.Teleport(mid + new Vector3(0, -2.6f, 0));
         p.DrainStamina(1000);
-        Input.ActionPress("move_forward");
+        Press("move_forward");
         p.Rig.SetLook(0, -1.2f);
         await Wait(1.2);
-        Input.ActionRelease("move_forward");
+        Release("move_forward");
         Check(p.Health.Current < p.Health.Max, $"out of breath under water hurts (health {p.Health.Current:0})");
         p.Health.Reset();
 
@@ -358,9 +382,9 @@ public partial class DevAutotest : Node
         p.Teleport(mid + new Vector3(0, floatY, -2f));
         p.Rig.SetLook(Mathf.Pi, -0.05f); // facing +Z
         await Wait(0.3);
-        Input.ActionPress("move_forward");
+        Press("move_forward");
         bool outOf = await Until(() => !p.Swimming && p.IsOnFloor() && p.GlobalPosition.Y > -0.1f, 8);
-        Input.ActionRelease("move_forward");
+        Release("move_forward");
         Check(outOf, $"swim into the edge to climb out (y {p.GlobalPosition.Y:0.0}, z {p.GlobalPosition.Z:0.0})");
 
         // The Great Falls pool in the valley is deep too.
@@ -406,7 +430,7 @@ public partial class DevAutotest : Node
         p.Rig.SetLook(-Mathf.Pi / 2f, -0.05f); // facing +X, the rock
         await Wait(0.3);
         p.RestoreStamina();
-        Input.ActionPress("move_forward");
+        Press("move_forward");
         Check(await Until(() => p.Climbing, 3), "walking into the pale rock starts a climb");
         var climbMesh = p.Body.GetNode<CharacterModel>("Mesh");
         Check(climbMesh.HasAnimation(ClimbAnimation.Climb) && climbMesh.HasAnimation(ClimbAnimation.Hang), "the hero has climbing clips");
@@ -422,7 +446,7 @@ public partial class DevAutotest : Node
         await Shot("30b_climbing_side");
         p.Rig.SetLook(-Mathf.Pi / 2f, -0.05f);
         bool top = await Until(() => !p.Climbing && p.IsOnFloor() && p.GlobalPosition.Y > HomeCliffs.MesaHeight - 0.5f, 15);
-        Input.ActionRelease("move_forward");
+        Release("move_forward");
         Check(top, $"over the top: the climber hauls up onto the mesa (y {p.GlobalPosition.Y:0.0})");
         Check(gs.InSafeZone(HomeCliffs.FallsShrinePos), "the Falls Blossom is a sanctuary");
 
@@ -442,12 +466,12 @@ public partial class DevAutotest : Node
         p.Rig.SetLook(-Mathf.Pi / 2f, -0.05f);
         await Wait(0.3);
         p.RestoreStamina();
-        Input.ActionPress("move_forward");
+        Press("move_forward");
         await Until(() => p.Climbing, 3);
         await Wait(0.6);
         p.DrainStamina(1000);
         bool slipped = await Until(() => !p.Climbing, 1);
-        Input.ActionRelease("move_forward");
+        Release("move_forward");
         Check(slipped, "with no stamina left, your grip fails");
         await Until(() => p.IsOnFloor(), 3);
         p.Health.Reset();
@@ -473,6 +497,7 @@ public partial class DevAutotest : Node
         p.Teleport(HomeCliffs.MesaCenter + new Vector3(0, 18.5f, HomeCliffs.MesaHalf + 3f));
         p.Rig.SetLook(Mathf.Pi, -0.15f); // facing +Z
         await Wait(0.05);
+        p.RestoreStamina(); // gliding costs stamina: start it rested, not straight off the climb
         Check(p.TryGlide() && p.Gliding, "Space in the air opens the glider");
         var gStart = p.GlobalPosition;
         float hp = p.Health.Current;
@@ -490,6 +515,35 @@ public partial class DevAutotest : Node
         Check(landed, "the glider lands");
         await Wait(0.2);
         Check(!p.Gliding && p.Health.Current >= hp, $"a glider landing does no fall damage ({hp:0} -> {p.Health.Current:0})");
+
+        // Gliding costs stamina; looking down dives; out of stamina the glider folds.
+        p.RestoreStamina();
+        p.Teleport(HomeCliffs.MesaCenter + new Vector3(0, 18.5f, HomeCliffs.MesaHalf + 3f));
+        p.Rig.SetLook(Mathf.Pi, -0.15f);
+        await Wait(0.05);
+        p.TryGlide();
+        float staminaBefore = p.Stamina, y0 = p.GlobalPosition.Y;
+        await Wait(1.0);
+        float levelSink = y0 - p.GlobalPosition.Y;
+        Check(p.Gliding && p.Stamina < staminaBefore - 3f, $"gliding costs stamina ({staminaBefore:0} -> {p.Stamina:0})");
+        p.Rig.SetLook(Mathf.Pi, -1.1f); // look down: dive
+        float y1 = p.GlobalPosition.Y;
+        await Wait(1.0);
+        float diveSink = y1 - p.GlobalPosition.Y;
+        Check(p.Gliding && diveSink > levelSink * 2.5f, $"looking down dives ({diveSink:0.0} m in a second vs {levelSink:0.0} m level)");
+        hp = p.Health.Current;
+        for (int i = 0; i < 40 && !p.IsOnFloor(); i++) await Wait(0.1);
+        await Wait(0.2);
+        Check(p.Health.Current >= hp, $"landing out of a dive does no fall damage ({hp:0} -> {p.Health.Current:0})");
+        p.Teleport(HomeCliffs.MesaCenter + new Vector3(0, 18.5f, HomeCliffs.MesaHalf + 3f));
+        p.Rig.SetLook(Mathf.Pi, -0.15f);
+        await Wait(0.05);
+        p.RestoreStamina();
+        p.TryGlide();
+        p.DrainStamina(p.Stamina - 0.5f);
+        await Wait(0.3);
+        Check(!p.Gliding, "out of stamina, the glider folds");
+        p.RestoreStamina();
 
         // The updraft over the Great Falls' plunge pool lifts a glider.
         var pool = HomeCliffs.GreatFallsPool;
@@ -892,11 +946,16 @@ public partial class DevAutotest : Node
         Check(!gs.UiOpen, "○ / B closes the menu");
         Check(!p.Dodging, "...without rolling");
 
-        // D-pad down: the character sheet; R1 flips to the journal.
+        // D-pad down: the character sheet; R1 steps through Talents to the journal, L1 back.
         await Tap(JoyButton.DpadDown);
         Check(hud.CharacterOpen, "d-pad ▼ opens the character sheet");
         await Tap(JoyButton.RightShoulder);
-        Check(hud.JournalTabOpen, "R1 / RB switches to the journal");
+        Check(hud.TalentsTabOpen, "R1 / RB switches to the Talents tab");
+        await Tap(JoyButton.RightShoulder);
+        Check(hud.JournalTabOpen, "...and again to the journal");
+        await Tap(JoyButton.LeftShoulder);
+        Check(hud.TalentsTabOpen, "L1 / LB goes back a tab");
+        await Tap(JoyButton.RightShoulder);
         await Wait(0.3);
         await Shot("47_pad_journal");
         await Tap(JoyButton.B);
@@ -1049,19 +1108,36 @@ public partial class DevAutotest : Node
         Check(await Until(() => p.Health.Current < p.Health.Max, 8), $"the wolf bites (HP {p.Health.Current})");
 
         int pelts = Have("wolf_pelt");
-        for (int i = 0; i < 24 && !wolf.Health.IsDead; i++)
+        Check(Wolf.Size > 1.4f && wolf.Health.Max >= 150f && wolf.Health.Armor > 0, $"wolves are big and tough ({wolf.Health.Max} HP, armour {wolf.Health.Armor})");
+        for (int i = 0; i < 4 && !p.Health.IsDead; i++) Net.Instance.ServerDamagePlayer(p, Wolf.BiteDamage, wolf);
+        Check(p.Health.IsDead || p.Health.Current < 30f, $"a few unblocked bites finish a level-1 player ({p.Health.Current:0} HP left)");
+        p.Health.Reset();
+        for (int i = 0; i < 50 && !wolf.Health.IsDead; i++)
         {
             p.RestoreStamina();
+            p.Health.Reset();
             Face(p, wolf.GlobalPosition);
             if (wolf.GlobalPosition.DistanceTo(p.GlobalPosition) < 2.3f) p.Combat.TryAttack(false);
             await Wait(0.5);
         }
         Check(wolf.Health.IsDead, "the sword kills the wolf");
-        Check(Have("wolf_pelt") == pelts + 1 && p.Pack.Count("wolf_pelt") >= 1, "a dead wolf leaves a pelt in the killer's pack");
+        Check(Have("wolf_pelt") == pelts + Wolf.PeltsDropped && p.Pack.Count("wolf_pelt") >= Wolf.PeltsDropped, $"a dead wolf leaves {Wolf.PeltsDropped} pelts in the killer's pack");
         Check(await Until(() => wild.Wolves.Count == 0, 5), "the body is cleared away");
 
-        // Night spawning and dawn retreat.
+        await FireWard(p);
+
+        // The first night is quiet: no packs, just a warning.
+        int dayWas = gs.Day;
+        gs.Day = 1;
         Wildlife.AutoSpawn = true;
+        gs.TimeOfDay = 0.7f;
+        await Wait(0.3);
+        gs.TimeOfDay = 0.79f;
+        await Wait(Wildlife.FirstPackDelay + 2.0);
+        Check(wild.Wolves.Count == 0, $"the first night no wolves come ({wild.Wolves.Count})");
+        gs.Day = Mathf.Max(dayWas, 2);
+
+        // Night spawning and dawn retreat.
         gs.TimeOfDay = 0.7f;
         await Wait(0.3);
         gs.TimeOfDay = 0.79f;
@@ -1115,7 +1191,7 @@ public partial class DevAutotest : Node
         Check(wild.Parries > parries && p.Combat.Parries > 0, $"timing the guard parries the bite ({wild.Parries - parries} parries)");
         Check(p.Health.Current >= p.Health.Max, "a parried bite does no damage");
 
-        for (int i = 0; i < 24 && !wolf.Health.IsDead; i++)
+        for (int i = 0; i < 50 && !wolf.Health.IsDead; i++)
         {
             p.RestoreStamina();
             p.Health.Reset();
@@ -1153,19 +1229,30 @@ public partial class DevAutotest : Node
         p.Rig.SetLook(Mathf.Atan2(-c.X, -c.Z) + 0.3f, -0.05f);
         await Shot("13_bandit_camp");
 
+        // Mail: a wooden sword barely scratches the captain, so take iron to him.
+        float woodenOnCaptain = captain.Health.AfterArmor(15f), ironOnCaptain = captain.Health.AfterArmor(32f);
+        Check(woodenOnCaptain <= 4f && ironOnCaptain >= 17f && captain.Health.Armor > bandits.First(b => !b.Captain).Health.Armor,
+            $"the captain's mail shrugs off a wooden sword ({woodenOnCaptain:0} a hit) but not iron ({ironOnCaptain:0})");
+        string heldBefore = p.Equipped;
+        gs.Inventory.Add("iron_sword", 1);
+        Net.Instance.RequestEquip("iron_sword");
         int coins = Have("coin");
         int hits = wild.Bites;
         for (int i = 0; i < 200 && bandits.Any(b => !b.Health.IsDead); i++)
         {
             p.RestoreStamina();
             if (p.Health.Current < 50) p.Health.Reset();
+            // A stray pad or key press on the test machine can cycle the weapon: keep the iron one.
+            if (p.Equipped != "iron_sword") Net.Instance.RequestEquip("iron_sword");
             var target = bandits.Where(b => !b.Health.IsDead).OrderBy(b => b.GlobalPosition.DistanceTo(p.GlobalPosition)).First();
             Face(p, target.GlobalPosition);
             if (target.GlobalPosition.DistanceTo(p.GlobalPosition) < 2.4f) p.Combat.TryAttack(false);
             else p.Teleport(target.GlobalPosition + (p.GlobalPosition - target.GlobalPosition).Normalized() * 1.8f + Vector3.Up * 0.1f);
             await Wait(0.5);
         }
-        Check(bandits.All(b => b.Health.IsDead), "the sword beats the bandits and their captain");
+        Check(bandits.All(b => b.Health.IsDead), "an iron sword beats the bandits and their captain");
+        Net.Instance.RequestEquip(heldBefore);
+        gs.Inventory.Remove("iron_sword", 1);
         Check(wild.Bites > hits, "bandits swing back");
         Check(wild.CampCleared(0), "the camp counts as cleared");
         int expected = Bandit.GruntCoins * Wildlife.SoloCampSize + Bandit.CaptainCoins;
@@ -1213,9 +1300,10 @@ public partial class DevAutotest : Node
 
         // Sell a pelt, then buy nails and seeds.
         Check(!Supplies.AtHome(p), "Ashby is away from home (the stockpile is out of reach)");
+        int stockPelts = gs.Inventory.Count("wolf_pelt");   // wolves leave 2 pelts now: some may be stored already
         gs.Inventory.Add("wolf_pelt", 5);
         Net.Instance.RequestTrade(trader, "wolf_pelt", buy: false);
-        Check(gs.Inventory.Count("wolf_pelt") == 5, "can't sell what's in the stockpile at home");
+        Check(gs.Inventory.Count("wolf_pelt") == stockPelts + 5, "can't sell what's in the stockpile at home");
         gs.Inventory.Remove("wolf_pelt", 5);
         p.Pack.Add("wolf_pelt", 1);
         int coins = Have("coin"), pelts = Have("wolf_pelt");
@@ -1478,6 +1566,239 @@ public partial class DevAutotest : Node
     }
 
     /// <summary>Home tier 2 (GDD §6): pay at the plans board, the shack becomes a cottage.</summary>
+    /// <summary>Walking (not jumping) into the shack; the trade list scrolls with the mouse wheel,
+    /// the right stick and controller focus; the graphics board opens from the Esc menu.</summary>
+    private async Task HomeAndMenus(GameState gs, PlayerController p)
+    {
+        // Into the shack through its door, on foot.
+        var shack = Find("Shack") as Node3D;
+        Check(shack != null, "the shack stands at home");
+        if (shack != null)
+        {
+            p.Teleport(shack.GlobalPosition + new Vector3(0, 0.1f, 4.5f));
+            p.Rig.SetLook(0, -0.05f);
+            await Wait(0.3);
+            // Re-press each tick: Godot lets go of held actions if the test window loses focus.
+            for (int i = 0; i < 180; i++)
+            {
+                Press("move_forward");
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+                if ((p.GlobalPosition - shack.GlobalPosition).Z < 0.5f) break;
+            }
+            Release("move_forward");
+            await Wait(0.2);
+            var at = p.GlobalPosition - shack.GlobalPosition;
+            Check(at.Z < 1.2f && at.Y > 0.12f && p.IsOnFloor(), $"you can walk into the shack without jumping (z {at.Z:0.00}, y {at.Y:0.00})");
+        }
+
+        // The road sign's lettering isn't hidden behind its post.
+        if (Find("AshbySign") is Node3D roadSign)
+        {
+            p.Teleport(roadSign.GlobalPosition + new Vector3(0, 0.1f, -2.6f));
+            p.Rig.SetView(true, true);
+            p.Rig.SetLook(Mathf.Pi, 0.05f);
+            gs.TimeOfDay = 0.45f;
+            await Wait(0.5);
+            await Shot("05_sign_lettering");
+            p.Rig.SetView(false, true);
+        }
+
+        // Fall damage: none for a short drop, more the further you fall (on the road: nothing to land on).
+        Check(p.FallDamage(p.Velocity.Y) == 0f && Mathf.IsEqualApprox(p.FallHeight(Mathf.Sqrt(2f * 9.8f * 10f)), 10f, 0.2f),
+            "(fall damage) landing speed works back to the height fallen");
+        foreach (var (drop, min, max) in new[] { (3f, 0f, 0f), (10f, 26f, 40f), (18f, 72f, 90f) })
+        {
+            p.Health.Heal(p.Health.Max);
+            float before = p.Health.Current;
+            p.Teleport(new Vector3(2.5f, drop, 30f));
+            await Until(() => p.IsOnFloor() && p.GlobalPosition.Y < 0.5f, 4);
+            await Wait(0.3);
+            float lost = before - p.Health.Current;
+            Check(lost >= min && lost <= max, $"a {drop:0} m drop costs {min:0}-{max:0} health ({lost:0})");
+        }
+        p.Health.Heal(p.Health.Max);
+
+        // Paths: the home road, the yard, the fork to the bandit camp, Ashby's square (screenshots).
+        p.Rig.SetView(false, true);
+        foreach (var (shot, at, yaw, pitch) in new[]
+        {
+            ("05_path_home_road", new Vector3(3f, 2.5f, 18f), Mathf.Pi, -0.35f),
+            ("05_path_yard", new Vector3(9f, 3f, -9f), 0f, -0.45f),
+            ("05_path_fork", new Vector3(-2f, 3f, 108f), Mathf.Pi * 0.85f, -0.35f),
+            ("05_path_square", HomeCliffs.AshbyCenter + new Vector3(4f, 9f, 8f), 0.3f, -0.75f),
+        })
+        {
+            p.Teleport(at);
+            p.Rig.SetLook(yaw, pitch);
+            await Wait(0.5);
+            await Shot(shot);
+        }
+
+        // The trade list: enough to sell that it overflows, then scroll it three ways.
+        var trader = Find("Trader") as Trader;
+        var hud = Hud.Instance;
+        if (trader != null)
+        {
+            foreach (var item in ItemDb.Items.Values.Where(i => i.SellPrice > 0)) p.Pack.Add(item.Id, 1);
+            hud.OpenTrade(trader);
+            await Wait(0.4);
+            var scroll = hud.FindChildren("*", "ScrollContainer", true, false).OfType<ScrollContainer>().FirstOrDefault(s => s.IsVisibleInTree());
+            var bar = scroll?.GetVScrollBar();
+            Check(scroll != null && bar.MaxValue > scroll.Size.Y + 50, $"the trade list overflows its board (content {bar?.MaxValue:0}, view {scroll?.Size.Y:0})");
+            if (scroll != null)
+            {
+                var centre = scroll.GetGlobalRect().GetCenter();
+                foreach (var pressed in new[] { true, false })
+                    GetViewport().PushInput(new InputEventMouseButton { ButtonIndex = MouseButton.WheelDown, Pressed = pressed, Position = centre, GlobalPosition = centre, Factor = 1f }, true);
+                await Wait(0.3);
+                Check(scroll.ScrollVertical >= 100, $"one notch of the mouse wheel scrolls about a row of the trade list ({scroll.ScrollVertical} px)");
+
+                scroll.ScrollVertical = 0;
+                Gamepad.SetDevice(true, 0);
+                Stick(JoyAxis.RightY, 1f);
+                await Wait(0.4);
+                Stick(JoyAxis.RightY, 0f);
+                Check(scroll.ScrollVertical > 100, $"the right stick scrolls the trade list ({scroll.ScrollVertical} px)");
+
+                scroll.ScrollVertical = 0;
+                var buttons = scroll.FindChildren("*", "Button", true, false).OfType<Button>().Where(b => !b.Disabled).ToList();
+                buttons.Last().GrabFocus();
+                await Wait(0.3);
+                Check(scroll.ScrollVertical > 100, $"focusing the last row (d-pad) scrolls it into view ({scroll.ScrollVertical} px)");
+                await Shot("06_trade_scrolled");
+                Gamepad.SetDevice(false, 0);
+            }
+            hud.CloseMenus();
+            foreach (var item in ItemDb.Items.Values.Where(i => i.SellPrice > 0)) p.Pack.Remove(item.Id, 1);
+        }
+
+        // Graphics settings from the Esc menu (the test never changes the window or saves).
+        hud.OpenGameMenu();
+        await Wait(0.2);
+        var menu = hud.OpenGraphics();
+        await Wait(0.3);
+        Check(menu.IsInsideTree() && gs.UiOpen, "the Esc menu opens the graphics board");
+        await Shot("07_graphics_menu");
+        menu.Close();
+        await Wait(0.1);
+        Check(!IsInstanceValid(menu) || menu.IsQueuedForDeletion(), "Back closes the graphics board");
+        hud.CloseMenus();
+        Check(!GraphicsSettings.Persist, "(test) graphics settings are not written by tests");
+    }
+
+    /// <summary>Tools and iron: axes chop and pickaxes mine far faster than a sword or fists; iron
+    /// ore takes a pickaxe; ore smelts into ingots at the hearth; the iron tier. Also the hearth,
+    /// the equipment screen's weapons, and the first-person hand and tools.</summary>
+    private async Task ToolsAndIron(GameState gs, PlayerController p)
+    {
+        string heldBefore = p.Equipped;
+        foreach (var id in new[] { "stone_axe", "stone_pickaxe", "iron_axe", "iron_pickaxe", "iron_sword" })
+            Check(ItemDb.Recipes.Any(r => r.OutputItem == id && r.Station == "workbench"), $"the workbench makes the {ItemDb.NameOf(id)}");
+        var smelt = ItemDb.Recipes.FirstOrDefault(r => r.OutputItem == "iron_ingot");
+        Check(smelt is { Station: "campfire" }, "iron ore smelts into ingots at a fire");
+        Check(ItemDb.Get("iron_sword").Damage > ItemDb.Get("stone_club").Damage * 1.25f, "the iron sword outclasses the starting weapons");
+
+        // Strike a node a few times with what's in hand; how much did it give?
+        async Task<int> Work(Harvestable node, string tool, int swings)
+        {
+            if (tool != p.Equipped)
+            {
+                if (tool != "") gs.Inventory.Add(tool, 1);
+                Net.Instance.RequestEquip(tool);
+                await Wait(0.1);
+            }
+            p.Teleport(node.GlobalPosition + new Vector3(0, 0.1f, 1.9f));
+            await Wait(0.2);
+            Face(p, node.GlobalPosition + Vector3.Up * 0.6f);
+            int before = Have(node.DropItemId);
+            for (int i = 0; i < swings; i++)
+            {
+                p.RestoreStamina();
+                p.Combat.TryAttack(false);
+                await Wait(0.8);
+            }
+            await Wait(0.3);
+            return Have(node.DropItemId) - before;
+        }
+        Harvestable Nearest(string drop, Vector3 to) => GetTree().CurrentScene.FindChildren("Res_*", "", true, false).OfType<Harvestable>()
+            .Where(h => h.DropItemId == drop && !h.GetNode<Health>("Health").IsDead).OrderBy(h => h.GlobalPosition.DistanceSquaredTo(to)).First();
+
+        var tree = Nearest("wood", new Vector3(17, 0, -15));
+        int byHand = await Work(tree, "", 3);
+        tree.GetNode<Health>("Health").Reset();
+        int byAxe = await Work(tree, "stone_axe", 3);
+        Check(byAxe >= 3 && byAxe > byHand * 2, $"an axe chops far faster than fists ({byAxe} wood vs {byHand} in 3 swings)");
+
+        var ore = GetTree().GetNodesInGroup("iron_ore").OfType<Harvestable>().ToList();
+        Check(ore.Count == HomeCliffs.OreSpots.Length, $"iron ore crops out in the world ({ore.Count})");
+        var vein = ore.OrderBy(o => o.GlobalPosition.DistanceSquaredTo(p.GlobalPosition)).First();
+        Check(await Work(vein, "stone_axe", 2) == 0, "an axe won't break iron ore");
+        Check(await Work(vein, "stone_pickaxe", 4) >= 3, "a pickaxe mines iron ore");
+        p.Rig.SetView(true, true);
+        Face(p, vein.GlobalPosition + Vector3.Up * 0.4f);
+        await Wait(0.3);
+        await Shot("08_first_person_pickaxe");
+        p.Rig.SetView(false, true);
+        p.Teleport(vein.GlobalPosition + new Vector3(2.2f, 0.1f, 2.6f));
+        Face(p, vein.GlobalPosition);
+        p.Rig.SetLook(p.Rig.Look.Yaw, -0.3f);
+        await Wait(0.4);
+        await Shot("09_iron_ore");
+
+        // The hearth: a fire indoors that cooks and smelts.
+        var hearth = GetTree().CurrentScene.FindChildren("Hearth", "", true, false).OfType<Hearth>().FirstOrDefault();
+        Check(hearth != null && hearth.Recipes.Contains(smelt), "the home has a hearth that smelts and cooks");
+        if (hearth != null)
+        {
+            p.Teleport(hearth.GlobalPosition + hearth.GlobalBasis.Z * 1.3f + Vector3.Up * 0.1f);
+            await Wait(0.2);
+            Supplies.Give(p, "iron_ore", 2);
+            Supplies.Give(p, "wood", 2);
+            int ingots = Have("iron_ingot");
+            hearth.RequestCraft(smelt);
+            await Wait(0.2);
+            Check(Have("iron_ingot") == ingots + 1, "two ore and two wood smelt an iron ingot");
+            var space = p.GetWorld3D().DirectSpaceState;
+            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(hearth.GlobalPosition + hearth.GlobalBasis.Z * 1.2f + Vector3.Up * 0.6f, hearth.GlobalPosition + Vector3.Up * 0.6f));
+            Check(hit.Count > 0 && hit["collider"].AsGodotObject() == hearth, "the hearth is solid");
+            p.Teleport(hearth.GlobalPosition + hearth.GlobalBasis.Z * 2.4f + Vector3.Up * 0.1f);
+            p.Rig.SetView(true, true);
+            Face(p, hearth.GlobalPosition + Vector3.Up * 0.9f);
+            gs.TimeOfDay = 0.9f;
+            await Wait(0.6);
+            await Shot("10_hearth");
+            p.Rig.SetView(false, true);
+            gs.TimeOfDay = 0.45f;
+        }
+
+        // The equipment screen: what you hold, and the weapons and tools to pick from.
+        var hud = Hud.Instance;
+        hud.OpenCharacter();
+        await Wait(0.3);
+        var slots = hud.EquipmentSlots.ToList();
+        Check(slots[0].ItemId == p.Equipped && slots.Skip(1).Any(s => s.ItemId == p.Equipped && s.Selected), "the equipment screen shows what's in hand");
+        var axeSlot = slots.FirstOrDefault(s => s.ItemId == "stone_axe" && !s.Selected);
+        Check(axeSlot != null, "...and the tools you can take");
+        axeSlot?.EmitSignal(BaseButton.SignalName.Pressed);
+        Check(await Until(() => p.Equipped == "stone_axe", 2), "clicking a tool there takes it in hand");
+        await Wait(0.2);
+        await Shot("11_equipment");
+        hud.CloseMenus();
+
+        // First person: a hand, not a block.
+        Net.Instance.RequestEquip("");
+        p.Rig.SetView(true, true);
+        p.Teleport(new Vector3(2.5f, 0.1f, 30f));
+        p.Rig.SetLook(0, 0f);
+        await Wait(0.3);
+        Check(p.FindChild("Fist", true, false) != null, "first person shows a fist");
+        await Shot("12_first_person_fist");
+        p.Rig.SetView(false, true);
+
+        Net.Instance.RequestEquip(heldBefore);
+        foreach (var id in new[] { "stone_axe", "stone_pickaxe" }) while (gs.Inventory.Remove(id, 1)) { }
+    }
+
     private async Task Cottage(GameState gs, PlayerController p)
     {
         var space = p.GetWorld3D().DirectSpaceState;
@@ -1512,9 +1833,7 @@ public partial class DevAutotest : Node
         p.Teleport(HomeUpgradeBoard.CottageCenter + new Vector3(0, 0.1f, 4.5f));
         p.Rig.SetLook(0, -0.05f);
         await Wait(0.3);
-        Input.ActionPress("move_forward");
-        await Wait(1.2);
-        Input.ActionRelease("move_forward");
+        await Hold("move_forward", 1.2);
         Check(p.GlobalPosition.Z < HomeUpgradeBoard.CottageCenter.Z + 2f, $"you can walk in through the door (z {p.GlobalPosition.Z:0.0})");
         p.Rig.SetView(true, true);
         p.Rig.SetLook(0.4f, -0.2f);
@@ -1602,6 +1921,7 @@ public partial class DevAutotest : Node
         {
             var w = wild.SpawnPack(at, 1)[0];
             w.Frozen = frozen;
+            w.Health.Armor = 0;   // so the damage numbers below are exact
             await Wait(0.3);
             w.GlobalPosition = at;
             return w;
@@ -1686,8 +2006,18 @@ public partial class DevAutotest : Node
 
         // Archer: Volley looses five arrows; one wolf ahead takes one 10-damage arrow.
         await Become(PlayerClasses.ArcherId);
-        var volleyed = await Target(p.GlobalPosition + fwd * 10f);
-        var d = volleyed.GlobalPosition + Vector3.Up * 0.45f - p.Rig.Camera.GlobalPosition;
+        // Pick a direction with nothing (a tree, a rock) between us and the wolf.
+        var aimDir = fwd;
+        var space3 = p.GetWorld3D().DirectSpaceState;
+        for (int k = 0; k < 8; k++)
+        {
+            var dir = fwd.Rotated(Vector3.Up, k * Mathf.Pi / 4f);
+            var ray = PhysicsRayQueryParameters3D.Create(p.GlobalPosition + Vector3.Up * 1f, p.GlobalPosition + dir * 11f + Vector3.Up * 0.8f,
+                GameState.LayerWorld | GameState.LayerProps);
+            if (space3.IntersectRay(ray).Count == 0) { aimDir = dir; break; }
+        }
+        var volleyed = await Target(p.GlobalPosition + aimDir * 10f);
+        var d = volleyed.GlobalPosition + Vector3.Up * 0.7f - p.Rig.Camera.GlobalPosition;
         p.Rig.SetLook(Mathf.Atan2(-d.X, -d.Z), Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length()));
         await Wait(0.1);
         int spawned = Projectile.Spawned;
@@ -1714,6 +2044,246 @@ public partial class DevAutotest : Node
         p.Teleport(home);
     }
 
+    /// <summary>Talents (GDD §6): pick on the Talents tab, changes only at home, the effects,
+    /// save/load; and alone, a killing blow still defeats you (no one to revive you).</summary>
+    private async Task TalentPicks(GameState gs, PlayerController p)
+    {
+        var net = Net.Instance;
+        var home = gs.WorldSpawn + new Vector3(3, 0.1f, 4);
+        var field = new Vector3(-12, 0.1f, 30);
+        async Task Become(string id)
+        {
+            p.Teleport(home);
+            await Wait(0.2);
+            var a = p.Look.Clone();
+            a.Class = id;
+            Appearance.Local = a;
+            net.RequestLook(a);
+            await Until(() => p.Class.Id == id, 3);
+            await Wait(0.2);
+        }
+
+        Check(Talents.All.Length == 20 && PlayerClasses.All.All(c => Talents.Levels.All(l => Talents.Choices(c.Id, l).Count() == 2)),
+            "every class has two talents to choose from at levels 3 and 8");
+        await Become(PlayerClasses.RogueId);
+        Check(p.Level >= 5 && p.Level < 8, $"level {p.Level} for the talent tests");
+        Check(Talents.Unpicked(p) == 1, $"a level-{p.Level} rogue has one talent to pick ({Talents.Unpicked(p)})");
+
+        // Pick on the tab.
+        Hud.Instance.OpenTalents();
+        await Wait(0.4);
+        var lf = Hud.Instance.TalentButton(Talents.LightFooted);
+        var ambush = Hud.Instance.TalentButton(Talents.Ambush);
+        Check(Hud.Instance.TalentsTabOpen && lf != null && !lf.Disabled, "the Talents tab offers Light-footed");
+        Check(ambush != null && ambush.Disabled, "...and the level-8 pair is locked");
+        await Shot("50_talents_tab");
+        lf?.EmitSignal(BaseButton.SignalName.Pressed);
+        Check(await Until(() => Talents.Has(p, Talents.LightFooted), 2), "clicking it takes Light-footed");
+        Check(await Until(() => Hud.Instance.TalentButton(Talents.LightFooted)?.Text.StartsWith("✔") == true, 2), "...and the tab ticks it");
+        Check(Mathf.IsEqualApprox(p.SafeFall, Talents.LightFootedSafeFall) && Talents.Unpicked(p) == 0, $"no fall damage under 8 m now ({p.SafeFall} m)");
+        Hud.Instance.CloseMenus();
+
+        // Changing it: only at home.
+        p.Teleport(field);
+        await Wait(0.3);
+        Check(!Supplies.AtHome(p), "out in the field");
+        net.RequestTalent(Talents.Pickpocket);
+        await Wait(0.2);
+        Check(Talents.Has(p, Talents.LightFooted) && !Talents.Has(p, Talents.Pickpocket), "talents can't be changed away from home");
+        net.RequestTalent(Talents.Ambush);
+        await Wait(0.2);
+        Check(!Talents.Has(p, Talents.Ambush) && !p.TalentPicks.ContainsKey(Talents.Key(PlayerClasses.RogueId, 8)), "a level-8 talent can't be taken early");
+        p.Teleport(home);
+        await Wait(0.3);
+        net.RequestTalent(Talents.Pickpocket);
+        Check(await Until(() => Talents.Has(p, Talents.Pickpocket), 2), "...but can at home");
+        Check(Mathf.IsEqualApprox(p.SafeFall, p.SafeFallHeight), "and Light-footed's safe fall is gone again");
+        net.RequestTalent(Talents.LightFooted);
+        await Until(() => Talents.Has(p, Talents.LightFooted), 2);
+
+        // Wizard: Focus makes Firebolt cheaper (the first pick for a class works anywhere).
+        await Become(PlayerClasses.WizardId);
+        Check(!Talents.Has(p, Talents.LightFooted) && Talents.Unpicked(p) == 1, "talents belong to the class: the wizard has its own to pick");
+        p.Teleport(field);
+        await Wait(0.2);
+        float bolt = p.Class.Ability(0).Stamina;
+        net.RequestTalent(Talents.Focus);
+        Check(await Until(() => Talents.Has(p, Talents.Focus), 2), "a first pick works away from home");
+        Check(Mathf.IsEqualApprox(p.AbilityDef(0).Stamina, bolt - Talents.FocusStamina), $"Focus: Firebolt costs {p.AbilityDef(0).Stamina:0} stamina, not {bolt:0}");
+
+        // Healer: Steady Hand shortens Mend.
+        await Become(PlayerClasses.HealerId);
+        float mend = p.Class.Ability(0).Cooldown;
+        net.RequestTalent(Talents.SteadyHand);
+        Check(await Until(() => Talents.Has(p, Talents.SteadyHand), 2) && Mathf.IsEqualApprox(p.AbilityDef(0).Cooldown, mend - Talents.SteadyHandCooldown),
+            $"Steady Hand: Mend's cooldown is {p.AbilityDef(0).Cooldown:0.#} s, not {mend:0.#}");
+
+        // Save and load keep every class's picks.
+        gs.SaveGame(silent: true);
+        p.TalentPicks = new();
+        gs.LoadGame(silent: true);
+        await Wait(0.3);
+        Check(Talents.Has(p, Talents.SteadyHand) && p.TalentPicks.GetValueOrDefault(Talents.Key(PlayerClasses.RogueId, 3)) == Talents.LightFooted
+              && p.TalentPicks.GetValueOrDefault(Talents.Key(PlayerClasses.WizardId, 3)) == Talents.Focus,
+            $"save/load keeps the talents ({string.Join(", ", p.TalentPicks.Values)})");
+        await Become(PlayerClasses.WarriorId);
+
+        // Alone, nobody can revive you: a killing blow defeats you as before.
+        p.Teleport(field);
+        await Wait(0.3);
+        Check(!Net.HasHelper(p), "alone: no one to help");
+        p.Health.TakeDamage(p.Health.Current + 100f, null, true);
+        await Wait(0.2);
+        Check(!p.Downed && !Hud.Instance.DownedScreenShown, "alone, a killing blow doesn't down you");
+        Check(await Until(() => Mathf.IsEqualApprox(p.Health.Current, p.Health.Max) && p.GlobalPosition.DistanceTo(p.SpawnPoint) < 4f, 3),
+            "...you're defeated and wake at the blossom tree");
+    }
+
+    /// <summary>Trails, path speed, the first-person hand, the big wolves and the cloud sea; also
+    /// runs alone with --only=looks for quick visual checks.</summary>
+    /// <summary>A fire keeps wolves off (GDD §9): by the shack's hearth a wolf won't hunt you.</summary>
+    private async Task FireWard(PlayerController p)
+    {
+        var wild = Wildlife.Instance;
+        // A fire keeps wolves off: next to the shack's hearth a wolf won't hunt you.
+        var hearth = GetTree().CurrentScene.FindChildren("*", "", true, false).OfType<Hearth>().FirstOrDefault();
+        Check(hearth != null, "the shack has a hearth");
+        if (hearth != null)
+        {
+            p.Health.Reset();
+            p.Teleport(hearth.GlobalPosition + hearth.GlobalBasis.Z * 1.6f + Vector3.Up * 0.1f);
+            await Wait(0.3);
+            var prowler = wild.SpawnPack(p.GlobalPosition + new Vector3(12, 0, 6), 1)[0];
+            await Wait(4.0);
+            Check(!prowler.CanHunt(p) && prowler.Target != p && p.Health.Current >= p.Health.Max,
+                $"by the hearth the wolf won't hunt you (can hunt {prowler.CanHunt(p)}, targets you {prowler.Target == p}, HP {p.Health.Current:0}/{p.Health.Max:0}, {Net.FlatDistance(prowler.GlobalPosition, hearth.GlobalPosition):0.0} m off)");
+            Check(Net.FlatDistance(prowler.GlobalPosition, hearth.GlobalPosition) > Campfire.WolfWardRadius - 0.5f, "...and stays outside the firelight");
+            prowler.Health.TakeDamage(9999, null);
+            await Until(() => wild.Wolves.Count == 0, 5);
+            p.Teleport(new Vector3(-12, 0.1f, 30));
+            await Wait(0.3);
+        }
+
+    }
+
+    private async Task TrailsAndLooks(GameState gs, PlayerController p)
+    {
+        gs.TimeOfDay = 0.45f;
+        var hud = Hud.Instance;
+
+        // Trails: unbroken from home to Ashby, to the camp, and through the pass to the mesa.
+        var stops = new List<(string What, Vector3 At)>
+        {
+            ("the yard", new Vector3(9, 0, -13)), ("home road", new Vector3(3.5f, 0, 20)), ("the wall gap", new Vector3(0.5f, 0, 90)),
+            ("the vale", new Vector3(1, 0, 150)), ("the camp track", (new Vector3(1, 0, 118) + Wildlife.CampSites[0]) / 2f),
+            ("the road east", new Vector3(30, 0, 41)), ("the pass", HomeCliffs.PassPos), ("the valley trail", new Vector3(122, 0, 34)),
+        };
+        // Sample every metre along the main road: no gaps.
+        int gaps = 0;
+        for (float z = -12; z < HomeCliffs.AshbyCenter.Z - 8; z += 1f)
+        {
+            bool any = false;
+            for (float x = -4; x <= 10 && !any; x += 0.5f) any = HomeCliffs.OnPath(new Vector3(x, 0, z));
+            if (!any) gaps++;
+        }
+        Check(gaps == 0, $"the road from home to Ashby has no gaps ({gaps} m missing)");
+        int eastGaps = 0;
+        for (float x = 4; x < HomeCliffs.MesaClimbFoot.X - 3; x += 1f)
+        {
+            bool water = Mathf.Abs(x - HomeCliffs.RiverBend.X) < HomeCliffs.RiverHalfWidth + 0.8f;
+            bool any = water;
+            for (float z = 18; z <= 48 && !any; z += 0.5f) any = HomeCliffs.OnPath(new Vector3(x, 0, z));
+            if (!any) eastGaps++;
+        }
+        Check(eastGaps == 0, $"the trail to Falls Valley has no gaps ({eastGaps} m missing)");
+        foreach (var (what, at) in stops) Check(HomeCliffs.OnPath(at), $"{what} is on a path");
+        Check(!HomeCliffs.OnPath(new Vector3(-30, 0, 20)), "open grass isn't a path");
+
+        // Nothing growing in the middle of a trail.
+        var blocked = GetTree().CurrentScene.FindChildren("Res_*", "", true, false).OfType<Node3D>()
+            .Where(n => !n.IsInGroup("iron_ore") && HomeCliffs.OnPath(n.GlobalPosition)).Select(n => n.Name.ToString()).ToList();
+        Check(blocked.Count == 0, $"no trees or rocks on the trails ({string.Join(", ", blocked.Take(5))})");
+
+        // 1.2x faster on a path.
+        async Task<float> Pace(Vector3 at)
+        {
+            p.Teleport(at + new Vector3(0, 0.1f, 0));
+            p.Rig.SetLook(Mathf.Pi, -0.05f);   // facing +Z (south, along the road)
+            await Wait(0.3);
+            var start = p.GlobalPosition;
+            await Hold("move_forward", 1.2);
+            return Net.FlatDistance(p.GlobalPosition, start) / 1.2f;
+        }
+        float off = await Pace(new Vector3(-14, 0, 14)), on = await Pace(new Vector3(3.6f, 0, 14));
+        Check(on / off > 1.12f && on / off < 1.28f, $"walking is 1.2x faster on a path ({on:0.00} vs {off:0.00} m/s)");
+
+        // Trail screenshots.
+        hud.Visible = false;
+        p.Rig.SetView(false, true);
+        foreach (var (name, at, yaw, pitch) in new[]
+        {
+            ("40_trail_yard", new Vector3(6, 0.1f, -8), Mathf.Pi + 0.1f, -0.12f),
+            ("41_trail_gap", new Vector3(0.6f, 0.1f, 72), Mathf.Pi, -0.08f),
+            ("42_trail_east", new Vector3(8, 0.1f, 37), -Mathf.Pi / 2f + 0.1f, -0.1f),
+            ("43_trail_valley", new Vector3(114, 0.1f, 42), -Mathf.Pi / 2f - 0.5f, -0.1f),
+        })
+        {
+            p.Teleport(at);
+            p.Rig.SetLook(yaw, pitch);
+            await Wait(0.5);
+            await Shot(name);
+        }
+
+        // The cloud sea between home and the volcano.
+        p.Teleport(gs.WorldSpawn);
+        p.Rig.SetLook(0.35f, -0.05f);
+        gs.TimeOfDay = 0.5f;
+        await Wait(0.6);
+        await Shot("44_clouds_noon");
+        gs.TimeOfDay = 0.74f;
+        await Wait(0.6);
+        await Shot("45_clouds_evening");
+        hud.Visible = true;
+
+        // Wolves keep away from the fire.
+        gs.TimeOfDay = 0.9f;
+        p.Rig.SetView(false, true);
+        await FireWard(p);
+
+        // A big wolf, side on.
+        gs.TimeOfDay = 0.45f;
+        p.Teleport(new Vector3(-20, 0.1f, 30));
+        p.Rig.SetLook(-Mathf.Pi / 2f, -0.1f);
+        await Wait(0.3);
+        var wolf = Wildlife.Instance.SpawnPack(p.GlobalPosition + new Vector3(4.5f, 0, -1.5f), 1)[0];
+        wolf.Frozen = true;
+        await Wait(0.4);
+        wolf.GlobalPosition = p.GlobalPosition + new Vector3(4.5f, -0.1f, -1.5f);
+        wolf.Rotation = new Vector3(0, 0, 0);
+        await Wait(0.3);
+        await Shot("46_big_wolf");
+        Check(wolf.Health.Max >= 150f && wolf.Health.Armor > 0, $"wolves are tough ({wolf.Health.Max} HP, armour {wolf.Health.Armor})");
+        wolf.Health.TakeDamage(9999, null);
+        await Until(() => Wildlife.Instance.Wolves.Count == 0, 5);
+
+        // The first-person hand: bare, then round a sword and an axe.
+        p.Rig.SetView(true, true);
+        p.Teleport(new Vector3(3.5f, 0.1f, 30));
+        p.Rig.SetLook(Mathf.Pi, -0.05f);
+        gs.Inventory.Add("stone_axe", 1);
+        gs.Inventory.Add("wooden_sword", 1);
+        string held = p.Equipped;
+        foreach (var (item, shot) in new[] { ("", "47_hand_fist"), ("wooden_sword", "48_hand_sword"), ("stone_axe", "49_hand_axe") })
+        {
+            Net.Instance.RequestEquip(item);
+            await Until(() => p.Equipped == item, 2);
+            await Wait(0.4);
+            await Shot(shot);
+        }
+        Net.Instance.RequestEquip(held);
+        p.Rig.SetView(false, true);
+    }
+
     private async Task Run()
     {
         var gs = GameState.Instance;
@@ -1722,6 +2292,21 @@ public partial class DevAutotest : Node
         await Wait(2.0);
         var p = gs.LocalPlayer;
         Check(p != null && p.IsOnFloor(), "player spawned on the ground");
+        if (OS.GetCmdlineUserArgs().Contains("--only=looks"))
+        {
+            await TrailsAndLooks(gs, p);
+            GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
+            GetTree().Quit(_fails == 0 ? 0 : 1);
+            return;
+        }
+        if (OS.GetCmdlineUserArgs().Contains("--only=home-menus"))
+        {
+            await HomeAndMenus(gs, p);
+            await ToolsAndIron(gs, p);
+            GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
+            GetTree().Quit(_fails == 0 ? 0 : 1);
+            return;
+        }
 
         // Views.
         p.Rig.SetLook(0.35f, -0.12f);
@@ -1735,9 +2320,7 @@ public partial class DevAutotest : Node
 
         // Movement: hold W for a moment.
         var start = p.GlobalPosition;
-        Input.ActionPress("move_forward");
-        await Wait(0.8);
-        Input.ActionRelease("move_forward");
+        await Hold("move_forward", 0.8);
         Check(p.GlobalPosition.DistanceTo(start) > 1.5f, $"walking moves the player ({p.GlobalPosition.DistanceTo(start):0.0} m)");
 
         // Chop the guaranteed tree at ShackPos + (8,0,6) = (17,0,-15).
@@ -1841,6 +2424,8 @@ public partial class DevAutotest : Node
         Check(Mathf.IsEqualApprox(Difficulty.BigMonsterHealth(100, 4), 205f) && Mathf.IsEqualApprox(Difficulty.BigMonsterDamage(10, 4), 14.5f),
             "big monsters scale health x2.05 and damage x1.45 at 4 players");
 
+        await HomeAndMenus(gs, p);
+        await ToolsAndIron(gs, p);
         await Packs(gs, p);
         await Navigation(gs, p);
         await Dodge(gs, p);
@@ -1851,6 +2436,7 @@ public partial class DevAutotest : Node
         await Farming(gs, p);
         await Cottage(gs, p);
         await Looks(gs, p);
+        await TrailsAndLooks(gs, p);
         await Classes(gs, p);
         await FallsValley(gs, p);
         await Swimming(gs, p);
@@ -1859,6 +2445,7 @@ public partial class DevAutotest : Node
         await ControllerAndGuidance(gs, p);
         await Xp(gs, p);
         await LevelFive(gs, p);
+        await TalentPicks(gs, p);
 
         // Night look.
         gs.TimeOfDay = 0.745f;

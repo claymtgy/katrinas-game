@@ -19,6 +19,10 @@ public partial class ItemDef : Resource
     [Export] public float AttackCooldown { get; set; } = 0.5f;
     /// <summary>Size of the greybox weapon mesh held in hand.</summary>
     [Export] public Vector3 WeaponSize { get; set; } = new(0.08f, 0.08f, 0.9f);
+    /// <summary>A tool as well as a weapon: "axe" chops trees, "pick" mines rock and ore.</summary>
+    [Export] public string ToolKind { get; set; } = "";
+    /// <summary>With the right tool, each swing does this many drops' worth to a resource node.</summary>
+    [Export] public float ToolPower { get; set; } = 0f;
 
     [ExportGroup("Food")]
     /// <summary>Health restored when eaten (F). 0 = not food.</summary>
@@ -57,6 +61,7 @@ public partial class ItemDef : Resource
     [Export] public string Icon { get; set; } = "";
 
     public bool IsWeapon => Category == "weapon";
+    public bool IsTool => ToolKind != "";
     public bool IsWearable => Slot != "";
     /// <summary>Stays with its owner: crafted into their pack, kept at a chest, never lost on defeat.</summary>
     public bool IsPersonal => Category is "gear" or "armor";
@@ -73,6 +78,7 @@ public partial class ItemDef : Resource
             if (PerkText != "") lines.Add(PerkText);
             if (Gear.GetEnchantment(Enchant) is { } e) lines.Add($"Enchanted: {e.Text}");
         }
+        else if (IsTool) lines.Add($"{(ToolKind == "axe" ? "Axe: chops trees" : "Pickaxe: mines rock and iron ore")} · ×{ToolPower:0.#} per swing · {Damage:0} damage");
         else if (IsWeapon) lines.Add($"Weapon · {Damage:0} damage · {Reach:0.0} m reach");
         else if (IsFood) lines.Add($"Food" + (FoodHeal > 0 ? $" · heals {FoodHeal:0}" : "") + (HasBuff ? $" · {BuffText}" : ""));
         else if (Category == "gear" && Id == "glider") lines.Add("Gear · Space in the air to glide");

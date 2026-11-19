@@ -31,7 +31,7 @@ public static class Levels
     /// first time; after that it's worth a bandit.</summary>
     public static int RepeatKill(string kind) => kind switch
     {
-        "wolf" => 4,
+        "wolf" => 15,
         "harpy" => 5,
         "bandit" or "captain" => 6,
         "raider" => 8,

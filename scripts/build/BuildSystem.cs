@@ -41,7 +41,7 @@ public partial class BuildSystem : Node
     public override void _UnhandledInput(InputEvent e)
     {
         var gs = GameState.Instance;
-        if (gs.UiOpen || _player.Sleeping) return;
+        if (gs.UiOpen || _player.Sleeping || _player.Downed) return;
 
         if (e.IsActionPressed("build_mode"))
         {

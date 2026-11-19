@@ -12,8 +12,10 @@ public partial class Bandit : Enemy
 {
     public const float GruntHealth = 60f;
     public const float GruntDamage = 10f;
-    public const float CaptainHealth = 160f;
-    public const float CaptainDamage = 18f;
+    public const float CaptainHealth = 240f;
+    public const float CaptainDamage = 34f;
+    /// <summary>Mail: flat damage off every hit. A wooden sword barely scratches the captain; take iron.</summary>
+    public const float GruntArmor = 5f, CaptainArmor = 14f;
     public const int GruntCoins = 6;
     public const int CaptainCoins = 25;
     public const float RaiderHealth = 55f;
@@ -34,8 +36,8 @@ public partial class Bandit : Enemy
     protected override float HomeLeash => Raider ? 0f : 30f;
     /// <summary>Raiders slink off in the morning, with whatever they stole.</summary>
     protected override bool ShouldFlee => Raider && GameState.Instance.TimeOfDay >= 0.24f && GameState.Instance.TimeOfDay < 0.5f;
-    protected override float AttackRange => Captain ? 2.2f : 1.9f;
-    protected override float AttackReach => Captain ? 3.0f : 2.6f;
+    protected override float AttackRange => Captain ? 3.2f : 1.9f;
+    protected override float AttackReach => Captain ? 4.4f : 2.6f;
     protected override float AttackWindup => Captain ? 0.75f : 0.55f;
     protected override float AttackCooldown => Captain ? 2.0f : 1.6f;
     protected override float HitStagger => Captain ? 0.15f : 0.35f;
@@ -49,8 +51,9 @@ public partial class Bandit : Enemy
         var b = new Bandit { Name = $"Bandit_{netId}", Captain = captain, Raider = raider, Damage = damage };
         float height = captain ? 2.3f : 1.8f;
         b.Init(netId, camp, position, yaw, maxHealth, new Vector3(0.7f, height, 0.7f));
+        b.Health.Armor = captain ? CaptainArmor : raider ? 0f : GruntArmor;   // raiders travel light (and the watchtower must still bring them down)
         var hide = captain
-            ? new[] { "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Round_Shield", "2H_Sword" }
+            ? new[] { "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Round_Shield", "1H_Sword" } // a greatsword: his long reach
             : new[] { "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Round_Shield", "Spike_Shield", "2H_Sword", "Knight_Helmet", "Knight_Cape" };
         var tint = captain ? new Color(0.25f, 0.02f, 0.05f, 0.45f)
             : raider ? new Color(0.55f, 0.3f, 0.05f, 0.45f)
@@ -89,8 +92,9 @@ public partial class Bandit : Enemy
     public override void ServerDropLoot(Node killer)
     {
         var gs = GameState.Instance;
-        int coins = Captain ? CaptainCoins : GruntCoins;
         var looter = killer as PlayerController;
+        int coins = Captain ? CaptainCoins : GruntCoins;
+        if (Talents.Has(looter, Talents.Pickpocket)) coins = Mathf.RoundToInt(coins * Talents.PickpocketCoins);
         Supplies.Give(looter, "coin", coins);
         string msg = $"+{coins} Coins";
         if (Carried.Count > 0)

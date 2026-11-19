@@ -3,7 +3,8 @@ using Godot;
 namespace KatrinasGame;
 
 /// <summary>Flickering light and a cooking station: rest here to heal, or cook (bread, roast
-/// turnips) from the shared stockpile.</summary>
+/// turnips) from the shared stockpile. Wolves won't come within <see cref="WolfWardRadius"/> of a
+/// fire (or the hearth, which is one), so on a fresh character a fire is how you get through the night.</summary>
 public partial class Campfire : CraftingStation, IServerInteractable
 {
     public Campfire()
@@ -13,6 +14,25 @@ public partial class Campfire : CraftingStation, IServerInteractable
     }
 
     [Export] public float HealAmount { get; set; } = 40f;
+
+    /// <summary>Wolves keep this far from any fire (GDD §9).</summary>
+    public const float WolfWardRadius = 7f;
+    private static readonly System.Collections.Generic.List<Campfire> Fires = new();
+
+    public override void _EnterTree() { if (!Fires.Contains(this)) Fires.Add(this); }
+    public override void _ExitTree() => Fires.Remove(this);
+
+    /// <summary>The fire whose ward covers this point (flat distance), or null.</summary>
+    public static Campfire WardAt(Vector3 pos, float extra = 0f)
+    {
+        foreach (var f in Fires)
+        {
+            if (!IsInstanceValid(f) || !f.IsInsideTree()) continue;
+            var d = f.GlobalPosition - pos;
+            if (new Vector2(d.X, d.Z).Length() < WolfWardRadius + extra) return f;
+        }
+        return null;
+    }
 
     private OmniLight3D _light;
     private Node3D _flame;

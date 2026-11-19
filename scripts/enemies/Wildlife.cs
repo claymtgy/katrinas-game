@@ -23,6 +23,9 @@ public partial class Wildlife : Node3D
     /// <summary>Wolves per pack for one player; more players means bigger packs.</summary>
     public const int SoloPackSize = 2;
     public const int PacksPerNight = 2;
+    /// <summary>Nights (counted by the day they start on) when no packs come.</summary>
+    public const int QuietNights = 1;
+    private bool _quietNight;
     /// <summary>Bandit grunts in the camp for one player.</summary>
     public const int SoloCampSize = 2;
     /// <summary>A cleared camp is re-occupied after this many days.</summary>
@@ -53,7 +56,7 @@ public partial class Wildlife : Node3D
     /// <summary>Harpy roosts in Falls Valley (the world builder puts a spire and nest here).</summary>
     public static readonly Vector3[] RoostSites = { new(118, 0, 80) };
 
-    private const float FirstPackDelay = 6f;
+    public const float FirstPackDelay = 6f;
     private const float PackInterval = 110f;
     private const float SendInterval = 1f / 15f;
     /// <summary>Pack anchors creep toward the base at this speed (m/s), so wolves come to you.</summary>
@@ -155,11 +158,17 @@ public partial class Wildlife : Node3D
         {
             _packsThisNight = 0;
             _packTimer = FirstPackDelay;
+            // The first night is quiet: the wolves only watch, so a new player has time to
+            // learn the fire keeps them off. (Day only changes at midnight, so this is the
+            // night that starts on day 1.)
+            _quietNight = gs.Day <= QuietNights;
+            if (_quietNight && AutoSpawn && Net.Instance.Config.Enemies)
+                Net.Instance.ToastAll("Eyes glint at the edge of the plateau. Tomorrow night the wolves will hunt: stay near a fire after dark.");
         }
         if (!night && _wasNight) RepairBuildings();
         _wasNight = night;
         if (!AutoSpawn || !Net.Instance.Config.Enemies || gs.Players.Count == 0) return;
-        if (!night || _packsThisNight >= PacksPerNight) return;
+        if (!night || _quietNight || _packsThisNight >= PacksPerNight) return;
 
         _packTimer -= dt;
         if (_packTimer > 0) return;

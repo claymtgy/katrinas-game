@@ -12,6 +12,8 @@ public partial class PlayerController : CharacterBody3D
 {
     [Export] public float WalkSpeed { get; set; } = 4.5f;
     [Export] public float SprintSpeed { get; set; } = 8.0f;
+    /// <summary>Standing on a road, track or yard last physics frame (moves 1.2× faster).</summary>
+    public bool OnPath { get; private set; }
     [Export] public float JumpVelocity { get; set; } = 5.5f;
     [Export] public float GroundAcceleration { get; set; } = 12f;
     [Export] public float AirAcceleration { get; set; } = 3f;
@@ -38,6 +40,10 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float WetGripCost { get; set; } = 1.6f;
     [Export] public float GlideSpeed { get; set; } = 9f;
     [Export] public float GlideFall { get; set; } = 2.2f;
+    /// <summary>Sink speed looking straight down (a dive); looking down a little sinks part way.</summary>
+    [Export] public float GlideDiveFall { get; set; } = 14f;
+    /// <summary>Stamina per second under the glider (nothing while an updraft lifts you).</summary>
+    [Export] public float GlideCost { get; set; } = 5f;
     [Export] public float UpdraftLift { get; set; } = 8f;
 
     [ExportGroup("Swim")]
@@ -53,9 +59,10 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float FloatDepth { get; set; } = 1.35f;
 
     [ExportGroup("Falling")]
-    /// <summary>Landing speeds above this (m/s) hurt.</summary>
-    [Export] public float SafeFallSpeed { get; set; } = 12f;
-    [Export] public float FallDamagePerSpeed { get; set; } = 7f;
+    /// <summary>Drops up to this many metres don't hurt.</summary>
+    [Export] public float SafeFallHeight { get; set; } = 4.5f;
+    /// <summary>Damage per metre fallen beyond <see cref="SafeFallHeight"/> (before gear).</summary>
+    [Export] public float FallDamagePerMetre { get; set; } = 6f;
     [Export] public float KillHeight { get; set; } = -40f;
 
     /// <summary>Network peer that controls this player (1 = host / single player). Set before adding to the tree.</summary>
@@ -163,6 +170,73 @@ public partial class PlayerController : CharacterBody3D
 
     /// <summary>A slot's ability node (0 = R, 1 = T).</summary>
     public PlayerAbility AbilitySlot(int slot) => slot == 1 ? Ability2 : Ability;
+
+    /// <summary>A slot's ability as this player has it: the class's, with talents applied.</summary>
+    public AbilityDef AbilityDef(int slot) => Talents.Tune(this, Class.Ability(slot));
+
+    // ---------------------------------------------------------------- talents (GDD §6)
+
+    /// <summary>Every machine: talent picks, "class:level" → talent id (Talents). Server-owned.</summary>
+    public System.Collections.Generic.Dictionary<string, string> TalentPicks { get; set; } = new();
+
+    // ---------------------------------------------------------------- downed (GDD §16)
+
+    /// <summary>Every machine: knocked down at 0 health, waiting for a friend (Net.Downed).</summary>
+    public bool Downed { get; private set; }
+    /// <summary>Server clock: when a downed player is defeated if nobody helps.</summary>
+    public double DownedUntil { get; set; }
+    /// <summary>0..1: how far along a friend's revive is (shown on the marker).</summary>
+    public float ReviveProgress { get; set; }
+    public const float CrawlSpeed = 1f, GiveUpSeconds = 1.2f;
+    /// <summary>Server: what downed them (credited if they're defeated after all).</summary>
+    public Node DownedBy { get; set; }
+    /// <summary>Server: set while a downed player is being defeated, so the blow lands.</summary>
+    public bool ForceDefeat { get; set; }
+    /// <summary>Local: how long Jump has been held while downed (giving up at GiveUpSeconds).</summary>
+    public float GiveUpHeld { get; private set; }
+    private bool _gaveUp;
+
+    /// <summary>Every machine: go down or get up (Net tells everyone).</summary>
+    public void SetDowned(bool downed, double until)
+    {
+        Downed = downed;
+        DownedUntil = until;
+        if (!downed) ReviveProgress = 0f;
+        if (downed)
+        {
+            if (Mode != MoveMode.Normal) SetMode(MoveMode.Normal);
+            Combat?.DropGuard();
+        }
+        Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetDowned(downed);
+        UpdateDownedMarker();
+    }
+
+    private Label3D _downedMarker;
+
+    /// <summary>For everyone else: a marker over a downed player that shows through walls.</summary>
+    private void UpdateDownedMarker()
+    {
+        if (IsLocal) return;
+        if (Downed && _downedMarker == null)
+        {
+            _downedMarker = new Label3D
+            {
+                Name = "DownedMarker", Position = new Vector3(0, 1.6f, 0),
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled, NoDepthTest = true, FixedSize = true,
+                FontSize = 30, PixelSize = 0.0018f, OutlineSize = 10, Modulate = new Color(1f, 0.45f, 0.35f),
+                RenderPriority = 10,
+            };
+            AddChild(_downedMarker);
+        }
+        if (_downedMarker != null) _downedMarker.Visible = Downed;
+    }
+
+    private void TickDownedMarker()
+    {
+        if (_downedMarker == null || !Downed) return;
+        float left = Mathf.Max(0f, (float)(DownedUntil - Net.Now));
+        _downedMarker.Text = $"✚ {DisplayName} is down · {left:0}s" + (ReviveProgress > 0.01f ? $"\nreviving {ReviveProgress * 100f:0}%" : "");
+    }
 
     /// <summary>Server clock (Net.Now): the Rogue's Shadowstep makes the next strike before this a
     /// critical hit.</summary>
@@ -322,17 +396,32 @@ public partial class PlayerController : CharacterBody3D
         return (Vector3.Up * up + right * lateral) * ClimbSpeed - n;
     }
 
-    /// <summary>Local player under the glider: a slow sink, steered with the camera; an updraft
-    /// (waterfall mist) lifts you to its top.</summary>
+    /// <summary>How far into a dive the camera is (0 level, 1 looking well down).</summary>
+    public float GlideDive => Mathf.Clamp((-Rig.Look.Pitch - 0.3f) / 0.7f, 0f, 1f);
+
+    /// <summary>Local player under the glider: a slow sink, steered with the camera; look down to
+    /// dive (sink fast, pick up speed). It costs stamina; out of stamina it folds. An updraft
+    /// (waterfall mist) lifts you to its top for free.</summary>
     private Vector3 GlideStep(Vector3 v, float dt, Vector2 input, Vector3 forward, Vector3 right)
     {
         float top = GameState.Instance.UpdraftAt(GlobalPosition);
         bool lifting = top > 0 && GlobalPosition.Y < top;
+        if (!lifting)
+        {
+            Stamina = Mathf.Max(0f, Stamina - GlideCost * dt);
+            if (Stamina <= 0f)
+            {
+                SetMode(MoveMode.Normal);
+                Hud.Toast("Too tired to hold the glider!");
+                return v;
+            }
+        }
+        float dive = lifting ? 0f : GlideDive;
         // In the mist column you hang and turn rather than race through it.
-        float speed = GlideSpeed * (input.Y < -0.3f ? 1.2f : input.Y > 0.3f ? 0.6f : 1f) * (lifting ? 0.35f : 1f);
+        float speed = GlideSpeed * (input.Y < -0.3f ? 1.2f : input.Y > 0.3f ? 0.6f : 1f) * (lifting ? 0.35f : 1f) * (1f + 0.4f * dive);
         var heading = (forward + right * input.X * 0.6f).Normalized();
         var h = new Vector3(v.X, 0, v.Z).Lerp(heading * speed, Mathf.Min(1f, 1.8f * dt));
-        float targetY = lifting ? UpdraftLift : -GlideFall;
+        float targetY = lifting ? UpdraftLift : -Mathf.Lerp(GlideFall, GlideDiveFall, dive);
         float vy = Mathf.Lerp(v.Y, targetY, Mathf.Min(1f, (lifting ? 1.5f : 3f) * dt));
         return new Vector3(h.X, vy, h.Z);
     }
@@ -469,6 +558,7 @@ public partial class PlayerController : CharacterBody3D
         if (SpawnPoint == Vector3.Zero) SpawnPoint = gs.WorldSpawn;
         _targetPos = GlobalPosition;
 
+        Net.Instance.SetUpDowning(this);
         Health.Died += source =>
         {
             if (Net.Instance.IsServer) Net.Instance.ServerPlayerDied(this, source);
@@ -684,10 +774,22 @@ public partial class PlayerController : CharacterBody3D
         if (IsLocal) SetMode(MoveMode.Normal);
     }
 
+    /// <summary>How far a landing at <paramref name="speed"/> m/s (downward) fell: v² / 2g. A jump
+    /// that lands where it started counts only its own small drop.</summary>
+    public float FallHeight(float speed) => speed <= 0f ? 0f : speed * speed / (2f * _gravity);
+
+    /// <summary>Damage for landing at <paramref name="speed"/> m/s: <see cref="FallDamagePerMetre"/>
+    /// for each metre beyond <see cref="SafeFallHeight"/>, less what gear takes off.</summary>
+    public float FallDamage(float speed) =>
+        Mathf.Max(0f, FallHeight(speed) - SafeFall) * FallDamagePerMetre * Gear.FallDamageMult(this);
+
+    /// <summary>The drop you can take without harm (the Rogue's Light-footed talent raises it).</summary>
+    public float SafeFall => Talents.Has(this, Talents.LightFooted) ? Mathf.Max(SafeFallHeight, Talents.LightFootedSafeFall) : SafeFallHeight;
+
     /// <summary>Scripted tests: open the glider now (as if Space was pressed in the air).</summary>
     public bool TryGlide()
     {
-        if (IsOnFloor() || Mode != MoveMode.Normal || !HasGlider) return false;
+        if (IsOnFloor() || Mode != MoveMode.Normal || !HasGlider || Stamina < 5f) return false;
         SetMode(MoveMode.Glide);
         return true;
     }
@@ -710,6 +812,7 @@ public partial class PlayerController : CharacterBody3D
     {
         float dt = (float)delta;
         TickBuffs(dt);
+        TickDownedMarker();
         if (Net.Instance.IsServer)
         {
             ServerRegen(dt);
@@ -746,6 +849,24 @@ public partial class PlayerController : CharacterBody3D
         var right = new Vector3(basis.X.X, 0, basis.X.Z).Normalized();
         var dir = right * input.X - forward * input.Y;
         if (dir.LengthSquared() > 1f) dir = dir.Normalized();
+
+        if (Downed)
+        {
+            // Downed: crawl, nothing else. Hold Jump to give up and go home now.
+            v.X = Mathf.Lerp(v.X, dir.X * CrawlSpeed, Mathf.Min(1f, GroundAcceleration * dt));
+            v.Z = Mathf.Lerp(v.Z, dir.Z * CrawlSpeed, Mathf.Min(1f, GroundAcceleration * dt));
+            if (onFloor) v.Y = 0f;
+            Velocity = v;
+            MoveAndSlide();
+            GiveUpHeld = !blocked && Input.IsActionPressed("jump") ? GiveUpHeld + dt : 0f;
+            if (GiveUpHeld >= GiveUpSeconds && !_gaveUp) { _gaveUp = true; Net.Instance.RequestGiveUp(); }
+            _airVelocityY = 0;
+            _wasOnFloor = onFloor;
+            FinishLocalStep(dt, false);
+            return;
+        }
+        GiveUpHeld = 0f;
+        _gaveUp = false;
 
         // Pools: deep water at your feet and you swim (a glider folds; a fall is broken).
         float surface = gs.WaterSurfaceAt(GlobalPosition);
@@ -784,11 +905,15 @@ public partial class PlayerController : CharacterBody3D
         bool sprinting = !blocked && !guarding && moving && onFloor && sprintHeld && Stamina > 1f;
         if (sprinting)
         {
-            Stamina = Mathf.Max(0, Stamina - SprintCostPerSecond * dt);
+            Stamina = Mathf.Max(0, Stamina - SprintCostPerSecond * (Talents.Has(this, Talents.Fleet) ? Talents.FleetSprint : 1f) * dt);
             _regenDelay = 0.6f;
         }
 
-        var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f)) * Class.MoveSpeed * Gear.MoveSpeedMult(this);
+        var target = dir * (sprinting ? SprintSpeed : WalkSpeed * (guarding ? 0.5f : 1f)) * Class.MoveSpeed * Gear.MoveSpeedMult(this)
+                     * (Talents.Has(this, Talents.Fleetfoot) ? Talents.FleetfootSpeed : 1f);
+        // Roads and tracks are quicker going (GDD §8).
+        OnPath = onFloor && HomeCliffs.OnPath(GlobalPosition);
+        if (OnPath) target *= HomeCliffs.PathSpeedMult;
         float accel = Mathf.Min(1f, (onFloor ? GroundAcceleration : AirAcceleration) * dt);
         // Wading in the river: slower, and the current carries you (GDD §9).
         var flow = onFloor ? gs.CurrentAt(GlobalPosition) : Vector3.Zero;
@@ -829,7 +954,8 @@ public partial class PlayerController : CharacterBody3D
             if (Mode == MoveMode.Glide) SetMode(MoveMode.Normal);
             else if (_airTime > 0.2f && _dodgeTime <= 0)
             {
-                if (HasGlider) SetMode(MoveMode.Glide);
+                if (HasGlider && Stamina >= 5f) SetMode(MoveMode.Glide);
+                else if (HasGlider) Hud.Toast("Too tired to open the glider.");
                 else if (v.Y < -6f && !_gliderHinted)
                 {
                     _gliderHinted = true;
@@ -855,13 +981,15 @@ public partial class PlayerController : CharacterBody3D
 
         // Fall damage on landing (the server applies it).
         onFloor = IsOnFloor();
-        if (onFloor && !_wasOnFloor && -_airVelocityY > SafeFallSpeed)
+        if (onFloor && !_wasOnFloor && Mode != MoveMode.Glide)
         {
-            float dmg = (-_airVelocityY - SafeFallSpeed) * FallDamagePerSpeed * Gear.FallDamageMult(this);
+            float dmg = FallDamage(-_airVelocityY);
             if (dmg >= 1f)
             {
                 Net.Instance.ReportFallDamage(dmg);
                 Hud.Toast($"Ouch! Fall damage -{dmg:0}");
+                Sfx.At("hit_flesh", GlobalPosition + Vector3.Up, -4f, 0.1f);
+                Gamepad.Rumble(Mathf.Clamp(dmg / 60f, 0.3f, 1f), 0.6f, 0.25f);
             }
         }
         if (onFloor) _airVelocityY = 0;
@@ -873,7 +1001,7 @@ public partial class PlayerController : CharacterBody3D
     private void FinishLocalStep(float dt, bool guarding)
     {
         if (_regenDelay > 0) _regenDelay -= dt;
-        else if (Mode != MoveMode.Climb)
+        else if (Mode is not (MoveMode.Climb or MoveMode.Glide))
             Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * Class.StaminaRegen * Gear.StaminaRegenMult(this) * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
 
         if (Mode == MoveMode.Climb)

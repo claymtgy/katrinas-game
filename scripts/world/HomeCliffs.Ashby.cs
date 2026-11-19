@@ -44,13 +44,7 @@ public partial class HomeCliffs
                 new Vector3(0, _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)), Slate);
         }
 
-        // The road on to Ashby, and a track east to the bandit camp.
-        var road = Mat(Dirt.Darkened(0.05f));
-        Visual(new BoxMesh { Size = new Vector3(4, 0.04f, 92) }, road, new Vector3(1, 0.02f, 134), new Vector3(0, 0.02f, 0));
-        var camp = Wildlife.CampSites[0];
-        var track = new Vector3(camp.X - 2f, 0, camp.Z) - new Vector3(1, 0, 118);
-        Visual(new BoxMesh { Size = new Vector3(2.2f, 0.035f, track.Length()) }, Mat(Dirt.Darkened(0.15f)),
-            new Vector3(1, 0.018f, 118) + track / 2f, new Vector3(0, Mathf.Atan2(track.X, track.Z), 0));
+        // The road on to Ashby and the camp track are laid by BuildTrails.
 
         ScatterVale();
     }
@@ -105,7 +99,7 @@ public partial class HomeCliffs
         GameState.Instance.SafeZones.Add((AshbyCenter, AshbySafeRadius));
 
         // Village green and square.
-        Visual(new BoxMesh { Size = new Vector3(30, 0.04f, 30) }, Mat(new Color(0.58f, 0.5f, 0.4f)), new Vector3(0, 0.025f, 0), Vector3.Zero, root);
+        PathPatch(new Vector3(0, 0.035f, 0), new Vector2(31, 31), new Color(0.5f, 0.42f, 0.32f), new Color(0.6f, 0.52f, 0.4f), root);
 
         // Houses around the square, doors toward the well.
         House(root, new Vector3(-14, 0, -5), 3, 4, "Plaster", 0);
@@ -291,7 +285,7 @@ public partial class HomeCliffs
         var center = Wildlife.CampSites[0];
         var root = new Node3D { Name = "BanditCamp", Position = center };
         AddChild(root);
-        Visual(new CylinderMesh { TopRadius = 10, BottomRadius = 10, Height = 0.04f, RadialSegments = 14 }, Mat(Dirt.Darkened(0.3f)), new Vector3(0, 0.02f, 0), Vector3.Zero, root);
+        PathPatch(new Vector3(0, 0.035f, 0), new Vector2(21, 21), Dirt.Darkened(0.4f), Dirt.Darkened(0.25f), root);
 
         // Rough stake fence with a wide mouth toward the road (west).
         for (int i = 0; i < 18; i++)
@@ -355,6 +349,12 @@ public partial class HomeCliffs
         AddBed(house, "Bed2", new Vector3(1.9f, 0.2f, -1.6f));
         Visual(new BoxMesh { Size = new Vector3(1.2f, 0.8f, 0.8f) }, Mat(Wood), new Vector3(0, 0.4f, -2.3f), Vector3.Zero, house); // table
         Prop(Models.Village("Prop_Crate"), Vector3.Zero, 0.3f, 0.7f, house).Position = new Vector3(2.2f, 0, 1.6f);
+        // A hearth against the east wall, facing into the room, its stack up into the roof.
+        var hearth = Hearth.Create();
+        hearth.Position = new Vector3(2.7f - Hearth.Depth / 2f, 0.02f, 0f);
+        hearth.Rotation = new Vector3(0, -Mathf.Pi / 2f, 0);
+        house.AddChild(hearth);
+        hearth.AddStack(3.3f);
         return house;
     }
 

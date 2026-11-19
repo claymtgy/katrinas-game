@@ -19,6 +19,9 @@ public partial class Net
 
     private int _nextProjectileId = 1;
 
+    /// <summary>How far this player's Whirlwind reaches (the Cleave talent adds 1 m).</summary>
+    public static float WhirlwindReach(PlayerController p) => WhirlwindRadius + (Talents.Has(p, Talents.Cleave) ? Talents.CleaveRadius : 0f);
+
     public void RequestAbility(Vector3 aim, int slot = 0) => ToServer(MethodName.S_Ability, aim, slot);
 
     public static float FlatDistance(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Z - b.Z).Length();
@@ -55,9 +58,9 @@ public partial class Net
     private void S_Ability(Vector3 aim, int slot)
     {
         var p = SenderPlayer();
-        if (p == null || p.Health.IsDead || p.Sleeping) return;
+        if (p == null || p.Health.IsDead || p.Sleeping || p.Downed) return;
         var ability = p.AbilitySlot(slot);
-        var def = p.Class.Ability(slot);
+        var def = p.AbilityDef(slot);
         if (ability == null || def == null || p.Level < def.UnlockLevel) return;
         // Allow a little slack for latency, but no faster than the ability's cooldown.
         if (Now < ability.ServerReadyAt - 0.15) return;
@@ -72,11 +75,11 @@ public partial class Net
                 GetTree().CreateTimer(WhirlwindDelay).Timeout += () =>
                 {
                     if (IsInstanceValid(p) && !p.Health.IsDead)
-                        p.Combat.ServerStrikeArea(p.GlobalPosition + Vector3.Up * 1f, WhirlwindRadius, p.Combat.LightDamage * WhirlwindDamage);
+                        p.Combat.ServerStrikeArea(p.GlobalPosition + Vector3.Up * 1f, WhirlwindReach(p), p.Combat.LightDamage * WhirlwindDamage);
                 };
                 break;
             case PlayerClasses.RogueId:
-                p.VanishUntil = Now + VanishSeconds;
+                p.VanishUntil = Now + VanishSeconds + (Talents.Has(p, Talents.Ambush) ? Talents.AmbushSeconds : 0f);
                 SetVanished(p, true);
                 break;
             case PlayerClasses.WizardId:
@@ -84,8 +87,8 @@ public partial class Net
                 break;
             case PlayerClasses.HealerId:
                 foreach (var other in Gs.Players.Values)
-                    if (!other.Health.IsDead && other.GlobalPosition.DistanceTo(p.GlobalPosition) <= MendRadius)
-                        other.Health.Heal(MendHeal);
+                    if (!other.Health.IsDead && !other.Downed && other.GlobalPosition.DistanceTo(p.GlobalPosition) <= MendRadius)
+                        other.Health.Heal(MendHeal + (Talents.Has(p, Talents.Lifebloom) ? Talents.LifebloomHeal : 0f));
                 break;
             case PlayerClasses.ArcherId:
                 // A touch of loft so a level shot carries.
@@ -127,7 +130,7 @@ public partial class Net
             case PlayerClasses.FrostNovaId:
                 foreach (var e in LiveEnemies())
                     if (FlatDistance(e.GlobalPosition, p.GlobalPosition) <= FrostNovaRadius)
-                        e.Slow(FrostNovaSlowSeconds, FrostNovaSlow);
+                        e.Slow(FrostNovaSlowSeconds + (Talents.Has(p, Talents.Glacial) ? Talents.GlacialSeconds : 0f), FrostNovaSlow);
                 break;
             case PlayerClasses.BlossomWardId:
             {

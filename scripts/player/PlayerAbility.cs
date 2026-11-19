@@ -25,7 +25,7 @@ public partial class PlayerAbility : Node
     public float CooldownLeft => Mathf.Max(0f, (float)(_readyAt - Time.GetTicksMsec() / 1000.0));
 
     /// <summary>This slot's ability for the player's class (null: none).</summary>
-    public AbilityDef Def => _player?.Class.Ability(Slot);
+    public AbilityDef Def => _player?.AbilityDef(Slot);
 
     /// <summary>The player is high enough level for it.</summary>
     public bool Unlocked => Def is { } d && _player.Level >= d.UnlockLevel;
@@ -56,7 +56,7 @@ public partial class PlayerAbility : Node
     {
         var def = Def;
         if (def == null) return false;
-        if (_player.Health.IsDead || _player.Sleeping || GameState.Instance.UiOpen || _player.Dodging || _player.Climbing || _player.Swimming) return false;
+        if (_player.Health.IsDead || _player.Downed || _player.Sleeping || GameState.Instance.UiOpen || _player.Dodging || _player.Climbing || _player.Swimming) return false;
         if (_player.Level < def.UnlockLevel)
         {
             Hud.Toast($"{def.Name} unlocks at level {def.UnlockLevel}.");
@@ -110,7 +110,7 @@ public partial class PlayerAbility : Node
             case PlayerClasses.WarriorId + "_1":
                 model?.PlayOneShot("2H_Melee_Attack_Spin", 1.6f);
                 Sfx.At("whirlwind", at + Vector3.Up, 2f);
-                Fx.Ring(root, at, new Color(1f, 0.6f, 0.35f, 0.9f), Net.WhirlwindRadius, 0.35f);
+                Fx.Ring(root, at, new Color(1f, 0.6f, 0.35f, 0.9f), Net.WhirlwindReach(_player), 0.35f);
                 break;
             case PlayerClasses.RogueId + "_1":
                 Sfx.At("vanish", at + Vector3.Up, 0f);

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RecipeDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/RecipeDef.cs" id="1_recipe"]
+
+[resource]
+script = ExtResource("1_recipe")
+Id = "craft_stone_pickaxe"
+DisplayName = "Stone Pickaxe"
+Station = "workbench"
+Inputs = {"wood": 3, "stone": 3}
+OutputItem = "stone_pickaxe"
+OutputCount = 1
+SortOrder = 3

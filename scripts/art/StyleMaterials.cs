@@ -96,6 +96,88 @@ void fragment() {
     EMISSION = rim_color * sun_color.rgb * pow(facing, 3.0) * toward_sun * rim_strength * (0.15 + 0.85 * low_sun) * (1.0 - up * 0.6);
 }";
 
+    /// <summary>Dirt paths and trodden ground, drawn on a flat plane laid on the terrain: a ragged
+    /// edge where the grass creeps in, patchy dirt in two tones, worn wheel ruts with a grassy
+    /// crown between them (roads), scattered pebbles, toon light. Rain darkens it and puddles the
+    /// ruts. shape 0 is a strip along the plane's length; shape 1 is a rounded patch (a yard).</summary>
+    public const string PathShader = @"shader_type spatial;
+render_mode diffuse_toon, specular_toon;
+global uniform float wetness;
+uniform vec3 dirt_a : source_color = vec3(0.45, 0.35, 0.25);
+uniform vec3 dirt_b : source_color = vec3(0.55, 0.44, 0.31);
+uniform vec3 grass : source_color = vec3(0.3, 0.41, 0.26);
+uniform vec2 size = vec2(4.0, 20.0);   // metres across, along
+uniform int shape = 0;
+uniform float ruts = 1.0;
+uniform float pebbles = 1.0;
+varying vec3 wp;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void vertex() {
+    wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+    vec2 m = (UV - 0.5) * size;            // metres from the centre: x across, y along
+    vec2 w = wp.xz;
+    float wob = (noise(w * 0.3) - 0.5) * 0.7 + (noise(w * 1.3 + 5.0) - 0.5) * 0.3;
+    float grain = noise(w * 2.2 + 2.0) - 0.5;
+    float inside;                          // metres in from the edge (negative outside)
+    if (shape == 0) {
+        float half_w = size.x * 0.5 - 0.45;
+        inside = min(half_w - abs(m.x), size.y * 0.5 - abs(m.y)) + wob * 0.8;
+    } else {
+        vec2 q = abs(m) / (size * 0.5);
+        float d = pow(pow(q.x, 3.0) + pow(q.y, 3.0), 1.0 / 3.0);
+        inside = (1.0 - d) * min(size.x, size.y) * 0.5 - 0.3 + wob * 1.2;
+    }
+    if (inside + grain * 0.25 < 0.0) discard;
+
+    // Patchy dirt, flecked like the terrain's brushwork.
+    float n1 = noise(w * 0.45) * 0.65 + noise(w * 1.7 + 9.0) * 0.35;
+    vec3 col = mix(dirt_a, dirt_b, smoothstep(0.35, 0.7, n1));
+    col *= 0.93 + 0.12 * smoothstep(0.5, 0.58, noise(w * vec2(2.2, 0.8) + 4.0));
+    // Grass creeping in at the edge, in tufts.
+    float edge = 1.0 - smoothstep(0.0, 0.55, inside + (noise(w * 2.4) - 0.5) * 0.5);
+    col = mix(col, grass, edge * 0.85);
+
+    // Two wheel ruts, a little darker and wandering, with a grassy crown between them.
+    float wet = 0.0;
+    if (shape == 0 && ruts > 0.5) {
+        float x = m.x + (noise(vec2(m.y * 0.12, 1.0)) - 0.5) * 0.35;
+        float r = 1.0 - smoothstep(0.12, 0.3, abs(abs(x) - size.x * 0.2));
+        col = mix(col, dirt_a * 0.72, r * 0.6);
+        float crown = 1.0 - smoothstep(0.15, 0.45, abs(x));
+        col = mix(col, grass * 0.95, crown * smoothstep(0.45, 0.75, noise(w * 1.1 + 3.0)) * 0.55);
+        wet = r * smoothstep(0.4, 0.6, noise(w * 0.6 + 11.0));
+    }
+
+    // Pebbles: a few small stones per square metre, light on top with a dark underside.
+    if (pebbles > 0.5) {
+        vec2 cell = floor(w * 1.4);
+        vec2 f = fract(w * 1.4);
+        float h = hash(cell);
+        if (h > 0.72) {
+            vec2 c = vec2(hash(cell + 1.7), hash(cell + 4.3)) * 0.5 + 0.25;
+            float rad = 0.07 + 0.09 * hash(cell + 8.1);
+            float d = length((f - c) * vec2(1.0, 1.3));
+            float stone = 1.0 - smoothstep(rad * 0.75, rad, d);
+            float shade = 1.0 - smoothstep(rad * 0.5, rad, length(f - c - vec2(0.0, rad * 0.35)));
+            vec3 sc = mix(dirt_a * 0.8, vec3(0.5, 0.47, 0.43), 0.4 + 0.4 * hash(cell + 2.2));
+            col = mix(col, mix(sc * 0.65, sc, shade), stone * (1.0 - edge) * 0.85);
+        }
+    }
+
+    // Rain: darker dirt, and the ruts hold water.
+    col *= 1.0 - wetness * 0.3;
+    col = mix(col, vec3(0.3, 0.33, 0.36), wet * wetness * 0.6);
+    ALBEDO = col;
+    ROUGHNESS = mix(1.0, 0.15, wet * wetness);
+}";
+
     /// <summary>Textured foliage (grass, leaves, flowers): alpha-cut, double-sided, toon-lit, with a
     /// gentle wind sway that grows with height and gusts a little harder in the rain.</summary>
     public const string FoliageShader = @"shader_type spatial;
@@ -284,7 +366,21 @@ void fragment() {
         return m;
     }
 
-    private static Shader _terrain, _foliage, _water;
+    /// <summary>A path or trodden-ground material (see <see cref="PathShader"/>) for a plane
+    /// <paramref name="size"/> metres (across, along).</summary>
+    public static ShaderMaterial Path(Vector2 size, Color dirtA, Color dirtB, bool patch = false, bool ruts = true, bool pebbles = true)
+    {
+        var m = new ShaderMaterial { Shader = _path ??= new Shader { Code = PathShader } };
+        m.SetShaderParameter("size", size);
+        m.SetShaderParameter("dirt_a", dirtA);
+        m.SetShaderParameter("dirt_b", dirtB);
+        m.SetShaderParameter("shape", patch ? 1 : 0);
+        m.SetShaderParameter("ruts", ruts && !patch ? 1f : 0f);
+        m.SetShaderParameter("pebbles", pebbles ? 1f : 0f);
+        return m;
+    }
+
+    private static Shader _terrain, _foliage, _water, _path;
     private static Shader TerrainShaderRes => _terrain ??= new Shader { Code = TerrainShader };
 
     public static ShaderMaterial Water() => new() { Shader = _water ??= new Shader { Code = WaterShader } };

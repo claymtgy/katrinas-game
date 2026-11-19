@@ -40,7 +40,12 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - **Food buffs (built):** each meal also gives a timed buff (4 real minutes): Bread gives **stamina regen +50%**, Roast Turnip gives **+25 max health**. At full health, F eats only a meal whose buff you don't already have. Buffs show above the health bar, end on defeat, and are mirrored to every player. The values live on the item (`BuffKind`, `BuffAmount`, `BuffSeconds` in its `.tres`).
 - **Village of Ashby** (~10 min walk): a trader buys surplus and sells seeds and blueprints. A quest board. Later it sends **workers** who run your stations automatically, so the economy keeps going while you're away.
   - **Built (vertical slice):** Ashby sits at the south end of the vale below the plateau: five houses around a well, lamps, a notice board, and **Marta the Trader**. It's a sanctuary (28 m): wolves and bandits won't enter or hunt inside.
-  - Marta sells wheat seeds (2), turnip seeds (3) and iron nails (5), and buys wolf pelts (8), wheat (1), turnips (2), bread and roast turnips (4). Prices live on each item (`BuyPrice` / `SellPrice` in its `.tres`), so new goods just need a price.
+  - Marta sells wheat seeds (2), turnip seeds (3), iron nails (5) and wolf pelts (18), and buys wolf pelts (8), wheat (1), turnips (2), bread and roast turnips (4). Prices live on each item (`BuyPrice` / `SellPrice` in its `.tres`), so new goods just need a price.
+- **Tools and mining (built):** trees want an **axe**, rocks and ore want a **pickaxe**. With the right tool a hit does the node's full damage × the tool's power (×1.5 on a heavy swing). Anything else, a sword or bare hands, is capped at 8 a hit, so it still works but slowly. **Iron ore** can't be mined without a pickaxe at all.
+  - Stone Axe (3 wood + 2 stone) and Stone Pickaxe (3 wood + 3 stone) at the workbench, power 1. Iron Axe and Iron Pickaxe (2 iron ingots + 2 wood), power 2.
+  - **Iron ore** veins (rust-red rocks with orange nuggets) sit in the vale, in Falls Valley and on the north ridge; they come back after 5 minutes. **Smelt** 2 ore + 2 wood into an iron ingot at the campfire or the hearth.
+  - This is an early, small iron tier ahead of the full iron region (§11 Step 2), so the starting sword has something to grow into before the captain.
+  - Tools go in the hotbar like weapons; in first person each one is a real model held in a gloved hand (`HeldModels`), and an empty hand shows a fist.
 - **Coin** comes from selling goods and bandit bounties. It's spent on blueprints, workers and land claims.
 
 ## 5. Building
@@ -48,11 +53,13 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Claim radius:** you can only build near your home. Upgrading the house tier widens the claim. Later, outposts make new claims.
 - **House tiers:** Shack → Cottage → Longhouse → Keep. Each tier unlocks building types and worker slots.
   - **Cottage (built):** pay at the **Home Plans** board by the shack: 40 wood, 20 stone, 6 iron nails, 3 wolf pelts and the Cottage Blueprint (from the bandit captain). The shack is replaced by a timber-and-plaster cottage you can walk into, with two beds. Your land claim grows from 30 m to 42 m. The cottage's footprint is kept clear of new buildings while you still live in the shack; anything already there is packed up and refunded when it goes up. The tier is saved and sent to every player.
-- **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot. Built so far: Workbench, Campfire (cooking), Palisade, Bedroll, the farm plots, **Well** and **Storage Chest** (8 wood; one already stands by the shack).
+- **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot. Built so far: Workbench, Campfire (cooking and smelting), the **Hearth** in the shack and the cottage (rest to heal 50, cook, smelt; the shack's chimney stands on its mantel), Palisade, Bedroll, the farm plots, **Well** and **Storage Chest** (8 wood; one already stands by the shack).
 - **Defense:** palisade → stone wall → gatehouse → watchtower. Bandit raids target bases above a "wealth" threshold.
 
 ## 6. Weapons & combat
 - **Sword tiers:** Wooden → Stone Club → Bronze → Iron → Steel → Ember-forged.
+  - **Built:** Wooden Sword (15, 0.45 s), Stone Club (24, 0.7 s), **Iron Sword** (32, 0.45 s, reach 2.2; 3 iron ingots + 2 wood).
+  - **Armour on enemies (built):** `Health.Armor` takes a flat amount off each hit, never below 20% of it. Grunts have 5, the captain 14, so a wooden sword barely scratches the captain (about 4 a hit) while the iron sword does about 18.
 - **Moves:** light attack (LMB), heavy attack (Q or middle mouse), **block** (hold RMB), **parry** (raise the block just before a hit lands), **dodge roll** (Ctrl or C). All of them use **stamina**.
 - **Dodge roll (built):** a 0.38 s burst (10.5 m/s, easing off) in the direction you're moving, or backwards if you're standing still. It costs 22 stamina, with a short cooldown after. For the first 0.32 s nothing can hit you (`Net.ServerDamagePlayer` returns *Dodged*, the same rule for enemies and PVP). Rolling drops your guard, and you can't attack mid-roll. In third person it plays the Rogue's Dodge animations (forward / back / left / right); in first person the camera dips and tilts.
 - **Block / parry (built):**
@@ -109,12 +116,16 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | **Healer** | Mend | **Blossom Ward:** a 5 m circle of petals for 8 s. Enemies won't enter it, like a sanctuary | **Rekindle:** a downed player within 12 m gets up at once with half their health, with no need to stand over them (see §16, *Downed and revived*) |
 | **Archer** | Shoot | **Volley:** 5 arrows in a 30° fan, 10 damage each | **Mark:** tag an enemy for 10 s. Everyone deals +25% damage to it and it shows through walls |
 
-**Talents (examples, two per class; the full list comes with the build):**
-- Warrior, level 3: *Bulwark* (a perfect parry gives back 10 more stamina) or *Brute* (heavy attacks stagger bigger enemies).
-- Rogue, level 3: *Light-footed* (no fall damage under 8 m) or *Pickpocket* (bandits drop 50% more coin).
-- Wizard, level 3: *Kindling* (Firebolt sets grass alight for a moment) or *Focus* (Firebolt costs 4 less stamina).
-- Healer, level 3: *Herbalist* (cooking makes an extra meal 1 time in 3) or *Steady Hand* (Mend's cooldown is 2 s shorter).
-- Archer, level 3: *Long Draw* (the long-range bonus starts at 10 m) or *Quick Nock* (Shoot's cooldown is 0.15 s shorter).
+**Talents (built for levels 3 and 8):** pick one of each pair on the **Talents** tab of the character sheet (I). The first pick at a level works anywhere; changing it later is free but only at home. Picks are kept per class, so trying another class and coming back keeps them.
+
+| Class | Level 3 | Level 8 |
+|---|---|---|
+| **Warrior** | *Bulwark:* a clean parry gives back 10 more stamina · *Brute:* heavy attacks hit 15% harder | *Iron Skin:* +5 armour, whatever you wear · *Cleave:* Whirlwind reaches 1 m further |
+| **Rogue** | *Light-footed:* no fall damage from drops under 8 m · *Pickpocket:* bandits you defeat drop 50% more coin | *Ambush:* Vanish lasts 2 s longer · *Fleet:* sprinting costs 30% less stamina |
+| **Wizard** | *Kindling:* Firebolt's burst scorches 1 m further · *Focus:* Firebolt costs 4 less stamina | *Pyromancer:* Firebolt's direct hit does 6 more damage · *Glacial:* Frost Nova's slow lasts 2 s longer |
+| **Healer** | *Herbalist:* cooking makes an extra meal 1 time in 3 · *Steady Hand:* Mend's cooldown is 2 s shorter | *Lifebloom:* Mend heals 15 more · *Lifeline:* revive a downed friend twice as fast, and they get up with half their health |
+| **Archer** | *Long Draw:* the long-shot bonus starts at 10 m, not 15 · *Quick Nock:* Shoot's cooldown is 0.15 s shorter | *Piercing:* your arrows go straight through armour · *Fleetfoot:* 6% faster on your feet |
+
 - Later talents should connect to region hazards where they can, as Frost Nova does with heat: for example a climbing talent for the spires, or a light-radius talent for the mine.
 
 **Co-op (§16).**
@@ -128,8 +139,9 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - Level, XP and talents are saved with the character in the world save, like the pack and worn gear (§16). Class stays in your own settings, as now.
 - **Built:** `Levels` holds the curve and the XP table. A player's progress is one number, their total XP, and the level is worked out from it. The server awards XP (`Net.Xp.cs`: `ServerAwardXp`, `ServerXpForKill`, `ServerXpForCraft`) and sends every machine the new total (`Net.C_Xp`). The total is part of each player's info in the snapshot (protocol 9). Each character's "firsts" (first wolf, first glider) are saved with it, so a first is paid once per character. Journal goals count as world milestones: everyone online gets them.
 - **Built:** the level-5 abilities are data in `PlayerClasses` (`AbilityDef`, with its own stamina, cooldown and `UnlockLevel`), and `PlayerAbility` has one node per slot (`Ability` on R, `Ability2` on T). The server re-checks the level. Numbers chosen for them: Charge 25 stamina / 9 s (strikes for a light attack's damage); Shadowstep 20 / 10 s (a critical hit is double damage); Frost Nova 24 / 12 s; Blossom Ward 35 / 24 s (it's a temporary sanctuary, so enemies also stop hunting anyone inside it); Volley 22 / 6 s.
-- Still to build: talents, and the level-12 abilities on the third slot.
-- The HUD has an XP bar under the stamina bar with the level beside it, a "+50 XP" note for anything but a repeat kill, and a "Level up" banner (built). The character sheet (I) shows the level and XP, and gets a Talents tab later.
+- **Built:** talents are data in `Talents` (`TalentDef`; `Has`, `Unpicked`, and `Tune`, which applies cost and cooldown talents to an `AbilityDef`). A player's picks are a map from "class:level" to talent id, saved with the character, sent in each player's info (`"talents"`) and by `Net.C_Talents` (`Net.Talents.cs`; the server checks class, level and home in `S_Talent`). Protocol 10. Reaching level 3 or 8 tells you to open the Talents tab.
+- Still to build: the level-12 abilities on the third slot (Rekindle among them), and the level-15 and 20 talents.
+- The HUD has an XP bar under the stamina bar with the level beside it, a "+50 XP" note for anything but a repeat kill, and a "Level up" banner (built). The character sheet (I) has three tabs: Equipment, Talents and Journal (the pad's bumpers cycle them).
 
 **Controls.**
 - Keyboard: **R** (or mouse button 4) for the first ability, as now, then **T** for the level-5 ability and **G** for the level-12 ability.
@@ -218,6 +230,8 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 ## 8. Traversal (verticality)
 - **Built:** walk, sprint (stamina), jump, fall damage, dodge roll, climbing, the glider, waterfall updrafts, river currents.
+- **Fall damage (built):** drops up to 4.5 m are safe; each metre beyond costs 6 health (8 m: 21, 15 m: 63, 25 m: 123), worked out from the landing speed. Gliding and water break a fall; the feather cloak and "of the Feather" take some off. A hard landing rumbles the controller.
+  - Code: `PlayerController.FallDamage`; the owner reports it and the server applies it (`Net.S_FallDamage`).
 - **Climbing (built):**
   - Climbable rock is pale and rough, with dark handholds. Walk into it (hold W) to grab on.
   - On the face, W and S move you up and down and A and D move you sideways. Space leaps off.
@@ -231,7 +245,9 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - It's personal gear: it goes into the crafter's pack, stays there when you empty your pack at a chest, and isn't lost on defeat.
   - Press **Space in the air** to open it, and Space again to fold it. It also folds when you land.
   - It sinks at 2.2 m/s and flies at 9 m/s in the direction you look. W speeds up, S slows down, A and D bank.
-  - Landing under the glider does no fall damage.
+  - Look down to dive: the further down you look, the faster you sink (up to 14 m/s) and the faster you fly (up to +40%).
+  - Gliding costs 5 stamina a second, and stamina doesn't come back while you glide. Riding an updraft is free. Out of stamina, the glider folds and you fall. You need 5 stamina to open it.
+  - Landing under the glider does no fall damage, even out of a dive.
   - Without a glider, a long fall shows a hint once.
 - **Waterfall updrafts (built):** mist columns at waterfall bases (the Great Falls in Falls Valley, and the pool below the home west falls) lift a glider at 8 m/s up to their top (36 m and 26 m). Inside a column you hang and turn instead of racing through it.
 - **River currents (built):** wading in the Falls Valley river slows you and carries you downstream at 3.2 m/s, toward the cliff edge.
@@ -246,6 +262,11 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Co-op:** everyone sees climbing, gliding and swimming. The movement state carries a mode (normal, climb, glide or swim), (protocol 5; swim from protocol 8). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot). Protocol 7 added the shared journal (`C_Journal`, `S_Errand`; `"journal"` in the snapshot).
 - **Grip boots (built):** less drain on wet rock (§6).
 
+### Roads and trails (built)
+- Unbroken dirt roads join every area: the yard → through the gap in the plateau wall → the vale → Ashby, a footpath from the road to the bandit camp, and a road east from the home road through the pass, over the stepping stones and on to the foot of the mesa's climbing face.
+- Each trail is a polyline of road strips with a patch over every bend (`HomeCliffs.Trails`). Trees and rocks the scatter dropped on a trail are moved off it.
+- Walking or running on a road, track, yard or square is **1.2× faster** (`HomeCliffs.OnPath`, `PathSpeedMult`).
+
 ## 9. Hazards and progression
 | Zone | Hazards | Counter |
 |---|---|---|
@@ -259,7 +280,12 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 ### Wolves (built)
 - **When:** at nightfall a pack appears at the plateau's edge, away from every player. A second pack comes later in the night (2 per night). At dawn they give up and slink off.
-- **Pack size:** 2 for one player, scaled up for co-op by `Difficulty.PackSize` (3 / 4 / 5 for 2 / 3 / 4 players). Wolves are small animals, so their health (40) and bite (8) never scale.
+- **Pack size:** 2 for one player, scaled up for co-op by `Difficulty.PackSize` (3 / 4 / 5 for 2 / 3 / 4 players). Health and bite never scale with players.
+- **Dire wolves:** drawn 1.6× the modelled size (shoulder about player height). 170 HP, armour 6 (a wooden sword does about 9 a hit), a 24-damage bite every 1.1 s with 3.2 m reach. Four bites finish a fresh level-1 player, so early on the answer is to run (a sprint on a road, 9.6 m/s, outpaces their 7.2), get indoors, or parry. With the iron sword (26 a hit) a single wolf is a fair fight. A repeat kill is worth 15 XP and each kill leaves **2 pelts**.
+- **Surviving the early nights (built):**
+  - The **first night is quiet**: no packs, just a warning toast ("Tomorrow night the wolves will hunt: stay near a fire after dark").
+  - **Fire keeps wolves off:** they won't hunt anyone within 7 m of a campfire or hearth, and they keep outside that ring. The hearth covers the whole shack, so going home at night is always safe, and a campfire (cheap) makes a safe camp anywhere.
+  - Marta **sells wolf pelts** (18 coins, buys at 8), so the leather gear, glider and cottage can be bought with farm money instead of fought for.
 - **Behaviour:**
   - The pack roams around an anchor point that creeps toward your base, so wolves come to you.
   - A wolf that spots a player within 22 m alerts its packmates, and they all chase. They give up beyond 34 m.
@@ -293,7 +319,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 ### Bandit camp (built)
 - **Where:** off the road to Ashby, east of the track, about halfway down the vale (38, 0, 140). Tents, a fire, a stake fence with its mouth toward the road.
-- **Who:** grunts (60 HP, 10 damage, a slow 0.55 s swing) and one **Bandit Captain** (160 HP, 18 damage, a heavier 0.75 s chop). They hold the camp day and night, chase anyone within 15 m, and won't follow more than 30 m from camp.
+- **Who:** grunts (60 HP, armour 5, 10 damage, a slow 0.55 s swing) and one **Bandit Captain** (240 HP, armour 14, 34 damage, a heavier 0.75 s chop with a greatsword that reaches 4.4 m; he swings from 3.2 m). He's meant for after the iron sword, not day one. They hold the camp day and night, chase anyone within 15 m, and won't follow more than 30 m from camp.
 - **Scaling (§16):** grunts are small enemies, so the camp gets more of them (2 / 3 / 4 / 5 for 1–4 players). The captain is a big monster: one of them, with scaled health and damage.
 - **Loot:** 6 coins per grunt and 25 for the captain, into the shared stockpile. The captain also carries the **Cottage Blueprint** while your home is still a shack.
 - **Respawn:** a cleared camp is re-occupied after 3 in-game days, when nobody is standing in it. The cleared state is saved.
@@ -345,6 +371,11 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Enemies:** **cave crawlers**, low-poly faceted spiders built in code like the wolf and the harpy. They hate light: a torch or lantern makes them back off and only lunge from the dark edge, so lighting the mine is how you clear it. The **Crawler Mother** sits at the bottom.
 - **Gear:** Bronze Sword, Bronze Cap and Scale Shirt (§6, tier 2), a bronze pickaxe.
 - **Hands off:** the Crawler Mother drops the **Bellows Plans**, which you need for iron. The mine also has one locked iron gate with a note that points to the spires.
+
+#### Early surface iron (built) and how it fits
+- Small **surface veins** at home and in Falls Valley give enough iron for iron tools and the iron sword, the weapon that makes dire wolves and the bandit captain fair fights. Each vein holds a few ore and takes 5 minutes to come back, so iron stays scarce.
+- The intended early path: wooden sword → stone pickaxe → surface iron → **iron sword** → the bandit captain (blueprint) → the cottage. Leather comes from pelts (wolves or Marta).
+- Bronze (Hollow Mine) stays a sidegrade in damage, worth it for **armour** (bronze scale) and tools that mine faster. The Spire Cliffs keep the rich iron seams: enough for **chain mail, the shield and the iron helm in bulk**, plus the Bellows and the Longhouse. So the cliffs are where iron *armour* comes from, while the iron *sword* arrives early.
 
 #### Step 2: Spire Cliffs (iron)
 - **Where:** past Falls Valley, a field of tall rock spires over the cloud sea.
@@ -419,7 +450,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Pack and stockpile as icon grids (the stockpile fades when you're away from home).
   - A five-slot weapon hotbar with key numbers; the held weapon glows.
   - Key-cap prompts ("E" Sleep), parchment toasts that fade in and out, and a build-mode plate.
-- **Boards:** crafting, trading and enchanting share one framed board. Each row shows the item's icon, a note, its cost as icons (red when you're short) and a button. The **character sheet (I)** has a paper doll of the six armour slots, a parchment stat card and the pack. There are also the Esc menu and the help board (F1; a small "F1 Controls & help" plate shows at the start instead of the old wall of text). Boards pop in with a quick scale and fade.
+- **Boards:** crafting, trading and enchanting share one framed board. Each row shows the item's icon, a note, its cost as icons (red when you're short) and a button. The **Character & Equipment** board (I) has a paper doll of the six armour slots plus a main-hand slot, a **Weapons & tools** grid (click one to hold it, fists included), a parchment stat card and the pack. There are also the Esc menu and the help board (F1; a small "F1 Controls & help" plate shows at the start instead of the old wall of text). Boards pop in with a quick scale and fade.
 
 ### Guidance (built: goals, journal, marker, tips, errands)
 - **Goals** walk a new player through the game, in order: gather wood and stone → empty the pack into the chest → build a workbench → craft a weapon → sleep through a night → follow the road to Ashby → trade with Marta → clear the bandit camp → grow a crop → craft and wear armour → build a watchtower → cross into Falls Valley → climb the mesa to the Falls Blossom → enchant armour → build the cottage. Side goals: a glider, the harpy roost, a full set of armour, three errands.
@@ -466,7 +497,7 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner, levels on nameplates, the level-5 abilities and the second ability key are built) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner, levels on nameplates, the level-5 abilities, the second ability key, talents at levels 3 and 8 and the downed state are built; the level-12 abilities are next) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
 9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.
@@ -522,7 +553,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
   - Being defeated drops **half of each stack** in your pack. Packs are saved with the player and mirrored only to their owner.
 - Players are saved by name: rejoining puts you back where you logged out, with your respawn shrine and your pack.
 
-### Downed and revived (planned)
+### Downed and revived (built, except Rekindle)
 - **Why:** in co-op a lost fight should be something a friend can save. It also gives the Healer's **Rekindle** (§6, level 12) something to do.
 - **Going down:** at 0 health you're **downed** instead of defeated at once, as long as another player who isn't downed is within 60 m. Playing alone, or with nobody near, you're defeated at once, as now.
 - **While downed:**
@@ -531,13 +562,13 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
   - **Enemies leave downed players alone** and turn to someone else. A blow already swinging still lands but can't hurt you further. PVP hits can't hurt a downed player either.
   - Food buffs stay while you're downed and end only on defeat.
 - **Reviving:** any player can stand next to you and **hold Interact (E / X / □) for 3 s**. You get up with 30% health and lose nothing. Taking a hit or moving away breaks the hold. The Healer's **Rekindle** revives from 12 m, at once, with half health.
-- **Everyone down:** if every player within 60 m of each other is downed, they're all defeated at once. Nobody waits out a timer with no one left to help.
+- **Everyone down:** if a downed player has nobody left within 60 m who isn't down (everyone else is down, asleep, or far away), they're defeated at once. Nobody waits out a timer with no one left to help.
 - **Straight to defeat:** a fall into the cloud sea, or into lava later on, skips being downed, because nobody could reach you.
 - **Seeing it:**
   - For the downed player: the screen greys and darkens at the edges, and the timer counts down in the middle with "Hold Jump to give up".
   - For everyone else: a marker over the downed player shows through walls and terrain, with their name and the timer. Within reach the prompt reads "Hold E to revive *name*".
   - A downed pose: KayKit's lying-down clips if it has them, otherwise built from the skeleton, as the climb is.
-- **Code:** the movement state gets a fourth mode, *downed* (after normal, climb and glide), so every screen shows it (a protocol bump). `Net.ServerDamagePlayer` turns a killing blow into *downed* when someone can help, and the server runs the timer and the revive hold. Enemy targeting (`Enemy`) skips downed players.
+- **Code (built):** `Health` has two server hooks: `BeforeLethal` (a killing blow leaves the player on 1 health and downs them, if `Net.HasHelper`) and `Absorb` (no hit lands while downed). `Net.Downed.cs` runs it on the server: `ServerTryDown`, the 30 s timer, the revive hold (`S_Revive`, a hit on the helper or stepping away breaks it), give up (`S_GiveUp`), and defeat, which goes through the normal death path. Every machine hears `C_Downed` and `C_ReviveProgress` (protocol 10). Downed players lie in KayKit's death pose and crawl; `Enemy` targeting skips them; the `Interactor` finds a downed friend within 2.6 m and holds the revive. Still to build: Rekindle (level 12).
 
 ### Sleeping
 - Using a bed puts you to sleep. You can get up with E or by moving.
@@ -551,7 +582,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
 - Each factor is a server option. `Difficulty.cs` holds the formulas. Wolves and the bandit camp spawn through it (grunts = small, captain = big). Scaling is decided when a group spawns, so a camp manned for 1 player stays that size if a friend joins later.
 
 ### PVP
-- **Off by default.** It's a server option and the host's checkbox. When on, player sword hits damage other players. A player beaten in PVP respawns at their shrine and loses nothing (for now). Once the downed state is built, they're downed instead and anyone can revive them (see *Downed and revived*).
+- **Off by default.** It's a server option and the host's checkbox. When on, player sword hits damage other players. A player beaten in PVP is downed like any other (see *Downed and revived*), and anyone can revive them.
 - PVP never damages the shared base.
 
 ### Saving

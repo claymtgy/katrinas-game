@@ -165,6 +165,7 @@ public partial class GameState : Node
         RegisterInputActions();
         Gamepad.RegisterBindings();
         ItemDb.Load();
+        GraphicsSettings.Startup();
         AddChild(new Gamepad { Name = "Gamepad" });
         AddChild(new Journal { Name = "Journal" });
     }
@@ -307,6 +308,7 @@ public partial class GameState : Node
         {
             ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary(), ["worn"] = Gear.ToDict(p.Worn),
             ["xp"] = p.Xp, ["firsts"] = new GArray(p.XpFirsts.Select(f => Variant.From(f))),
+            ["talents"] = Talents.ToDict(p.TalentPicks),
         };
 
     /// <summary>Server: put a saved character's XP and firsts back on a player.</summary>
@@ -316,6 +318,7 @@ public partial class GameState : Node
         if (rec.TryGetValue("firsts", out var firsts) && firsts.VariantType == Variant.Type.Array)
             foreach (var f in firsts.AsGodotArray()) p.XpFirsts.Add(f.AsString());
         Net.Instance.ServerLoadXp(p, rec.TryGetValue("xp", out var xp) ? xp.AsInt32() : 0);
+        Net.Instance.ServerSetTalents(p, Talents.FromDict(rec.TryGetValue("talents", out var t) && t.VariantType == Variant.Type.Dictionary ? t.AsGodotDictionary() : null));
     }
 
     public void SaveGame(bool silent = false)
@@ -353,6 +356,7 @@ public partial class GameState : Node
                 ["worn"] = kv.Value.TryGetValue("worn", out var worn) ? worn : new GDict(),
                 ["xp"] = kv.Value.TryGetValue("xp", out var xp) ? xp : 0,
                 ["firsts"] = kv.Value.TryGetValue("firsts", out var firsts) ? firsts : new GArray(),
+                ["talents"] = kv.Value.TryGetValue("talents", out var talents) ? talents : new GDict(),
             };
         }
 
@@ -429,6 +433,7 @@ public partial class GameState : Node
                     ["worn"] = rec.TryGetValue("worn", out var worn) ? worn.AsGodotDictionary() : new GDict(),
                     ["xp"] = rec.TryGetValue("xp", out var xp) ? xp.AsInt32() : 0,
                     ["firsts"] = rec.TryGetValue("firsts", out var firsts) ? firsts.AsGodotArray() : new GArray(),
+                    ["talents"] = rec.TryGetValue("talents", out var talents) ? talents.AsGodotDictionary() : new GDict(),
                 };
             }
         else if (data.TryGetValue("player", out var legacy)) // version 1: one player

@@ -491,6 +491,47 @@ def icon_club(ic):
         ic.fill(sd_circle(x, y, cx, cy, 2.4), (0.38, 0.38, 0.42), outline=1.0)
 
 
+def icon_axe(ic, head=(0.44, 0.42, 0.42)):
+    x, y = ic.x, ic.y
+    ic.fill(sd_segment(x, y, 14, 54, 40, 14, 3.0), (0.5, 0.32, 0.16))
+    ic.fill(sd_segment(x, y, 15, 52, 20, 45, 3.4), (0.36, 0.24, 0.14))  # grip wrap
+    # wedge head: the bit flares out to the upper right
+    bit = sd_poly(x, y, [(34, 13), (42, 19), (54, 14), (57, 30), (48, 33), (38, 27)])
+    ic.fill(bit, head, dome=0.5)
+    ic.line(sd_segment(x, y, 54, 15, 57, 29, 0.9), mix(head, 1.5), 0.9)  # bright edge
+    ic.fill(sd_segment(x, y, 35, 20, 41, 24, 2.6), (0.36, 0.24, 0.14), outline=1.0)  # lashing
+
+
+def icon_pickaxe(ic, head=(0.44, 0.42, 0.42)):
+    x, y = ic.x, ic.y
+    ic.fill(sd_segment(x, y, 14, 54, 38, 18, 3.0), (0.5, 0.32, 0.16))
+    ic.fill(sd_segment(x, y, 15, 52, 20, 45, 3.4), (0.36, 0.24, 0.14))
+    # a curved head across the haft's top, two points bending down
+    arm = sd_poly(x, y, [(14, 22), (24, 12), (38, 9), (52, 12), (60, 22), (50, 18), (38, 16), (26, 19)])
+    ic.fill(arm, head, dome=0.5)
+    ic.line(sd_segment(x, y, 26, 14, 50, 14, 0.7), mix(head, 1.45), 0.6)
+    ic.fill(sd_segment(x, y, 34, 18, 40, 22, 2.6), (0.36, 0.24, 0.14), outline=1.0)
+
+
+def icon_ore(ic):
+    x, y = ic.x, ic.y
+    pts = [(12, 44), (16, 24), (30, 13), (47, 17), (55, 33), (48, 49), (26, 52)]
+    ic.fill(sd_poly(x, y, pts), (0.42, 0.33, 0.3))
+    for cx, cy, r in ((25, 27, 4.5), (40, 23, 3.5), (36, 40, 5.0), (47, 36, 3.0), (21, 42, 3.0)):
+        ic.fill(sd_circle(x, y, cx, cy, r), (0.85, 0.5, 0.26), outline=1.0, dome=0.8)
+
+
+def icon_ingot(ic):
+    x, y = ic.x, ic.y
+    top = sd_poly(x, y, [(14, 30), (24, 20), (52, 20), (44, 30)])
+    front = sd_poly(x, y, [(14, 30), (44, 30), (50, 46), (8, 46)])
+    side = sd_poly(x, y, [(44, 30), (52, 20), (58, 36), (50, 46)])
+    ic.fill(front, (0.58, 0.6, 0.66), grad=0.2)
+    ic.fill(side, (0.45, 0.47, 0.52), grad=0.1)
+    ic.fill(top, (0.82, 0.84, 0.9), grad=0.1)
+    ic.line(sd_segment(x, y, 20, 25, 44, 25, 0.6), (1, 1, 1), 0.5)
+
+
 def icon_log(ic):
     x, y = ic.x, ic.y
     body = sd_box(x, y, 30, 34, 20, 11, 6)
@@ -710,6 +751,13 @@ def icon_altar(ic):
 ICONS = {
     "wooden_sword": lambda ic: icon_sword(ic, blade=(0.78, 0.58, 0.34), wooden=True),
     "stone_club": icon_club,
+    "iron_sword": lambda ic: icon_sword(ic, blade=(0.82, 0.85, 0.9), guard=(0.55, 0.57, 0.62)),
+    "stone_axe": icon_axe,
+    "iron_axe": lambda ic: icon_axe(ic, head=(0.75, 0.77, 0.84)),
+    "stone_pickaxe": icon_pickaxe,
+    "iron_pickaxe": lambda ic: icon_pickaxe(ic, head=(0.75, 0.77, 0.84)),
+    "iron_ore": icon_ore,
+    "iron_ingot": icon_ingot,
     "wood": icon_log,
     "stone": icon_stone,
     "wolf_pelt": icon_pelt,

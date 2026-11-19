@@ -98,16 +98,17 @@ public partial class Projectile : Node3D
         var shooter = IsInstanceValid(Shooter) ? Shooter : null;
         if (IsArrow)
         {
-            float dmg = (Kind == Volley ? VolleyDamage : ArrowDamage) * (point.DistanceTo(_origin) > ArrowLongShot ? ArrowLongBonus : 1f);
-            if (Damage(collider, dmg, shooter) && shooter != null) Net.Instance.HitMarkerTo(shooter.PeerId);
+            float longShot = Talents.Has(shooter, Talents.LongDraw) ? Talents.LongDrawRange : ArrowLongShot;
+            float dmg = (Kind == Volley ? VolleyDamage : ArrowDamage) * (point.DistanceTo(_origin) > longShot ? ArrowLongBonus : 1f);
+            if (Damage(collider, dmg, shooter, Talents.Has(shooter, Talents.Piercing)) && shooter != null) Net.Instance.HitMarkerTo(shooter.PeerId);
         }
         else
         {
-            bool hitAny = Damage(collider, BoltDamage, shooter);
+            bool hitAny = Damage(collider, BoltDamage + (Talents.Has(shooter, Talents.Pyromancer) ? Talents.PyromancerDamage : 0f), shooter);
             // Burst: scorch everything else close by.
             var q = new PhysicsShapeQueryParameters3D
             {
-                Shape = new SphereShape3D { Radius = BoltSplashRadius },
+                Shape = new SphereShape3D { Radius = BoltSplashRadius + (Talents.Has(shooter, Talents.Kindling) ? Talents.KindlingRadius : 0f) },
                 Transform = new Transform3D(Basis.Identity, point),
                 CollisionMask = GameState.LayerProps | (Net.Instance.Pvp ? GameState.LayerPlayer : 0),
             };
@@ -125,7 +126,7 @@ public partial class Projectile : Node3D
 
     /// <summary>Server: hurt a collider if it's a creature, a dummy, or (with PVP) a player.
     /// Arrows and fire don't chop trees or mine rock.</summary>
-    private static bool Damage(GodotObject collider, float amount, PlayerController shooter)
+    private static bool Damage(GodotObject collider, float amount, PlayerController shooter, bool pierce = false)
     {
         if (collider is Harvestable) return false;
         var health = Health.FindOn(collider);
@@ -135,7 +136,7 @@ public partial class Projectile : Node3D
             if (!Net.Instance.Pvp || shooter == null || target == shooter) return false;
             Net.Instance.ServerDamagePlayer(target, amount, shooter);
         }
-        else health.TakeDamage(amount, shooter);
+        else health.TakeDamage(amount, shooter, pierce);
         return true;
     }
 

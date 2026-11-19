@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "iron_axe"
+DisplayName = "Iron Axe"
+Category = "weapon"
+IconColor = Color(0.72, 0.74, 0.8, 1)
+Damage = 16.0
+Reach = 2.0
+AttackCooldown = 0.55
+WeaponSize = Vector3(0.08, 0.08, 0.85)
+ToolKind = "axe"
+ToolPower = 2.0
+SellPrice = 10

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "stone_pickaxe"
+DisplayName = "Stone Pickaxe"
+Category = "weapon"
+IconColor = Color(0.46, 0.44, 0.44, 1)
+Damage = 9.0
+Reach = 1.9
+AttackCooldown = 0.65
+WeaponSize = Vector3(0.08, 0.08, 0.85)
+ToolKind = "pick"
+ToolPower = 1.0
+SellPrice = 2

@@ -60,7 +60,7 @@ public partial class Hud
     public void OnXp(int gained, string reason, int levelUp)
     {
         if (gained > 0 && reason != "") Toast($"+{gained} XP: {reason}");
-        if (levelUp > 0) ShowLevelUp(levelUp);
+        if (levelUp > 0) { ShowLevelUp(levelUp); TalentLevelHint(levelUp); }
     }
 
     private void ShowLevelUp(int level)
