@@ -90,7 +90,10 @@ public partial class HomeCliffs : Node3D
         BuildForestAndMine(); // the Forest Road and the Hollow Mine: own random numbers
         BuildSpireCliffs();   // the Spire Cliffs over the clouds: own random numbers
         BuildGreenery();      // art pass: bushes and trees against the cliffs: own random numbers
+        if (WorldDump.Path is { } dump) { WorldDump.Write(this, dump); GetTree().Quit(); return; }
+        BuildCountry();       // the rolling hills south of the plateau (HomeCliffs.Country)
         ClearTrailsOfScatter();
+        RaiseTerrain();       // build the hills and set everything on them
 
         AddChild(new Weather { Name = "Weather" });
         AddChild(new Ambience { Name = "Ambience" });
@@ -303,7 +306,9 @@ public partial class HomeCliffs : Node3D
                     }
             }
         }
-        // South wall with a gap for the road (x in -5..5).
+        // The south wall that used to close the plateau off from the vale: the plateau now opens
+        // onto the hills (Terrain). Made anyway and dropped, so the random numbers don't shift.
+        int southBefore = GetChildCount();
         for (float x = -60; x <= 60; x += 10)
         {
             if (Mathf.Abs(x) < 8) continue;
@@ -311,6 +316,7 @@ public partial class HomeCliffs : Node3D
             Rock(new Vector3(x, h / 2f - 2, 94 + _rng.RandfRange(0, 4)), new Vector3(12, h, 10),
                 new Vector3(0, _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)), Slate);
         }
+        DropChildrenFrom(southBefore);
     }
 
     private CloudSea _clouds;
@@ -698,7 +704,7 @@ void fragment() {
     /// at the west end of the home plateau. Only a pickaxe breaks it.</summary>
     public static readonly Vector3[] OreSpots =
     {
-        new(128, 0, 6), new(164, 0, 4), new(138, 0, 42), new(117, 0, 24), new(-50, 0, -22),
+        InFalls(128, 0, 6), InFalls(164, 0, 4), InFalls(138, 0, 42), InFalls(117, 0, 24), new(-50, 0, -22),
     };
 
     private void BuildOreVeins()

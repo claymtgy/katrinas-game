@@ -81,8 +81,9 @@ public partial class DevAutotest : Node
 
     private async Task Shot(string name)
     {
-        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        // No shots asked for (or headless, where no frame is ever drawn): nothing to wait for.
         if (string.IsNullOrEmpty(_shots)) return;
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         DirAccess.MakeDirRecursiveAbsolute(_shots);
         var img = GetViewport().GetTexture().GetImage();
         img.SavePng($"{_shots}/{name}.png");
@@ -92,6 +93,67 @@ public partial class DevAutotest : Node
     /// <summary>Character customisation: the creator from the pause menu, a live rebuild of the
     /// body (Knight, painted, taller, helmet off) that keeps the weapon hand, and a bad look from
     /// the network cleaned up.</summary>
+    /// <summary>--only=terrain: the rolling hills south of the plateau (Terrain). The collider
+    /// matches the height function, you stand and walk on the hills, the roads and the village stay
+    /// level, and views over the vale and the country beyond.</summary>
+    private async Task TerrainChecks(GameState gs, PlayerController p)
+    {
+        p.Rig.SetView(false, true);
+        var space = p.GetWorld3D().DirectSpaceState;
+        var rng = new RandomNumberGenerator { Seed = 5 };
+        int hits = 0, off = 0;
+        float worst = 0f;
+        for (int i = 0; i < 300; i++)
+        {
+            float x = rng.RandfRange(Terrain.Domain.Position.X + 4, Terrain.Domain.End.X - 4), z = rng.RandfRange(Terrain.Domain.Position.Y + 4, Terrain.Domain.End.Y - 4);
+            if (!Terrain.Covers(x, z)) continue;
+            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(x, 200, z), new Vector3(x, -20, z), GameState.LayerWorld));
+            if (hit.Count == 0) { off++; continue; }
+            // Boulders and the regions' rocks stand on the hills: only the ground itself counts.
+            if (hit["collider"].AsGodotObject() is not Node hn || hn.GetParent() is not Terrain) continue;
+            hits++;
+            float err = Mathf.Abs(hit["position"].AsVector3().Y - Terrain.HeightAt(x, z));
+            worst = Mathf.Max(worst, err);
+        }
+        Check(off == 0 && hits > 150 && worst < 2f, $"the hills' collider matches their height (between grid points on steep slopes it cuts corners) ({hits} rays, {off} missed, worst {worst:0.00} m)");
+        Check(Mathf.Abs(Terrain.HeightAt(HomeCliffs.AshbyCenter)) < 0.01f && HomeCliffs.MainRoad.All(r => Mathf.Abs(Terrain.HeightAt(r)) < 0.01f), "Ashby and the road there stay level");
+
+        // The tallest gentle hilltop inside the rim, to stand on and look out from.
+        Vector3 top = Vector3.Zero;
+        for (float x = -280; x <= 280; x += 8)
+            for (float z = 120; z <= 720; z += 8)
+            {
+                float h = Terrain.HeightAt(x, z);
+                float slope = new Vector2(Terrain.HeightAt(x + 1, z) - Terrain.HeightAt(x - 1, z), Terrain.HeightAt(x, z + 1) - Terrain.HeightAt(x, z - 1)).Length() / 2f;
+                if (h < 40f && slope < 0.15f && h > top.Y) top = new Vector3(x, h, z);
+            }
+        GD.Print($"[AUTOTEST] hilltop at {top}");
+        p.Teleport(top + Vector3.Up * 0.4f);
+        await Wait(1.0);
+        Check(p.IsOnFloor() && Mathf.Abs(p.GlobalPosition.Y - top.Y) < 0.6f, $"you stand on a hilltop ({p.GlobalPosition.Y:0.0} m, ground {top.Y:0.0} m)");
+        var start = p.GlobalPosition;
+        p.Rig.SetLook(Mathf.Pi, 0f);
+        await Hold("move_forward", 1.5);
+        Check(p.GlobalPosition.DistanceTo(start) > 3f && p.GlobalPosition.Y > top.Y - 25f, $"you walk over the hills ({p.GlobalPosition.DistanceTo(start):0.0} m)");
+
+        async Task View(string name, Vector3 at, float yaw, float pitch, float time)
+        {
+            gs.TimeOfDay = time;
+            p.Teleport(at + Vector3.Up * (Terrain.HeightAt(at) + 0.2f));
+            p.Rig.SetLook(yaw, pitch);
+            await Wait(1.4);
+            await Shot(name);
+            GD.Print($"[AUTOTEST] {name}: {Engine.GetFramesPerSecond()} fps");
+        }
+        await View("terrain_01_plateau_to_vale", new Vector3(2, 0, 70), Mathf.Pi, -0.05f, 0.4f);
+        await View("terrain_02_vale_west", HomeCliffs.InVale(1, 0, 150), Mathf.Pi * 1.5f, 0.02f, 0.4f);
+        await View("terrain_03_ashby_south", HomeCliffs.AshbyCenter + new Vector3(24, 0, 12), Mathf.Pi - 0.2f, -0.02f, 0.38f);
+        await View("terrain_04_hilltop", top, Mathf.Pi * 0.75f, -0.08f, 0.33f);
+        await View("terrain_05_hilltop_north", top, 0f, -0.1f, 0.33f);
+        await View("terrain_06_waystone", HomeCliffs.Waystone + new Vector3(-18, 0, -18), Mathf.Pi * 0.75f, 0f, 0.7f);
+        await View("terrain_07_vale_from_south", HomeCliffs.InVale(30, 0, 300), 0.15f, -0.02f, 0.45f);
+    }
+
     /// <summary>--only=art: the same views at several times of day, to compare with the concept
     /// art (docs/art). Screenshots only; no checks beyond spawning.</summary>
     private async Task ArtShots(GameState gs, PlayerController p)
@@ -435,7 +497,7 @@ public partial class DevAutotest : Node
         var across = space.IntersectRay(PhysicsRayQueryParameters3D.Create(
             new Vector3(50, 1.2f, HomeCliffs.PassPos.Z), new Vector3(90, 1.2f, HomeCliffs.PassPos.Z), GameState.LayerWorld));
         Check(across.Count == 0, $"the pass through the east wall is open{(across.Count > 0 ? $" (blocked at {across["position"]})" : "")}");
-        var floor = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(140, 5, 70), new Vector3(140, -5, 70), GameState.LayerWorld));
+        var floor = space.IntersectRay(PhysicsRayQueryParameters3D.Create(HomeCliffs.InFalls(140, 5, 70), HomeCliffs.InFalls(140, -5, 70), GameState.LayerWorld));
         Check(floor.Count > 0 && Mathf.Abs(floor["position"].AsVector3().Y) < 0.1f, "Falls Valley has a floor");
         p.Teleport(HomeCliffs.PassPos + new Vector3(16, 0.1f, 0));
         p.Rig.SetLook(-Mathf.Pi / 2f - 0.15f, 0.08f);
@@ -588,7 +650,7 @@ public partial class DevAutotest : Node
         p.Teleport(inRiver);
         await Wait(1.5);
         Check(inRiver.Z - p.GlobalPosition.Z > 2.5f, $"the river's current pushes you downstream ({inRiver.Z - p.GlobalPosition.Z:0.0} m)");
-        p.Teleport(new Vector3(124, 0.1f, 52));
+        p.Teleport(HomeCliffs.InFalls(124, 0.1f, 52));
         await Wait(0.3);
 
         // Harpies: they circle high, spot you, swoop, and claw.
@@ -1651,7 +1713,7 @@ public partial class DevAutotest : Node
         {
             ("05_path_home_road", new Vector3(3f, 2.5f, 18f), Mathf.Pi, -0.35f),
             ("05_path_yard", new Vector3(9f, 3f, -9f), 0f, -0.45f),
-            ("05_path_fork", new Vector3(-2f, 3f, 108f), Mathf.Pi * 0.85f, -0.35f),
+            ("05_path_fork", HomeCliffs.InVale(-2f, 3f, 108f), Mathf.Pi * 0.85f, -0.35f),
             ("05_path_square", HomeCliffs.AshbyCenter + new Vector3(4f, 9f, 8f), 0.3f, -0.75f),
         })
         {
@@ -1846,7 +1908,8 @@ public partial class DevAutotest : Node
         Check(byAxe >= 3 && byAxe > byHand * 2, $"an axe chops far faster than fists ({byAxe} wood vs {byHand} in 3 swings)");
 
         var ore = GetTree().GetNodesInGroup("iron_ore").OfType<Harvestable>().ToList();
-        Check(ore.Count == HomeCliffs.OreSpots.Length, $"iron ore crops out in the world ({ore.Count})");
+        int veins = ore.Count(o => !o.Name.ToString().StartsWith("SpireSeam_"));
+        Check(veins == HomeCliffs.OreSpots.Length && ore.Count > veins, $"iron ore crops out in the world ({veins} veins, {ore.Count - veins} spire seams)");
         var vein = ore.OrderBy(o => o.GlobalPosition.DistanceSquaredTo(p.GlobalPosition)).First();
         Check(await Work(vein, "stone_axe", 2) == 0, "an axe won't break iron ore");
         Check(await Work(vein, "stone_pickaxe", 4) >= 3, "a pickaxe mines iron ore");
@@ -2417,16 +2480,18 @@ public partial class DevAutotest : Node
         var stops = new List<(string What, Vector3 At)>
         {
             ("the yard", new Vector3(9, 0, -13)), ("home road", new Vector3(3.5f, 0, 20)), ("the wall gap", new Vector3(0.5f, 0, 90)),
-            ("the vale", new Vector3(1, 0, 150)), ("the camp track", (new Vector3(1, 0, 118) + Wildlife.CampSites[0]) / 2f),
-            ("the road east", new Vector3(30, 0, 41)), ("the pass", HomeCliffs.PassPos), ("the valley trail", new Vector3(122, 0, 34)),
+            ("the vale", HomeCliffs.InVale(1, 0, 150)), ("the camp track", (HomeCliffs.InVale(1, 0, 118) + Wildlife.CampSites[0]) / 2f),
+            ("the road east", new Vector3(30, 0, 41)), ("the pass", HomeCliffs.PassPos), ("the valley trail", HomeCliffs.InFalls(122, 0, 34)),
         };
-        // Sample every metre along the main road: no gaps.
+        // Sample every metre along the main road's line: no gaps.
         int gaps = 0;
-        for (float z = -12; z < HomeCliffs.AshbyCenter.Z - 8; z += 1f)
+        var road = HomeCliffs.MainRoad;
+        for (int i = 0; i < road.Length - 1; i++)
         {
-            bool any = false;
-            for (float x = -4; x <= 10 && !any; x += 0.5f) any = HomeCliffs.OnPath(new Vector3(x, 0, z));
-            if (!any) gaps++;
+            var a = new Vector3(road[i].X, 0, road[i].Z);
+            var b = new Vector3(road[i + 1].X, 0, road[i + 1].Z);
+            for (float d = 0; d < a.DistanceTo(b); d += 1f)
+                if (!HomeCliffs.OnPath(a + (b - a).Normalized() * d)) gaps++;
         }
         Check(gaps == 0, $"the road from home to Ashby has no gaps ({gaps} m missing)");
         int eastGaps = 0;
@@ -2467,7 +2532,7 @@ public partial class DevAutotest : Node
             ("40_trail_yard", new Vector3(6, 0.1f, -8), Mathf.Pi + 0.1f, -0.12f),
             ("41_trail_gap", new Vector3(0.6f, 0.1f, 72), Mathf.Pi, -0.08f),
             ("42_trail_east", new Vector3(8, 0.1f, 37), -Mathf.Pi / 2f + 0.1f, -0.1f),
-            ("43_trail_valley", new Vector3(114, 0.1f, 42), -Mathf.Pi / 2f - 0.5f, -0.1f),
+            ("43_trail_valley", HomeCliffs.InFalls(114, 0.1f, 42), -Mathf.Pi / 2f - 0.5f, -0.1f),
         })
         {
             p.Teleport(at);
@@ -2537,6 +2602,13 @@ public partial class DevAutotest : Node
         if (OS.GetCmdlineUserArgs().Contains("--only=looks"))
         {
             await TrailsAndLooks(gs, p);
+            GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
+            GetTree().Quit(_fails == 0 ? 0 : 1);
+            return;
+        }
+        if (OS.GetCmdlineUserArgs().Contains("--only=terrain"))
+        {
+            await TerrainChecks(gs, p);
             GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
             GetTree().Quit(_fails == 0 ? 0 : 1);
             return;

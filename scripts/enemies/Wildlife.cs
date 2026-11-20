@@ -32,8 +32,10 @@ public partial class Wildlife : Node3D
     public const int CampRespawnDays = 3;
     public const int AnimAttack = 0, AnimStun = 1, AnimSpecial = 2;
 
-    /// <summary>The plateau and the vale, where ground enemies live (and the navmesh is baked).</summary>
-    public const float WorldMinX = -56f, WorldMaxX = 56f, WorldMinZ = -27f, WorldMaxZ = 232f;
+    /// <summary>The plateau and the vale, where ground enemies live (and the navmesh is baked). The
+    /// plateau stays put; the far end follows the vale (Regions.Vale).</summary>
+    public static readonly float WorldMinX = Mathf.Min(-56f, Regions.Vale.X - 56f), WorldMaxX = Mathf.Max(56f, Regions.Vale.X + 56f),
+        WorldMinZ = -27f, WorldMaxZ = Regions.Vale.Z + 232f;
     public static readonly Rect2 HomeBounds = new(WorldMinX, WorldMinZ, WorldMaxX - WorldMinX, WorldMaxZ - WorldMinZ);
 
     /// <summary>Harpies per roost for one player (more players, more harpies).</summary>
@@ -54,7 +56,7 @@ public partial class Wildlife : Node3D
     public const int StealPerStrike = 4;
 
     /// <summary>Harpy roosts in Falls Valley (the world builder puts a spire and nest here).</summary>
-    public static readonly Vector3[] RoostSites = { new(118, 0, 80) };
+    public static readonly Vector3[] RoostSites = { HomeCliffs.InFalls(118, 0, 80) };
 
     public const float FirstPackDelay = 6f;
     private const float PackInterval = 110f;
@@ -64,13 +66,13 @@ public partial class Wildlife : Node3D
     private const int CampGroupBase = 10000, RoostGroupBase = 20000, RaidGroupBase = 30000;
 
     /// <summary>Bandit camps (the world builder puts the tents and fires here).</summary>
-    public static readonly Vector3[] CampSites = { new(38, 0, 140) };
+    public static readonly Vector3[] CampSites = { HomeCliffs.InVale(38, 0, 140) };
 
     /// <summary>Plateau and vale edges, away from the base and the village.</summary>
     private static readonly Vector3[] SpawnPoints =
     {
         new(-50, 0, 62), new(50, 0, 70), new(2, 0, 84), new(-50, 0, 12), new(50, 0, 22), new(-30, 0, 84), new(32, 0, 84),
-        new(-48, 0, 125), new(-46, 0, 100),
+        HomeCliffs.InVale(-48, 0, 125), HomeCliffs.InVale(-46, 0, 100),
     };
 
     public readonly Dictionary<int, Enemy> Enemies = new();
@@ -212,6 +214,8 @@ public partial class Wildlife : Node3D
     /// <summary>Server: create one enemy here and on every client.</summary>
     public Enemy Spawn(string kind, int group, Vector3 pos, float yaw, float hp, float damage)
     {
+        // Never inside a hill: spots were picked at y = 0, and the ground may rise there (Terrain).
+        pos.Y = Mathf.Max(pos.Y, Terrain.HeightAt(pos) + 0.2f);
         int id = _nextId++;
         var e = SpawnLocal(kind, id, group, pos, yaw, hp, damage);
         foreach (var peer in Net.Instance.JoinedPeers) RpcId(peer, MethodName.C_Spawn, kind, id, group, pos, yaw, hp, damage);

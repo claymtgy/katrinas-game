@@ -8,31 +8,39 @@ namespace KatrinasGame;
 /// north off the cliff into the clouds (its current pushes you along), a mesa with climbable rock
 /// faces and the second sanctuary on top, an updraft over the plunge pool that lifts a glider,
 /// and a harpy roost on a rock spire. Built after everything else, with its own random numbers,
-/// so the home plateau and the vale come out exactly as before.</summary>
+/// so the home plateau and the vale come out exactly as before.
+///
+/// Placed relative to <see cref="Regions.Falls"/> (<see cref="InFalls"/>); the pass in the plateau's
+/// wall and the signs at its mouth belong to the plateau and stay put.</summary>
 public partial class HomeCliffs
 {
     /// <summary>The valley's floor (enemies there are kept inside it).</summary>
-    public static readonly Rect2 ValleyBounds = new(84, -18, 108, 126);
+    public static readonly Rect2 ValleyBounds = Regions.Move(new(84, -18, 108, 126), Regions.Falls);
     /// <summary>The pass through the east wall (z range), between the plateau and the valley.</summary>
     public const float PassMinZ = 34f, PassMaxZ = 51f;
     public static readonly Vector3 PassPos = new(72, 0, 42.5f);
 
-    public static readonly Vector3 MesaCenter = new(148, 0, 22);
+    public static readonly Vector3 MesaCenter = InFalls(148, 0, 22);
     public const float MesaHeight = 16f, MesaHalf = 14f;
     /// <summary>Where the climbable face on the mesa's west side starts (its foot).</summary>
     public static readonly Vector3 MesaClimbFoot = new(MesaCenter.X - MesaHalf - 0.8f, 0, MesaCenter.Z);
     public static readonly Vector3 FallsShrinePos = new(MesaCenter.X + 2, MesaHeight, MesaCenter.Z - 4);
 
-    public static readonly Vector3 GreatFallsPool = new(184, 0, 58);
+    public static readonly Vector3 GreatFallsPool = InFalls(184, 0, 58);
     /// <summary>The plunge pool's basin (x, z): deep enough to swim in.</summary>
     public static readonly Rect2 FallsPool = new(GreatFallsPool.X - 5, GreatFallsPool.Z - 8, 18, 16);
     public const float UpdraftRadius = 5.5f, UpdraftTop = 36f;
     /// <summary>The river: west from the pool, then north off the cliff (current in m/s).</summary>
-    public static readonly Vector3 RiverBend = new(108, 0, 58);
-    public static readonly Vector3 RiverMouth = new(108, 0, -26);
+    public static readonly Vector3 RiverBend = InFalls(108, 0, 58);
+    public static readonly Vector3 RiverMouth = InFalls(108, 0, -26);
     public const float RiverHalfWidth = 3.5f, RiverCurrent = 3.2f;
 
-    private const float ValleyNorthZ = -24f, ValleySouthZ = 114f, ValleyEastX = 198f;
+    private static readonly float ValleyNorthZ = Regions.Falls.Z - 24f, ValleySouthZ = Regions.Falls.Z + 114f, ValleyEastX = Regions.Falls.X + 198f;
+    /// <summary>The road from the pass crosses the river here (z): the stepping stones.</summary>
+    private static readonly float FallsPathZ = Regions.Falls.Z + 42.5f;
+
+    /// <summary>A place in Falls Valley, given where it is in the valley's own layout.</summary>
+    public static Vector3 InFalls(float x, float y, float z) => Regions.Falls + new Vector3(x, y, z);
 
     private static readonly Color GripRock = new(0.62f, 0.57f, 0.5f);
     private static readonly Color GripRockDark = new(0.36f, 0.32f, 0.3f);
@@ -44,7 +52,7 @@ public partial class HomeCliffs
         _vrng = new RandomNumberGenerator { Seed = (ulong)Seed * 31 + 5 };
 
         // Floor: x 60..200 (the pass and the valley), z -24..114.
-        GroundAround(new Vector3(130, -6, (ValleyNorthZ + ValleySouthZ) / 2f), new Vector3(140, 12, ValleySouthZ - ValleyNorthZ), FallsPool);
+        GroundAround(new Vector3(Regions.Falls.X + 130, Regions.Falls.Y - 6, (ValleyNorthZ + ValleySouthZ) / 2f), new Vector3(140, 12, ValleySouthZ - ValleyNorthZ), FallsPool);
 
         BuildValleyWalls();
         BuildMesa();
@@ -108,31 +116,31 @@ public partial class HomeCliffs
         {
             float h = _vrng.RandfRange(44, 62);
             var size = new Vector3(_vrng.RandfRange(12, 18), h, _vrng.RandfRange(10, 14));
-            var pos = new Vector3(ValleyEastX + 6 + _vrng.RandfRange(0, 5), h / 2f - 4, z + _vrng.RandfRange(-2, 2));
+            var pos = new Vector3(ValleyEastX + 6 + _vrng.RandfRange(0, 5), Regions.Falls.Y + h / 2f - 4, z + _vrng.RandfRange(-2, 2));
             var wall = VRock(pos, size, new Vector3(_vrng.RandfRange(-0.1f, 0.1f), _vrng.RandfRange(-0.4f, 0.4f), _vrng.RandfRange(0.05f, 0.18f)));
             if (_vrng.Randf() < 0.6f) VCrag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _vrng.RandfRange(10, 20), on: wall);
         }
         // South.
-        for (float x = 76; x <= ValleyEastX + 6; x += 10)
+        for (float x = Regions.Falls.X + 76; x <= ValleyEastX + 6; x += 10)
         {
             float h = _vrng.RandfRange(24, 40);
-            VRock(new Vector3(x, h / 2f - 3, ValleySouthZ + 5 + _vrng.RandfRange(0, 4)), new Vector3(13, h, 11),
+            VRock(new Vector3(x, Regions.Falls.Y + h / 2f - 3, ValleySouthZ + 5 + _vrng.RandfRange(0, 4)), new Vector3(13, h, 11),
                 new Vector3(0, _vrng.RandfRange(-0.3f, 0.3f), _vrng.RandfRange(-0.1f, 0.1f)));
         }
         // North: the valley ends at a drop into the cloud sea, like the home cliff.
-        for (float x = 78; x <= ValleyEastX + 8; x += 5.5f)
+        for (float x = Regions.Falls.X + 78; x <= ValleyEastX + 8; x += 5.5f)
         {
             if (Mathf.Abs(x - RiverMouth.X) < 5f) continue; // the river spills through here
             float h = _vrng.RandfRange(30, 55);
             var size = new Vector3(_vrng.RandfRange(8, 12), h, _vrng.RandfRange(5, 9));
-            VRock(new Vector3(x + _vrng.RandfRange(-2, 2), -h / 2f - _vrng.RandfRange(0.4f, 1.8f), ValleyNorthZ - 1 - _vrng.RandfRange(0, 2)), size,
+            VRock(new Vector3(x + _vrng.RandfRange(-2, 2), Regions.Falls.Y - h / 2f - _vrng.RandfRange(0.4f, 1.8f), ValleyNorthZ - 1 - _vrng.RandfRange(0, 2)), size,
                 new Vector3(_vrng.RandfRange(-0.15f, 0.25f), _vrng.RandfRange(-0.3f, 0.3f), _vrng.RandfRange(-0.1f, 0.1f)));
         }
         // A few spires out in the clouds beyond.
         for (int i = 0; i < 4; i++)
         {
             float h = _vrng.RandfRange(50, 100);
-            var pos = new Vector3(_vrng.RandfRange(100, 260), -70 + h / 2f, _vrng.RandfRange(-80, -200));
+            var pos = InFalls(_vrng.RandfRange(100, 260), -70 + h / 2f, _vrng.RandfRange(-80, -200));
             var spire = VRock(pos, new Vector3(_vrng.RandfRange(10, 22), h, _vrng.RandfRange(10, 20)),
                 new Vector3(_vrng.RandfRange(-0.1f, 0.1f), _vrng.RandfRange(0, 3), _vrng.RandfRange(-0.12f, 0.12f)), collide: false);
             if (InSpireField(pos, 14f)) spire.QueueFree(); // the Spire Cliffs are here now (made anyway: random numbers)
@@ -271,7 +279,7 @@ public partial class HomeCliffs
     private void BuildGreatFalls()
     {
         // Pours off the east cliff into a plunge pool; its mist is an updraft for gliders.
-        Waterfall(new Vector3(ValleyEastX - 1.5f, 30, GreatFallsPool.Z), new Vector2(11, 60), new Vector3(0, -Mathf.Pi / 2f, 0));
+        Waterfall(new Vector3(ValleyEastX - 1.5f, Regions.Falls.Y + 30, GreatFallsPool.Z), new Vector2(11, 60), new Vector3(0, -Mathf.Pi / 2f, 0));
         Pool(FallsPool);
         foreach (float side in new[] { -1f, 1f })
             Block(GreatFallsPool + new Vector3(4, -0.4f, side * 8.5f), new Vector3(19, 1.2f, 1), Vector3.Zero, Slate);
@@ -304,10 +312,10 @@ public partial class HomeCliffs
         Leg(GreatFallsPool + new Vector3(-6, 0, 0), RiverBend);
         Leg(RiverBend, RiverMouth);
         // Spills off the north cliff into the clouds.
-        Waterfall(new Vector3(RiverMouth.X, -26, ValleyNorthZ - 2f), new Vector2(6, 52), Vector3.Zero);
+        Waterfall(new Vector3(RiverMouth.X, Regions.Falls.Y - 26, ValleyNorthZ - 2f), new Vector2(6, 52), Vector3.Zero);
         // Stepping stones across the north leg, on the way from the pass to the mesa.
         foreach (float x in new[] { -2.4f, -0.6f, 1.2f, 2.9f })
-            Block(new Vector3(RiverBend.X + x, 0.12f, PassPos.Z + _vrng.RandfRange(-0.4f, 0.4f)), new Vector3(1.1f, 0.4f, 1.1f),
+            Block(new Vector3(RiverBend.X + x, RiverBend.Y + 0.12f, FallsPathZ + _vrng.RandfRange(-0.4f, 0.4f)), new Vector3(1.1f, 0.4f, 1.1f),
                 new Vector3(0, _vrng.RandfRange(0, 1), 0), SlateLight);
     }
 
@@ -344,14 +352,14 @@ public partial class HomeCliffs
             if (Mathf.Abs(p.X - MesaCenter.X) < MesaHalf + 4 && Mathf.Abs(p.Z - MesaCenter.Z) < MesaHalf + 4) return false;
             if (GameState.Instance.CurrentAt(p + Vector3.Up * 0.1f, RiverHalfWidth + 3f) != Vector3.Zero) return false;
             if (p.DistanceTo(GreatFallsPool) < 14 || p.DistanceTo(Wildlife.RoostSites[0]) < 7) return false;
-            if (Mathf.Abs(p.Z - PassPos.Z) < 5 && p.X < 112) return false; // path from the pass
+            if (Mathf.Abs(p.Z - FallsPathZ) < 5 && p.X < Regions.Falls.X + 112) return false; // path from the pass
             foreach (var q in placed) if (p.DistanceTo(q) < spacing) return false;
             return true;
         }
         int trees = 0, rocks = 0, guard = 0;
         while ((trees < 16 || rocks < 8) && guard++ < 3000)
         {
-            var p = new Vector3(_vrng.RandfRange(86, 190), 0, _vrng.RandfRange(-14, 108));
+            var p = InFalls(_vrng.RandfRange(86, 190), 0, _vrng.RandfRange(-14, 108));
             if (!Clear(p, 6f)) continue;
             // Spawn() uses the main random numbers for rotation and scale; that's fine here (built last).
             if (trees < 16) { Spawn(tree, p, placed); trees++; }
@@ -360,7 +368,7 @@ public partial class HomeCliffs
         string[] small = { "Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Tall", "Fern_1", "Plant_1", "Plant_7", "Flower_3_Group", "Clover_2", "Mushroom_Common" };
         for (int i = 0, n = 0; n < 160 && i < 3000; i++)
         {
-            var p = new Vector3(_vrng.RandfRange(62, 192), 0, _vrng.RandfRange(-20, 110));
+            var p = InFalls(_vrng.RandfRange(62, 192), 0, _vrng.RandfRange(-20, 110));
             if (!Clear(p, 0f)) continue;
             Prop(Models.Nature(small[_vrng.RandiRange(0, small.Length - 1)]), p, _vrng.RandfRange(0, Mathf.Tau), _vrng.RandfRange(0.8f, 1.5f));
             n++;
@@ -370,8 +378,8 @@ public partial class HomeCliffs
         {
             bool north = i % 2 == 0;
             var p = north
-                ? new Vector3(RiverBend.X + (i % 4 < 2 ? -1 : 1) * (RiverHalfWidth + 1f), 0, _vrng.RandfRange(RiverMouth.Z + 4, RiverBend.Z))
-                : new Vector3(_vrng.RandfRange(RiverBend.X, GreatFallsPool.X - 10), 0, RiverBend.Z + (i % 4 < 2 ? -1 : 1) * (RiverHalfWidth + 1f));
+                ? new Vector3(RiverBend.X + (i % 4 < 2 ? -1 : 1) * (RiverHalfWidth + 1f), RiverBend.Y, _vrng.RandfRange(RiverMouth.Z + 4, RiverBend.Z))
+                : new Vector3(_vrng.RandfRange(RiverBend.X, GreatFallsPool.X - 10), RiverBend.Y, RiverBend.Z + (i % 4 < 2 ? -1 : 1) * (RiverHalfWidth + 1f));
             Prop(Models.Nature(_vrng.Randf() < 0.5f ? "Fern_1" : "Grass_Wispy_Tall"), p, _vrng.RandfRange(0, Mathf.Tau), _vrng.RandfRange(1f, 1.6f));
         }
     }

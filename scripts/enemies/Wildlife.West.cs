@@ -13,12 +13,12 @@ namespace KatrinasGame;
 public partial class Wildlife
 {
     /// <summary>Boar clearings in the forest (the world builder keeps trees out of them).</summary>
-    public static readonly Vector3[] HerdSites = { new(-96, 0, 186), new(-126, 0, 216) };
+    public static readonly Vector3[] HerdSites = { HomeCliffs.InWest(-96, 0, 186), HomeCliffs.InWest(-126, 0, 216) };
     public const int SoloHerdSize = 2;
     public const int HerdRespawnDays = 1;
 
     /// <summary>Crawler nests: the upper gallery, the deep gallery, and the Mother's lair.</summary>
-    public static readonly Vector3[] NestSites = { new(-184, 0, 201), new(-228, 0, 244), new(-224, 0, 192) };
+    public static readonly Vector3[] NestSites = { HomeCliffs.InWest(-184, 0, 201), HomeCliffs.InWest(-228, 0, 244), HomeCliffs.InWest(-224, 0, 192) };
     /// <summary>Crawlers per nest for one player (the lair: the Mother and her guard).</summary>
     public static readonly int[] SoloNestSize = { 2, 3, 2 };
     public const int LairNest = 2;

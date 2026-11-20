@@ -13,58 +13,65 @@ namespace KatrinasGame;
 /// The mine is one floor, carved out of a solid block of rock: <see cref="MineRooms"/> are the
 /// hollows, everything else in <see cref="MineBox"/> is wall, under one roof with a hole for
 /// the shaft. Built after everything else with its own random numbers, so the rest of the world
-/// comes out exactly as before.</summary>
+/// comes out exactly as before.
+///
+/// Placed relative to <see cref="Regions.West"/> (<see cref="InWest"/>); the start of the road and
+/// its sign by Ashby's square go with the vale.</summary>
 public partial class HomeCliffs
 {
-    /// <summary>The vale's west wall is open between these (z), west of Ashby.</summary>
-    public const float ForestGapMinZ = 190f, ForestGapMaxZ = 212f;
+    /// <summary>A place on the Forest Road or in the mine, given where it is in their own layout.</summary>
+    public static Vector3 InWest(float x, float y, float z) => Regions.West + new Vector3(x, y, z);
+    private static Rect2 WestRect(float x, float z, float w, float h) => Regions.Move(new Rect2(x, z, w, h), Regions.West);
+
+    /// <summary>Where the Forest Road leaves the vale (z), west of Ashby.</summary>
+    public static readonly float ForestGapMinZ = Regions.West.Z + 190f, ForestGapMaxZ = Regions.West.Z + 212f;
     /// <summary>The forest floor between the vale and the mine (enemies there stay inside it).</summary>
-    public static readonly Rect2 ForestBounds = new(-148, 172, 82, 54);
-    public static readonly Vector3 ForestRoadStart = new(-15.5f, 0, 199);
-    public static readonly Vector3 MineMouth = new(-150, 0, 200);
+    public static readonly Rect2 ForestBounds = WestRect(-148, 172, 82, 54);
+    public static readonly Vector3 ForestRoadStart = InVale(-15.5f, 0, 199); // on Ashby's square
+    public static readonly Vector3 MineMouth = InWest(-150, 0, 200);
 
     /// <summary>The whole mine (x, z): solid rock except for the rooms.</summary>
-    public static readonly Rect2 MineBox = new(-246, 176, 96, 86);
+    public static readonly Rect2 MineBox = WestRect(-246, 176, 96, 86);
     /// <summary>Enemies in the mine are kept inside this.</summary>
-    public static readonly Rect2 MineBounds = new(-244, 178, 94, 82);
+    public static readonly Rect2 MineBounds = WestRect(-244, 178, 94, 82);
     /// <summary>Floor to the underside of the roof.</summary>
     public const float MineCeiling = 5f;
     private const float MineRoofTop = 7f, MineCell = 2f;
 
-    public static readonly Rect2 MineEntrance = new(-172, 197, 22, 6);
-    public static readonly Rect2 UpperGallery = new(-196, 184, 24, 30);
-    public static readonly Rect2 ShaftHall = new(-198, 232, 26, 22);
-    public static readonly Rect2 DeepGallery = new(-240, 226, 24, 32);
-    public static readonly Rect2 MotherLair = new(-240, 180, 30, 26);
+    public static readonly Rect2 MineEntrance = WestRect(-172, 197, 22, 6);
+    public static readonly Rect2 UpperGallery = WestRect(-196, 184, 24, 30);
+    public static readonly Rect2 ShaftHall = WestRect(-198, 232, 26, 22);
+    public static readonly Rect2 DeepGallery = WestRect(-240, 226, 24, 32);
+    public static readonly Rect2 MotherLair = WestRect(-240, 180, 30, 26);
 
     /// <summary>The hollows of the mine, in order from the mouth.</summary>
     public static readonly Rect2[] MineRooms =
     {
         MineEntrance,
         UpperGallery,
-        new(-186, 214, 6, 18),    // down to the shaft
+        WestRect(-186, 214, 6, 18),    // down to the shaft
         ShaftHall,
-        new(-216, 240, 18, 6),    // west to the deep gallery
+        WestRect(-216, 240, 18, 6),    // west to the deep gallery
         DeepGallery,
-        new(-246, 247, 6, 6),     // the recess behind the iron gate
-        new(-231, 206, 6, 20),    // north to the lair
+        WestRect(-246, 247, 6, 6),     // the recess behind the iron gate
+        WestRect(-231, 206, 6, 20),    // north to the lair
         MotherLair,
     };
 
     /// <summary>The collapsed shaft that lets daylight in, and the Mine Blossom under it.</summary>
-    public static readonly Vector3 MineShaft = new(-185, 0, 243);
+    public static readonly Vector3 MineShaft = InWest(-185, 0, 243);
     public const float ShaftHalf = 4f;
-    public static readonly Vector3 MineGate = new(-240, 0, 250);
+    public static readonly Vector3 MineGate = InWest(-240, 0, 250);
 
     public static readonly Vector3[] CopperSpots =
     {
-        new(-194.5f, 0, 190), new(-188, 0, 212.5f), new(-174, 0, 186), new(-194.5f, 0, 206),
-        new(-238.5f, 0, 232), new(-222, 0, 256.5f), new(-212, 0, 182),
+        InWest(-194.5f, 0, 190), InWest(-188, 0, 212.5f), InWest(-174, 0, 186), InWest(-194.5f, 0, 206),
+        InWest(-238.5f, 0, 232), InWest(-222, 0, 256.5f), InWest(-212, 0, 182),
     };
     public static readonly Vector3[] TinSpots =
     {
-        new(-173.5f, 0, 209), new(-182, 0, 185.5f),
-        new(-238.5f, 0, 240), new(-228, 0, 227.5f), new(-217.5f, 0, 250),
+        InWest(-173.5f, 0, 209), InWest(-182, 0, 185.5f),
+        InWest(-238.5f, 0, 240), InWest(-228, 0, 227.5f), InWest(-217.5f, 0, 250),
     };
 
     /// <summary>True inside the mine (under its roof): the sky's light doesn't reach here.</summary>
@@ -112,28 +119,28 @@ public partial class HomeCliffs
     private void BuildForest()
     {
         // Floor: x -150..-60 (it meets the vale's at x -60), z 166..234.
-        var ground = Block(new Vector3(-105, -6, 200), new Vector3(90, 12, 68), Vector3.Zero, Grass);
+        var ground = Block(InWest(-105, -6, 200), new Vector3(90, 12, 68), Vector3.Zero, Grass);
         ground.Name = "Ground";
         ((MeshInstance3D)ground.GetChild(0)).MaterialOverride = GroundMaterial;
 
         // Rock walls north and south.
         foreach (float z in new[] { 165f, 235f })
-            for (float x = -146; x <= -68; x += 9)
+            for (float x = Regions.West.X - 146; x <= Regions.West.X - 68; x += 9)
             {
                 float h = _mrng.RandfRange(16, 30);
                 var size = new Vector3(_mrng.RandfRange(11, 15), h, _mrng.RandfRange(10, 14));
-                var pos = new Vector3(x + _mrng.RandfRange(-2, 2), h / 2f - 4, z + _mrng.RandfRange(-1.5f, 1.5f));
+                var pos = new Vector3(x + _mrng.RandfRange(-2, 2), h / 2f - 4, Regions.West.Z + z + _mrng.RandfRange(-1.5f, 1.5f));
                 MRock(pos, size, new Vector3(_mrng.RandfRange(-0.1f, 0.1f), _mrng.RandfRange(-0.4f, 0.4f), _mrng.RandfRange(-0.1f, 0.1f)));
             }
 
         // The road: out of Ashby's square, through the gap and the trees to the mine mouth.
         Trail(0.022f, 3.6f, new[]
         {
-            ForestRoadStart, new Vector3(-40, 0, 200.5f), new Vector3(-66, 0, 200), new Vector3(-92, 0, 194),
-            new Vector3(-118, 0, 205), new Vector3(-140, 0, 200), MineMouth,
+            ForestRoadStart, InVale(-40, 0, 200.5f), InVale(-95, 0, 192), InVale(-150, 0, 206), InWest(-66, 0, 200), InWest(-92, 0, 194),
+            InWest(-118, 0, 205), InWest(-140, 0, 200), MineMouth,
         }, tone: Dirt.Darkened(0.08f));
 
-        MineSign("ForestSign", new Vector3(-22, 0, 196.6f), Mathf.Pi / 2f, "The Forest Road", "MINE →",
+        MineSign("ForestSign", InVale(-22, 0, 196.6f), Mathf.Pi / 2f, "The Forest Road", "MINE →",
             "West through the trees: the old Hollow Mine. Mind the wild boars. Inside it's pitch dark: bring torches (build mode, " +
             "they go up anywhere) and a Lantern (workbench), and the crawlers will keep their distance.");
 
@@ -143,8 +150,8 @@ public partial class HomeCliffs
         int trees = 0, guard = 0;
         while (trees < 46 && guard++ < 3000)
         {
-            var p = new Vector3(_mrng.RandfRange(-146, -70), 0, _mrng.RandfRange(172, 228));
-            if (OnPath(p) || (p.X < -142 && Mathf.Abs(p.Z - MineMouth.Z) < 12)) continue;
+            var p = InWest(_mrng.RandfRange(-146, -70), 0, _mrng.RandfRange(172, 228));
+            if (OnPath(p) || (p.X < Regions.West.X - 142 && Mathf.Abs(p.Z - MineMouth.Z) < 12)) continue;
             bool clear = true;
             foreach (var q in placed)
                 if (p.DistanceTo(q) < 4.5f) { clear = false; break; }
@@ -163,15 +170,15 @@ public partial class HomeCliffs
         string[] small = { "Fern_1", "Fern_1", "Mushroom_Common", "Mushroom_Laetiporus", "Grass_Wispy_Tall", "Plant_1", "Plant_7", "Bush_Common", "Clover_2", "Pebble_Round_3" };
         for (int i = 0, n = 0; n < 170 && i < 3000; i++)
         {
-            var p = new Vector3(_mrng.RandfRange(-147, -64), 0, _mrng.RandfRange(170, 230));
+            var p = InWest(_mrng.RandfRange(-147, -64), 0, _mrng.RandfRange(170, 230));
             if (OnPath(p)) continue;
             Prop(Models.Nature(small[_mrng.RandiRange(0, small.Length - 1)]), p, _mrng.RandfRange(0, Mathf.Tau), _mrng.RandfRange(0.8f, 1.5f));
             n++;
         }
-        foreach (var p in new[] { new Vector3(-80, 0, 176), new Vector3(-132, 0, 224), new Vector3(-108, 0, 214) })
+        foreach (var p in new[] { InWest(-80, 0, 176), InWest(-132, 0, 224), InWest(-108, 0, 214) })
             Prop(Models.Nature("DeadTree_" + _mrng.RandiRange(1, 5)), p, _mrng.RandfRange(0, Mathf.Tau), 1.2f);
         // Dappled light and drifting motes under the canopy.
-        Particles(70, 8f, new Vector3(40, 3, 26), new Vector3(-105, 3, 200), new Color(1f, 0.95f, 0.7f, 0.5f), 0.04f, 0.08f,
+        Particles(70, 8f, new Vector3(40, 3, 26), InWest(-105, 3, 200), new Color(1f, 0.95f, 0.7f, 0.5f), 0.04f, 0.08f,
             new Vector3(0.1f, 0.05f, 0.05f), emissive: 1.5f);
     }
 
@@ -202,7 +209,7 @@ public partial class HomeCliffs
         DecorateMine(root);
 
         // A worn track from the mouth into the upper gallery.
-        Trail(0.02f, 2.2f, new[] { MineMouth, new Vector3(-172, 0, 200), new Vector3(-184, 0, 199) }, ruts: true, tone: new Color(0.3f, 0.25f, 0.2f));
+        Trail(0.02f, 2.2f, new[] { MineMouth, InWest(-172, 0, 200), InWest(-184, 0, 199) }, ruts: true, tone: new Color(0.3f, 0.25f, 0.2f));
         MineSign("MineSign", MineMouth + new Vector3(4, 0, -5), Mathf.Pi / 2f, "The Hollow Mine", "HOLLOW MINE",
             "Dug for copper and tin long ago, and left to the dark. Scratched under the name: 'Carry light. The crawlers fear it.'");
     }
@@ -264,11 +271,11 @@ public partial class HomeCliffs
         foreach (float z in new[] { 172f, 180f, 188f, 213f, 221f, 229f })
         {
             float h = _mrng.RandfRange(12, 20);
-            MRock(new Vector3(MineMouth.X + _mrng.RandfRange(-2, 0.5f), h / 2f - 2, z + _mrng.RandfRange(-1, 1)), new Vector3(_mrng.RandfRange(8, 11), h, 9),
+            MRock(new Vector3(MineMouth.X + _mrng.RandfRange(-2, 0.5f), h / 2f - 2, Regions.West.Z + z + _mrng.RandfRange(-1, 1)), new Vector3(_mrng.RandfRange(8, 11), h, 9),
                 new Vector3(0, _mrng.RandfRange(-0.4f, 0.4f), _mrng.RandfRange(-0.08f, 0.08f)));
         }
         // The forest's north-west corner, where the mine's block doesn't reach: keep everyone on the ground.
-        Block(new Vector3(-154, 4, 170.5f), new Vector3(8, 12, 11), Vector3.Zero, Slate, visible: false);
+        Block(InWest(-154, 4, 170.5f), new Vector3(8, 12, 11), Vector3.Zero, Slate, visible: false);
         // Over the mouth: a lintel rock that leaves the doorway clear.
         MRock(MineMouth + new Vector3(-1.5f, MineCeiling + 4f, 0), new Vector3(9, 7, 12), new Vector3(0, 0.2f, 0));
         var wood = Mat(WoodDark);
@@ -289,10 +296,10 @@ public partial class HomeCliffs
             Visual(new BoxMesh { Size = alongX ? new Vector3(0.35f, 0.35f, width) : new Vector3(width, 0.35f, 0.35f) }, wood,
                 at + Vector3.Up * (MineCeiling - 0.25f), Vector3.Zero, root);
         }
-        foreach (float x in new[] { -156f, -164f }) Frame(new Vector3(x, 0, 200), true, 6);
-        foreach (float z in new[] { 219f, 227f }) Frame(new Vector3(-183, 0, z), false, 6);
-        foreach (float x in new[] { -203f, -211f }) Frame(new Vector3(x, 0, 243), true, 6);
-        foreach (float z in new[] { 211f, 219f }) Frame(new Vector3(-228, 0, z), false, 6);
+        foreach (float x in new[] { -156f, -164f }) Frame(InWest(x, 0, 200), true, 6);
+        foreach (float z in new[] { 219f, 227f }) Frame(InWest(-183, 0, z), false, 6);
+        foreach (float x in new[] { -203f, -211f }) Frame(InWest(x, 0, 243), true, 6);
+        foreach (float z in new[] { 211f, 219f }) Frame(InWest(-228, 0, z), false, 6);
     }
 
     /// <summary>The collapsed shaft: a square of sky, daylight pouring down on the Mine Blossom,
@@ -438,7 +445,7 @@ public partial class HomeCliffs
         }
 
         // An abandoned ore cart in the upper gallery.
-        var cart = new Node3D { Name = "OreCart", Position = new Vector3(-184, 0, 194), Rotation = new Vector3(0, 0.3f, 0) };
+        var cart = new Node3D { Name = "OreCart", Position = InWest(-184, 0, 194), Rotation = new Vector3(0, 0.3f, 0) };
         root.AddChild(cart);
         var ironM = Mat(new Color(0.2f, 0.2f, 0.22f));
         Block(new Vector3(0, 0.75f, 0), new Vector3(1.2f, 0.8f, 1.8f), Vector3.Zero, new Color(0.34f, 0.23f, 0.15f), cart);
@@ -473,7 +480,7 @@ public partial class HomeCliffs
         }
 
         // Drips of dust in the dark.
-        Particles(60, 9f, new Vector3(20, 2, 20), new Vector3(-205, 2.5f, 220), new Color(0.6f, 0.7f, 0.8f, 0.25f), 0.03f, 0.05f, new Vector3(0, -0.05f, 0));
+        Particles(60, 9f, new Vector3(20, 2, 20), InWest(-205, 2.5f, 220), new Color(0.6f, 0.7f, 0.8f, 0.25f), 0.03f, 0.05f, new Vector3(0, -0.05f, 0));
     }
 
     // ================================================================== helpers

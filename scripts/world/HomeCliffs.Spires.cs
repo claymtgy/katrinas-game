@@ -10,25 +10,29 @@ namespace KatrinasGame;
 /// seams run up the pale climbing faces, so you mine them while hanging on. The Spire Blossom
 /// (a sanctuary with fast travel) grows on the second spire. Built with its own random numbers.
 /// The grapple anchors are in HomeCliffs.Grapple.cs; storm harpies, goats and the Storm Harpy
-/// Queen live in Wildlife.Spires.cs.</summary>
+/// Queen live in Wildlife.Spires.cs. Placed relative to <see cref="Regions.Spires"/> (<see cref="InSpires"/>),
+/// which moves with Falls Valley: the lookout is on the valley's rim.</summary>
 public partial class HomeCliffs
 {
+    /// <summary>A place in the Spire Cliffs, given where it is in their own layout.</summary>
+    public static Vector3 InSpires(float x, float y, float z) => Regions.Spires + new Vector3(x, y, z);
+
     /// <summary>Where the spire field is (x, z): the home and valley scenery spires are kept out of it.</summary>
-    public static readonly Rect2 SpireField = new(112, -170, 112, 148);
+    public static readonly Rect2 SpireField = Regions.Move(new Rect2(112, -170, 112, 148), Regions.Spires);
 
     /// <summary>The ledge you glide off, on Falls Valley's north rim.</summary>
-    public static readonly Vector3 SpireLookout = new(160, 0, -28);
+    public static readonly Vector3 SpireLookout = InSpires(160, 0, -28);
 
     /// <summary>One spire: the centre of its top, and half its width.</summary>
     public readonly record struct SpireDef(string Name, Vector3 Top, float Half);
 
     public static readonly SpireDef[] Spires =
     {
-        new("LedgeSpire", new Vector3(160, -3, -47), 5f),     // the first hop off the lookout
-        new("BlossomSpire", new Vector3(138, 6, -70), 7f),    // the sanctuary
-        new("RustSpire", new Vector3(167, 2, -95), 6f),       // iron seams on two faces
-        new("WindwardSpire", new Vector3(201, 10, -120), 5f), // across the gusts
-        new("TallSpire", new Vector3(172, 44, -152), 6f),     // the tallest (the Queen nests here later)
+        new("LedgeSpire", InSpires(160, -3, -47), 5f),     // the first hop off the lookout
+        new("BlossomSpire", InSpires(138, 6, -70), 7f),    // the sanctuary
+        new("RustSpire", InSpires(167, 2, -95), 6f),       // iron seams on two faces
+        new("WindwardSpire", InSpires(201, 10, -120), 5f), // across the gusts
+        new("TallSpire", InSpires(172, 44, -152), 6f),     // the tallest (the Queen nests here later)
     };
 
     public static Vector3 SpireBlossomPos => Spires[1].Top + new Vector3(-2, 0, 1);
@@ -36,18 +40,18 @@ public partial class HomeCliffs
     /// <summary>Updrafts out of cracks in a spire's top: base (the crack), radius, top height.</summary>
     public static readonly (Vector3 Base, float Radius, float Top)[] SpireUpdrafts =
     {
-        (new Vector3(157, -3, -49), 2.6f, 18f),   // lifts you from the first spire to the blossom's
-        (new Vector3(170, 2, -98), 2.6f, 24f),    // the rust spire: up and over the gusts
-        (new Vector3(203, 10, -122), 2.4f, 34f),  // the windward spire: toward the tall spire's face
+        (InSpires(157, -3, -49), 2.6f, 18f),   // lifts you from the first spire to the blossom's
+        (InSpires(170, 2, -98), 2.6f, 24f),    // the rust spire: up and over the gusts
+        (InSpires(203, 10, -122), 2.4f, 34f),  // the windward spire: toward the tall spire's face
     };
 
     /// <summary>Wind gusts (GDD §11 step 2): a box (centre, half size) where a glider gets shoved
     /// along Push (m/s) while the gust blows. Each blows for a bit, then drops, on a cycle.</summary>
     public static readonly (Vector3 Center, Vector3 Half, Vector3 Push, float Period, float Phase)[] SpireGusts =
     {
-        (new Vector3(152, 4, -83), new Vector3(7, 10, 7), new Vector3(3.5f, 0, 2.5f), 8f, 0f),       // gentle: a first taste
-        (new Vector3(184, 10, -108), new Vector3(10, 16, 9), new Vector3(-4.5f, 0, -4f), 7f, 2f),     // out toward the open sky
-        (new Vector3(187, 28, -137), new Vector3(9, 16, 9), new Vector3(6f, 0, 0), 6f, 4f),          // across the tall spire's face
+        (InSpires(152, 4, -83), new Vector3(7, 10, 7), new Vector3(3.5f, 0, 2.5f), 8f, 0f),       // gentle: a first taste
+        (InSpires(184, 10, -108), new Vector3(10, 16, 9), new Vector3(-4.5f, 0, -4f), 7f, 2f),     // out toward the open sky
+        (InSpires(187, 28, -137), new Vector3(9, 16, 9), new Vector3(6f, 0, 0), 6f, 4f),          // across the tall spire's face
     };
 
     /// <summary>Fraction of each gust cycle the wind blows (it rises and falls within that).</summary>
@@ -80,7 +84,7 @@ public partial class HomeCliffs
         && p.Z > SpireField.Position.Y - margin && p.Z < SpireField.End.Y + margin;
 
     /// <summary>On (or hanging from) one of the spires.</summary>
-    public static bool OnSpires(Vector3 p) => InSpireField(p) && p.Z < -36f && p.Y > -30f;
+    public static bool OnSpires(Vector3 p) => InSpireField(p) && p.Z < Regions.Spires.Z - 36f && p.Y > -30f;
 
     private RandomNumberGenerator _srng;
     private readonly List<(GpuParticles3D Streaks, AudioStreamPlayer3D Sound)> _gustFx = new();

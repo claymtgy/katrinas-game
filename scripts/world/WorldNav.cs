@@ -15,9 +15,10 @@ public partial class WorldNav : NavigationRegion3D
     /// <summary>Every region (home, and the forest and mine to the west).</summary>
     public static readonly System.Collections.Generic.List<WorldNav> All = new();
 
-    /// <summary>The plateau, the vale and Ashby (enemies never leave Wildlife's world box).</summary>
+    /// <summary>The plateau, the vale and Ashby (enemies never leave Wildlife's world box). Tall
+    /// enough for the vale's hills (Terrain).</summary>
     public static readonly Aabb HomeBox = new(new Vector3(Wildlife.WorldMinX - 4, -3, Wildlife.WorldMinZ - 4),
-        new Vector3(Wildlife.WorldMaxX - Wildlife.WorldMinX + 8, 14, Wildlife.WorldMaxZ - Wildlife.WorldMinZ + 8));
+        new Vector3(Wildlife.WorldMaxX - Wildlife.WorldMinX + 8, 30, Wildlife.WorldMaxZ - Wildlife.WorldMinZ + 8));
     /// <summary>The Forest Road and the Hollow Mine (HomeCliffs.Mine).</summary>
     public static readonly Aabb WestBox = new(new Vector3(HomeCliffs.MineBox.Position.X - 2, -3, HomeCliffs.ForestBounds.Position.Y - 8),
         new Vector3(HomeCliffs.ForestBounds.End.X - HomeCliffs.MineBox.Position.X + 6, 9.5f, HomeCliffs.MineBox.End.Y - HomeCliffs.ForestBounds.Position.Y + 10));

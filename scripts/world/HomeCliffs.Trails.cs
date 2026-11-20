@@ -46,6 +46,13 @@ public partial class HomeCliffs
         return false;
     }
 
+    /// <summary>Every recorded path point (segment ends, patch centres), for WorldDump.</summary>
+    public static IEnumerable<Vector3> PathPoints()
+    {
+        foreach (var s in Segs) { yield return new Vector3(s.A.X, 0, s.A.Y); yield return new Vector3(s.B.X, 0, s.B.Y); }
+        foreach (var (c, _) in Patches) yield return new Vector3(c.X, 0, c.Y);
+    }
+
     private static void ClearPathRecords()
     {
         Segs.Clear();
@@ -77,27 +84,34 @@ public partial class HomeCliffs
     /// gap in the plateau wall and the vale to Ashby; a footpath branches east to the bandit camp;
     /// another road leaves the main one east through the pass, crosses the river on the stepping
     /// stones and ends at the foot of the mesa's climbing face.</summary>
+    /// <summary>The main road, home → Ashby: down the plateau, out through the gap in its south
+    /// edge, a long meander along the valley floors of the country between, and up the vale.</summary>
+    public static Vector3[] MainRoad => new[]
+    {
+        ShackPos + new Vector3(0, 0, 7), new Vector3(5, 0, 4), new Vector3(2, 0, 40), new Vector3(0.6f, 0, 82),
+        // The country between the plateau and the vale (neither region's: it stays put).
+        new Vector3(-5, 0, 140), new Vector3(12, 0, 205), new Vector3(5, 0, 265), new Vector3(-16, 0, 325),
+        new Vector3(-9, 0, 390), new Vector3(1, 0, 430),
+        InVale(0.4f, 0, 100), InVale(1, 0, 134), AshbyCenter + new Vector3(1, 0, -12),
+    };
+
     private void BuildTrails()
     {
         // Home → Ashby (the yard patch and the village square cover each end).
-        Trail(0.02f, 4.8f, new[]
-        {
-            ShackPos + new Vector3(0, 0, 7), new Vector3(5, 0, 4), new Vector3(2, 0, 40), new Vector3(0.6f, 0, 82),
-            new Vector3(0.4f, 0, 100), new Vector3(1, 0, 134), new Vector3(1, 0, AshbyCenter.Z - 12),
-        });
+        Trail(0.02f, 4.8f, MainRoad);
         // Main road → the bandit camp, a narrow footpath with no cart ruts.
         var camp = Wildlife.CampSites[0];
-        Trail(0.03f, 2.6f, new[] { new Vector3(1, 0, 118), new Vector3(camp.X - 2f, 0, camp.Z) }, ruts: false, tone: Dirt.Darkened(0.1f));
+        Trail(0.03f, 2.6f, new[] { InVale(1, 0, 118), new Vector3(camp.X - 2f, 0, camp.Z) }, ruts: false, tone: Dirt.Darkened(0.1f));
         // Main road → Falls Valley: east through the pass, over the stepping stones, to the mesa.
-        float z = PassPos.Z;
+        float z = FallsPathZ;
         Trail(0.025f, 4f, new[]
         {
-            new Vector3(2.4f, 0, 36), new Vector3(30, 0, 41), new Vector3(PassPos.X, 0, z),
+            new Vector3(2.4f, 0, 36), new Vector3(30, 0, 41), PassPos, // the pass is the plateau's; the river crossing is the valley's
             new Vector3(RiverBend.X - RiverHalfWidth - 0.8f, 0, z),
         });
         Trail(0.025f, 4f, new[]
         {
-            new Vector3(RiverBend.X + RiverHalfWidth + 0.8f, 0, z), new Vector3(122, 0, 34), MesaClimbFoot + new Vector3(-2.5f, 0, 0),
+            new Vector3(RiverBend.X + RiverHalfWidth + 0.8f, 0, z), InFalls(122, 0, 34), MesaClimbFoot + new Vector3(-2.5f, 0, 0),
         });
     }
 

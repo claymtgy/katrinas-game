@@ -8,14 +8,14 @@ namespace KatrinasGame;
 /// The Kiln fires it into bricks.</summary>
 public partial class HomeCliffs
 {
-    public static readonly Vector3 ClayPond = new(-30, 0, 160);
+    public static readonly Vector3 ClayPond = InVale(-30, 0, 160);
     public const float ClayPondRadius = 4.5f;
 
     /// <summary>Clay banks: six on the valley river's banks, three round the vale pond.</summary>
     public static readonly Vector3[] ClaySpots =
     {
-        new(102.4f, 0, 10), new(102.4f, 0, -8), new(113.6f, 0, 2),
-        new(132, 0, 63.6f), new(155, 0, 63.6f), new(145, 0, 52.4f),
+        InFalls(102.4f, 0, 10), InFalls(102.4f, 0, -8), InFalls(113.6f, 0, 2),
+        InFalls(132, 0, 63.6f), InFalls(155, 0, 63.6f), InFalls(145, 0, 52.4f),
         ClayPond + new Vector3(5.6f, 0, 1.5f), ClayPond + new Vector3(-4.5f, 0, 3.8f), ClayPond + new Vector3(-1f, 0, -5.7f),
     };
 
@@ -23,13 +23,15 @@ public partial class HomeCliffs
 
     private void BuildClay()
     {
-        // The pond: a muddy rim and still water.
+        // The pond: a muddy rim and still water. Both stand clear of the ground (the hills are flat
+        // at y = 0 here): the rim from 2 cm up, the water's underside inside the rim, so no face
+        // sits on the ground's own plane and flickers against it.
         ClearScatterAround(ClayPond, ClayPondRadius + 2.5f);
         var water = StyleMaterials.Water();
-        Visual(new CylinderMesh { TopRadius = ClayPondRadius + 0.9f, BottomRadius = ClayPondRadius + 0.9f, Height = 0.03f, RadialSegments = 20 },
-            Mat(ClayColor.Darkened(0.35f)), ClayPond + new Vector3(0, 0.015f, 0), Vector3.Zero);
+        Visual(new CylinderMesh { TopRadius = ClayPondRadius + 0.9f, BottomRadius = ClayPondRadius + 0.9f, Height = 0.06f, RadialSegments = 20 },
+            Mat(ClayColor.Darkened(0.35f)), ClayPond + new Vector3(0, 0.05f, 0), Vector3.Zero);
         Visual(new CylinderMesh { TopRadius = ClayPondRadius, BottomRadius = ClayPondRadius, Height = 0.1f, RadialSegments = 20 },
-            water, ClayPond + new Vector3(0, 0.05f, 0), Vector3.Zero);
+            water, ClayPond + new Vector3(0, 0.09f, 0), Vector3.Zero);
         for (int k = 0; k < 9; k++)
         {
             float a = k * 0.7f + 0.3f;

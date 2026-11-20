@@ -8,7 +8,11 @@ namespace KatrinasGame;
 /// rebuilt whenever GameState.HomeTier changes. GDD §6, §11.</summary>
 public partial class HomeCliffs
 {
-    public static readonly Vector3 AshbyCenter = new(0, 0, 195);
+    public static readonly Vector3 AshbyCenter = InVale(0, 0, 195);
+
+    /// <summary>A place in the vale (Ashby, the camp, the clay pond, the road there and the country
+    /// beyond), given where it is in the vale's own layout (<see cref="Regions.Vale"/>).</summary>
+    public static Vector3 InVale(float x, float y, float z) => Regions.Vale + new Vector3(x, y, z);
     public const float AshbySafeRadius = 28f;
     private const float ValeEndZ = 246f;
 
@@ -22,30 +26,19 @@ public partial class HomeCliffs
 
     private void BuildVale()
     {
-        // Ground continues south through the gap in the wall (z 90..246).
-        var ground = Block(new Vector3(0, -6, (90 + ValeEndZ) / 2f), new Vector3(120, 12, ValeEndZ - 90), Vector3.Zero, Grass);
-        ((MeshInstance3D)ground.GetChild(0)).MaterialOverride = GroundMaterial;
-
-        // Rock walls east and west, and the far end.
+        // The vale used to be a flat slab boxed in by rock walls. It's open rolling country now
+        // (Terrain, laid by RaiseTerrain); the walls are still made and dropped, so the random
+        // numbers for everything after come out the same as before.
+        int before = GetChildCount();
         foreach (float side in new[] { -1f, 1f })
             for (float z = 101; z <= ValeEndZ; z += 9)
             {
                 float h = _rng.RandfRange(16, 34);
                 var size = new Vector3(_rng.RandfRange(12, 18), h, _rng.RandfRange(10, 14));
                 var pos = new Vector3(side * (64 + _rng.RandfRange(0, 6)), h / 2f - 4, z + _rng.RandfRange(-2, 2));
-                int before = GetChildCount();
                 var wall = Rock(pos, size, new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(-0.4f, 0.4f), side * _rng.RandfRange(0.05f, 0.2f)),
                     _rng.Randf() < 0.35f ? SlateLight : Slate);
                 if (_rng.Randf() < 0.5f) Crag(pos + new Vector3(0, h / 2f - 3f, 0), size.X * 0.8f, _rng.RandfRange(8, 16), on: wall);
-                // The gap west to the Forest Road (HomeCliffs.Mine): drop these rocks, made anyway
-                // so the random numbers for everything after come out the same as before.
-                if (side < 0 && z > ForestGapMinZ && z < ForestGapMaxZ)
-                    while (GetChildCount() > before)
-                    {
-                        var n = GetChild(GetChildCount() - 1);
-                        RemoveChild(n);
-                        n.Free();
-                    }
             }
         for (float x = -64; x <= 64; x += 10)
         {
@@ -53,6 +46,7 @@ public partial class HomeCliffs
             Rock(new Vector3(x, h / 2f - 3, ValeEndZ + 4 + _rng.RandfRange(0, 4)), new Vector3(13, h, 11),
                 new Vector3(0, _rng.RandfRange(-0.3f, 0.3f), _rng.RandfRange(-0.1f, 0.1f)), Slate);
         }
+        DropChildrenFrom(before);
 
         // The road on to Ashby and the camp track are laid by BuildTrails.
 
@@ -69,7 +63,7 @@ public partial class HomeCliffs
 
         bool Clear(Vector3 p, float spacing)
         {
-            if (Mathf.Abs(p.X - 1) < 5) return false;                 // road
+            if (Mathf.Abs(p.X - Regions.Vale.X - 1) < 5) return false; // road
             if (p.DistanceTo(AshbyCenter) < 30) return false;         // village
             if (p.DistanceTo(camp) < 14) return false;                // camp
             foreach (var q in placed) if (p.DistanceTo(q) < spacing) return false;
@@ -79,7 +73,7 @@ public partial class HomeCliffs
         int trees = 0, rocks = 0, grains = 0, guard = 0;
         while ((trees < 22 || rocks < 9 || grains < 12) && guard++ < 3000)
         {
-            var p = new Vector3(_rng.RandfRange(-54, 54), 0, _rng.RandfRange(102, 238));
+            var p = InVale(_rng.RandfRange(-54, 54), 0, _rng.RandfRange(102, 238));
             if (!Clear(p, 5f)) continue;
             if (trees < 22) { Spawn(tree, p, placed); trees++; }
             else if (rocks < 9) { Spawn(rock, p, placed); rocks++; }
@@ -93,8 +87,8 @@ public partial class HomeCliffs
         string[] small = { "Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Tall", "Flower_3_Group", "Flower_4_Group", "Clover_1", "Fern_1", "Plant_7" };
         for (int i = 0, n = 0; n < 150 && i < 2000; i++)
         {
-            var p = new Vector3(_rng.RandfRange(-56, 56), 0, _rng.RandfRange(100, 240));
-            if (Mathf.Abs(p.X - 1) < 2.5f || p.DistanceTo(AshbyCenter) < 16 || p.DistanceTo(camp) < 8) continue;
+            var p = InVale(_rng.RandfRange(-56, 56), 0, _rng.RandfRange(100, 240));
+            if (Mathf.Abs(p.X - Regions.Vale.X - 1) < 2.5f || p.DistanceTo(AshbyCenter) < 16 || p.DistanceTo(camp) < 8) continue;
             Prop(Models.Nature(small[_rng.RandiRange(0, small.Length - 1)]), p, _rng.RandfRange(0, Mathf.Tau), _rng.RandfRange(0.8f, 1.4f));
             n++;
         }

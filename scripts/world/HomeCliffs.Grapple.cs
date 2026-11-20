@@ -26,13 +26,13 @@ public partial class HomeCliffs
     private static Anchor[] MakeAnchors() => new Anchor[]
     {
         // From the lookout's tip to the first spire's near rim: the first, easy pull.
-        new(new Vector3(160, -3.5f, Spires[0].Top.Z + Spires[0].Half + 0.15f), Vector3.Back, false),
+        new(new Vector3(Spires[0].Top.X, -3.5f, Spires[0].Top.Z + Spires[0].Half + 0.15f), Vector3.Back, false),
         // The blossom spire's east rim, from the first spire.
-        new(new Vector3(Spires[1].Top.X + Spires[1].Half + 0.15f, Spires[1].Top.Y - 0.5f, -70), Vector3.Right, false),
+        new(new Vector3(Spires[1].Top.X + Spires[1].Half + 0.15f, Spires[1].Top.Y - 0.5f, Spires[1].Top.Z), Vector3.Right, false),
         // The top of the rust spire's west climbing face, from the blossom spire.
-        new(new Vector3(Spires[2].Top.X - Spires[2].Half - 0.95f, Spires[2].Top.Y - 0.6f, -95), Vector3.Left, false),
+        new(new Vector3(Spires[2].Top.X - Spires[2].Half - 0.95f, Spires[2].Top.Y - 0.6f, Spires[2].Top.Z), Vector3.Left, false),
         // The windward spire's west rim, from the rust spire's north-east corner (mind the gust).
-        new(new Vector3(Spires[3].Top.X - Spires[3].Half - 0.15f, Spires[3].Top.Y - 0.5f, -120), Vector3.Left, false),
+        new(new Vector3(Spires[3].Top.X - Spires[3].Half - 0.15f, Spires[3].Top.Y - 0.5f, Spires[3].Top.Z), Vector3.Left, false),
         // Half way up the tall spire's east face, from the top of the windward spire's updraft…
         new(new Vector3(Spires[4].Top.X + Spires[4].Half + 0.95f, 33f, Spires[4].Top.Z + 2f), Vector3.Right, true),
         // …and its top, from there: up to the nest.
