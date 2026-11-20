@@ -46,6 +46,7 @@ public partial class HomeCliffs : Node3D
     {
         float t = GameState.Instance.TimeOfDay;
         if (_fireflies != null) _fireflies.Emitting = t < 0.24f || t > 0.77f;
+        if (!Net.Instance.IsDedicated) TickMine();
     }
 
     public override void _Ready()
@@ -85,13 +86,19 @@ public partial class HomeCliffs : Node3D
         BuildFallsValley(); // its scatter uses the shared random numbers
         BuildOreVeins();    // after everything else, so the other resource names don't shift
         BuildClay();
+        BuildForestAndMine(); // the Forest Road and the Hollow Mine: own random numbers
         ClearTrailsOfScatter();
 
         AddChild(new Weather { Name = "Weather" });
         AddChild(new Ambience { Name = "Ambience" });
         // Enemies path around the world (the AI runs on the server only).
         AddToGroup(WorldNav.SourceGroup);
-        if (Net.Instance.IsServer) AddChild(new WorldNav { Name = "WorldNav" });
+        if (Net.Instance.IsServer)
+        {
+            AddChild(new WorldNav { Name = "WorldNav" });
+            // The forest and the mine have a navmesh of their own (same map, baked apart).
+            AddChild(new WorldNav { Name = "WestNav", BakeBox = WorldNav.WestBox });
+        }
     }
 
     /// <summary>Storage chest by the shack: empty your pack into the shared stockpile here.</summary>

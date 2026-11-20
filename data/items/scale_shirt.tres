@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "scale_shirt"
+DisplayName = "Scale Shirt"
+Category = "armor"
+IconColor = Color(0.72, 0.5, 0.28, 1)
+Slot = "body"
+Armor = 12.0
+Heavy = true
+WornColor = Color(0.62, 0.43, 0.24, 1)
+WornTrim = Color(0.36, 0.25, 0.18, 1)
+SellPrice = 22

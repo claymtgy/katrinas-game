@@ -53,7 +53,7 @@ public partial class Net
             if (p.XpFirsts.Add($"kill:{kind}"))
             {
                 bool boss = Levels.IsBoss(kind);
-                ServerAwardXp(p, boss ? Levels.Boss : Levels.FirstKill, $"{(boss ? "defeated the" : "first")} {Levels.KindName(kind)}", top);
+                ServerAwardXp(p, boss ? Levels.BossXp(kind) : Levels.FirstKill, $"{(boss ? "defeated the" : "first")} {Levels.KindName(kind)}", top);
             }
             else ServerAwardXp(p, Levels.RepeatKill(kind), "", top);
         }

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Torch.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "torch"
+DisplayName = "Torch"
+Description = "A standing torch that burns for good. Can be built anywhere, not just at home. Cave crawlers won't come into its light."
+Scene = ExtResource("2_scene")
+Cost = {"wood": 2, "charcoal": 1}
+Footprint = Vector3(0.4, 1.7, 0.4)
+SortOrder = 15
+Anywhere = true

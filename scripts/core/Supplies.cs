@@ -23,7 +23,7 @@ public static class Supplies
     private const float HomeMargin = 6f;
 
     /// <summary>Never refused for being heavy (quest items).</summary>
-    private static readonly HashSet<string> AlwaysFits = new() { "coin", "cottage_blueprint", "glider" };
+    private static readonly HashSet<string> AlwaysFits = new() { "coin", "cottage_blueprint", "bellows_plans", "glider" };
 
     private static GameState Gs => GameState.Instance;
 

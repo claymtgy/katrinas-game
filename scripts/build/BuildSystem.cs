@@ -23,6 +23,7 @@ public partial class BuildSystem : Node
     private Node3D _ghost;
     private bool _hasSpot;
     private Vector3 _spot;
+    private float _wallYaw;
     private readonly StandardMaterial3D _ghostMaterial = new()
     {
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -134,11 +135,23 @@ public partial class BuildSystem : Node
 
         var p = hit["position"].AsVector3();
         var normal = hit["normal"].AsVector3();
-        _spot = new Vector3(Mathf.Snapped(p.X, GridSize), p.Y, Mathf.Snapped(p.Z, GridSize));
-        _ghost.GlobalPosition = _spot;
-        _ghost.Rotation = new Vector3(0, _rotationY, 0);
-
-        InvalidReason = normal.Y < 0.85f ? "Too steep" : CheckPlacement(space, Current, _spot, _rotationY, _player);
+        if (Current.WallMount)
+        {
+            // Hangs where you aim, facing out of the wall (no grid, no turning).
+            if (Mathf.Abs(normal.Y) > 0.35f) { InvalidReason = "Aim at a wall"; _ghostMaterial.AlbedoColor = new Color(1f, 0.3f, 0.3f, 0.45f); return; }
+            _spot = p;
+            _wallYaw = Mathf.Atan2(normal.X, normal.Z);
+            _ghost.GlobalPosition = _spot;
+            _ghost.Rotation = new Vector3(0, _wallYaw, 0);
+            InvalidReason = CheckPlacement(space, Current, _spot, _wallYaw, _player);
+        }
+        else
+        {
+            _spot = new Vector3(Mathf.Snapped(p.X, GridSize), p.Y, Mathf.Snapped(p.Z, GridSize));
+            _ghost.GlobalPosition = _spot;
+            _ghost.Rotation = new Vector3(0, _rotationY, 0);
+            InvalidReason = normal.Y < 0.85f ? "Too steep" : CheckPlacement(space, Current, _spot, _rotationY, _player);
+        }
         _ghostMaterial.AlbedoColor = InvalidReason == ""
             ? new Color(0.4f, 1f, 0.5f, 0.45f)
             : new Color(1f, 0.3f, 0.3f, 0.45f);
@@ -149,22 +162,42 @@ public partial class BuildSystem : Node
     public static string CheckPlacement(PhysicsDirectSpaceState3D space, BuildingDef def, Vector3 spot, float rotationY, PlayerController payer = null)
     {
         var gs = GameState.Instance;
+        var size = def.Footprint;
+        var basis = new Basis(Vector3.Up, rotationY);
+        Vector3 centre;
 
-        var ground = space.IntersectRay(PhysicsRayQueryParameters3D.Create(
-            spot + Vector3.Up * 1.5f, spot + Vector3.Down * 1.5f, GameState.LayerWorld));
-        if (ground.Count == 0) return "Aim at the ground";
-        if (ground["normal"].AsVector3().Y < 0.85f) return "Too steep";
+        if (def.WallMount)
+        {
+            // There must be rock (or a wall) right behind it.
+            var outward = basis * Vector3.Back;
+            var wall = space.IntersectRay(PhysicsRayQueryParameters3D.Create(
+                spot + outward * 0.3f, spot - outward * 0.3f, GameState.LayerWorld));
+            if (wall.Count == 0) return "Aim at a wall";
+            if (Mathf.Abs(wall["normal"].AsVector3().Y) > 0.35f) return "Aim at a wall";
+            centre = spot + outward * (size.Z * 0.5f + 0.05f) + Vector3.Up * (size.Y * 0.5f - 0.2f);
+        }
+        else
+        {
+            var ground = space.IntersectRay(PhysicsRayQueryParameters3D.Create(
+                spot + Vector3.Up * 1.5f, spot + Vector3.Down * 1.5f, GameState.LayerWorld));
+            if (ground.Count == 0) return "Aim at the ground";
+            if (ground["normal"].AsVector3().Y < 0.85f) return "Too steep";
+            centre = spot + Vector3.Up * (size.Y * 0.5f + 0.05f);
+        }
 
-        var flatOffset = new Vector2(spot.X - gs.ClaimCenter.X, spot.Z - gs.ClaimCenter.Z);
-        if (flatOffset.Length() > gs.ClaimRadius) return "Outside your land claim";
+        if (!def.Anywhere)
+        {
+            var flatOffset = new Vector2(spot.X - gs.ClaimCenter.X, spot.Z - gs.ClaimCenter.Z);
+            if (flatOffset.Length() > gs.ClaimRadius) return "Outside your land claim";
+        }
         if (gs.HomeTier < 2 && HomeUpgradeBoard.InCottage(spot, 0.6f)) return "Space kept for the cottage";
+        if (def.Anywhere && gs.InSafeZone(spot) && Ashby(spot)) return "Not in the village";
 
         // Overlap test against props, other buildings and players.
-        var size = def.Footprint;
         var shapeQuery = new PhysicsShapeQueryParameters3D
         {
             Shape = new BoxShape3D { Size = size - new Vector3(0.05f, 0.1f, 0.05f) },
-            Transform = new Transform3D(new Basis(Vector3.Up, rotationY), spot + Vector3.Up * (size.Y * 0.5f + 0.05f)),
+            Transform = new Transform3D(basis, centre),
             CollisionMask = GameState.LayerProps | GameState.LayerPlayer,
         };
         if (space.IntersectShape(shapeQuery, 1).Count > 0) return "Something is in the way";
@@ -174,6 +207,9 @@ public partial class BuildSystem : Node
         return "";
     }
 
+    private static bool Ashby(Vector3 p) =>
+        new Vector2(p.X - HomeCliffs.AshbyCenter.X, p.Z - HomeCliffs.AshbyCenter.Z).Length() < HomeCliffs.AshbySafeRadius;
+
     public void TryPlace()
     {
         if (!_hasSpot || InvalidReason != "")
@@ -181,6 +217,6 @@ public partial class BuildSystem : Node
             Hud.Toast(InvalidReason == "" ? "Can't build here" : InvalidReason);
             return;
         }
-        Net.Instance.RequestBuild(Current.Id, _spot, _rotationY);
+        Net.Instance.RequestBuild(Current.Id, _spot, Current.WallMount ? _wallYaw : _rotationY);
     }
 }

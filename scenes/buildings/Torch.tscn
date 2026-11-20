@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/build/Torch.cs" id="1_torch"]
+
+[node name="Torch" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_torch")
+Wall = false

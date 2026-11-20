@@ -72,9 +72,22 @@ public partial class CameraRig : Node3D
         }
     }
 
+    private float _shake, _shakeT;
+
+    /// <summary>A short jolt of the camera (getting hit). Strength is roughly metres of wobble.</summary>
+    public void Shake(float strength) => _shake = Mathf.Max(_shake, strength);
+
     public override void _Process(double delta)
     {
         if (!_local) return;
+        if (_shake > 0f || Camera.HOffset != 0f)
+        {
+            _shakeT += (float)delta;
+            _shake = Mathf.MoveToward(_shake, 0f, (float)delta * 1.6f);
+            Camera.HOffset = Mathf.Sin(_shakeT * 47f) * _shake;
+            Camera.VOffset = Mathf.Sin(_shakeT * 39f + 1.3f) * _shake * 0.7f;
+            if (_shake <= 0f) { Camera.HOffset = 0f; Camera.VOffset = 0f; }
+        }
         var gs = GameState.Instance;
         if (gs.UiOpen || Input.MouseMode != Input.MouseModeEnum.Captured) return;
         // Right stick look.

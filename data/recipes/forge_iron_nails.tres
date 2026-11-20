@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RecipeDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/RecipeDef.cs" id="1_recipe"]
+
+[resource]
+script = ExtResource("1_recipe")
+Id = "forge_iron_nails"
+DisplayName = "Iron Nails"
+Station = "anvil"
+Inputs = {"iron_ingot": 1}
+OutputItem = "iron_nails"
+OutputCount = 6
+SortOrder = 50

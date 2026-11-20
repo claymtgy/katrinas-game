@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 11;
+    public const int ProtocolVersion = 12;
     /// <summary>Scripted tests: force the Herbalist roll (1 = always an extra meal); null = random.</summary>
     public static float? HerbalistRoll;
     public const string MainScenePath = "res://scenes/Main.tscn";

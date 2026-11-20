@@ -264,7 +264,7 @@ public partial class GameState : Node
         node.Rotation = new Vector3(0, rotationY, 0);
         var b = new PlacedBuilding { NetId = netId, Id = def.Id, Position = position, RotationY = rotationY, Node = node };
         PlacedBuildings.Add(b);
-        WorldNav.Instance?.RequestRebake();
+        WorldNav.RebakeAll();
         b.ApplyState(state);
         Sfx.At("build", position + Vector3.Up * 0.5f);
         return b;
@@ -279,7 +279,7 @@ public partial class GameState : Node
         var b = FindBuilding(netId);
         if (b == null) return;
         PlacedBuildings.Remove(b);
-        WorldNav.Instance?.RequestRebake();
+        WorldNav.RebakeAll();
         if (IsInstanceValid(b.Node))
         {
             b.Node.GetParent()?.RemoveChild(b.Node);
@@ -297,7 +297,7 @@ public partial class GameState : Node
                 b.Node.QueueFree();
             }
         PlacedBuildings.Clear();
-        WorldNav.Instance?.RequestRebake();
+        WorldNav.RebakeAll();
     }
 
     // ---------------------------------------------------------------- save / load (server only)
@@ -372,6 +372,7 @@ public partial class GameState : Node
             ["camps"] = Wildlife.Instance?.SaveCamps() ?? new GArray(),
             ["roosts"] = Wildlife.Instance?.SaveRoosts() ?? new GArray(),
             ["raids"] = Wildlife.Instance?.SaveRaids() ?? new GDict(),
+            ["west"] = Wildlife.Instance?.SaveWest() ?? new GDict(),
             ["journal"] = Journal.Instance?.ToDict() ?? new GDict(),
         };
 
@@ -419,6 +420,7 @@ public partial class GameState : Node
         Wildlife.Instance?.LoadCamps(data.TryGetValue("camps", out var camps) ? camps.AsGodotArray() : null);
         Wildlife.Instance?.LoadRoosts(data.TryGetValue("roosts", out var roosts) ? roosts.AsGodotArray() : null);
         Wildlife.Instance?.LoadRaids(data.TryGetValue("raids", out var raids) ? raids.AsGodotDictionary() : null);
+        Wildlife.Instance?.LoadWest(data.TryGetValue("west", out var west) ? west.AsGodotDictionary() : null);
         Journal.Instance?.Apply(data.TryGetValue("journal", out var journal) ? journal.AsGodotDictionary() : null);
 
         PlayerRecords.Clear();

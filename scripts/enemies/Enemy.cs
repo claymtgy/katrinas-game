@@ -218,7 +218,7 @@ public abstract partial class Enemy : CharacterBody3D
                 if (!CanHunt(Target)) { Target = null; Enter(State.Prowl); break; }
                 var to = Flat(Target.GlobalPosition - pos);
                 float dist = to.Length();
-                if (dist < AttackRange && AttackCooldownLeft <= 0)
+                if (dist < AttackRange && AttackCooldownLeft <= 0 && MayAttack)
                 {
                     Enter(State.Windup);
                     wildlife.BroadcastAnim(this, Wildlife.AnimAttack);
@@ -263,7 +263,7 @@ public abstract partial class Enemy : CharacterBody3D
         }
 
         if (desired.LengthSquared() > 0.0001f) desired = desired.Normalized();
-        desired += wildlife.Separation(this) + Avoid(desired) + SafeZonePush(pos) + (FearsFire ? FirePush(pos) : Vector3.Zero);
+        desired += wildlife.Separation(this) + Avoid(desired) + SafeZonePush(pos) + (FearsFire ? FirePush(pos) : Vector3.Zero) + ExtraPush(pos);
         if (desired.LengthSquared() > 1f) desired = desired.Normalized();
 
         var v = Velocity;
@@ -288,8 +288,8 @@ public abstract partial class Enemy : CharacterBody3D
     protected Vector3 Steer(Vector3 pos, Vector3 goal, float dt)
     {
         var direct = Flat(goal - pos);
-        var nav = WorldNav.Instance;
-        if (nav == null || !nav.Ready || direct.Length() < 2.5f) return direct;
+        var nav = WorldNav.For(pos);
+        if (nav == null || direct.Length() < 2.5f) return direct;
 
         _repathIn -= dt;
         if (_repathIn <= 0 || Flat(goal - _pathGoal).Length() > 1.5f || _pathIndex >= _path.Length)
@@ -315,6 +315,12 @@ public abstract partial class Enemy : CharacterBody3D
         var side = new Vector3(-dir.Z, 0, dir.X);
         return side * ((NetId & 1) == 0 ? 1.2f : -1.2f);
     }
+
+    /// <summary>Server: one more steering push (cave crawlers: out of the light).</summary>
+    protected virtual Vector3 ExtraPush(Vector3 pos) => Vector3.Zero;
+
+    /// <summary>Server: may start an attack now (cave crawlers only strike from the dark).</summary>
+    protected virtual bool MayAttack => true;
 
     /// <summary>Animals that keep away from a campfire or hearth (wolves).</summary>
     protected virtual bool FearsFire => false;
@@ -405,6 +411,9 @@ public abstract partial class Enemy : CharacterBody3D
         "captain" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: true),
         "raider" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: false, raider: true),
         "harpy" => Harpy.Create(netId, group, pos, yaw, maxHealth, damage),
+        "boar" => Boar.Create(netId, group, pos, yaw, maxHealth, damage),
+        "crawler" => Crawler.Create(netId, group, pos, yaw, maxHealth, damage, mother: false),
+        "crawler_mother" => Crawler.Create(netId, group, pos, yaw, maxHealth, damage, mother: true),
         _ => null,
     };
 }

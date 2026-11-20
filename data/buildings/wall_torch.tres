@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/WallTorch.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "wall_torch"
+DisplayName = "Wall Torch"
+Description = "A torch in an iron bracket: aim at a wall or rock face. Can be built anywhere. Cave crawlers won't come into its light."
+Scene = ExtResource("2_scene")
+Cost = {"wood": 1, "charcoal": 1}
+Footprint = Vector3(0.3, 0.7, 0.45)
+SortOrder = 16
+Anywhere = true
+WallMount = true

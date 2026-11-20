@@ -78,7 +78,7 @@ public partial class ItemDef : Resource
             if (PerkText != "") lines.Add(PerkText);
             if (Gear.GetEnchantment(Enchant) is { } e) lines.Add($"Enchanted: {e.Text}");
         }
-        else if (IsTool) lines.Add($"{(ToolKind == "axe" ? "Axe: chops trees" : "Pickaxe: mines rock and iron ore")} · ×{ToolPower:0.#} per swing · {Damage:0} damage");
+        else if (IsTool) lines.Add($"{(ToolKind == "axe" ? "Axe: chops trees" : "Pickaxe: mines rock and ore")} · ×{ToolPower:0.#} per swing · {Damage:0} damage");
         else if (IsWeapon) lines.Add($"Weapon · {Damage:0} damage · {Reach:0.0} m reach");
         else if (IsFood) lines.Add($"Food" + (FoodHeal > 0 ? $" · heals {FoodHeal:0}" : "") + (HasBuff ? $" · {BuffText}" : ""));
         else if (Category == "gear" && Id == "glider") lines.Add("Gear · Space in the air to glide");

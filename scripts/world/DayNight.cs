@@ -124,8 +124,18 @@ void sky() {
             if (t >= 1f) { t -= 1f; if (Net.Instance.IsServer) gs.Day++; }
             gs.TimeOfDay = t;
         }
-        if (!Net.Instance.IsDedicated) Apply(t);
+        if (!Net.Instance.IsDedicated)
+        {
+            // Underground (the Hollow Mine): fade the sky's light out over a second or so.
+            var cam = GetViewport()?.GetCamera3D();
+            float target = cam != null && HomeCliffs.InMine(cam.GlobalPosition) ? 1f : 0f;
+            Underground = Mathf.MoveToward(Underground, target, (float)delta * 0.8f);
+            Apply(t);
+        }
     }
+
+    /// <summary>0 outside, 1 deep in the mine (this screen only): how much of the sky's light is shut out.</summary>
+    public static float Underground { get; private set; }
 
     private void Apply(float t)
     {
@@ -158,7 +168,11 @@ void sky() {
             horizon = horizon.Lerp(Grey(horizon) * 0.8f, 0.7f * wet);
             _sun.LightEnergy *= 1f - 0.65f * wet;
         }
-        _env.FogDensity = 0.0012f + 0.0055f * wet;
+        // Underground: no sun, moon or sky light; a close, dark haze instead.
+        float under = Underground;
+        _sun.LightEnergy *= 1f - under;
+        _moon.LightEnergy *= 1f - under;
+        _env.FogDensity = Mathf.Lerp(0.0012f + 0.0055f * wet, 0.035f, under);
         RenderingServer.GlobalShaderParameterSet("wetness", wet);
         _sky.SetShaderParameter("top_color", top);
         _sky.SetShaderParameter("horizon_color", horizon);
@@ -167,12 +181,16 @@ void sky() {
         _sky.SetShaderParameter("glow_strength", Mathf.Clamp(dusk * 1.2f, 0f, 1f) * (1f - night * 0.6f) * (1f - 0.7f * wet));
         _sky.SetShaderParameter("energy", Mathf.Lerp(1f, 0.85f, night));
 
-        _env.FogLightColor = horizon.Lerp(new Color(1f, 0.75f, 0.8f), 0.3f * dusk);
+        _env.FogLightColor = horizon.Lerp(new Color(1f, 0.75f, 0.8f), 0.3f * dusk).Lerp(new Color(0.015f, 0.014f, 0.02f), under);
+        _env.FogHeightDensity = Mathf.Lerp(0.06f, 0f, under);
+        _env.FogSunScatter = Mathf.Lerp(0.35f, 0f, under);
 
         // Shared with the stylized shaders (rim light, blossom glow).
         RenderingServer.GlobalShaderParameterSet("sun_dir", toSun);
-        RenderingServer.GlobalShaderParameterSet("sun_color", _sun.LightColor * Mathf.Max(_sun.LightEnergy, 0.15f));
+        RenderingServer.GlobalShaderParameterSet("sun_color", _sun.LightColor * Mathf.Max(_sun.LightEnergy, 0.15f * (1f - under)));
         RenderingServer.GlobalShaderParameterSet("night", night);
-        _env.AmbientLightEnergy = Mathf.Lerp(0.8f, 0.6f, night);
+        _env.AmbientLightEnergy = Mathf.Lerp(Mathf.Lerp(0.8f, 0.6f, night), 0.035f, under);
+        _env.ReflectedLightSource = under > 0.5f ? Godot.Environment.ReflectionSource.Disabled : Godot.Environment.ReflectionSource.Bg;
+        _env.TonemapExposure = Mathf.Lerp(1f, 1.25f, under);
     }
 }

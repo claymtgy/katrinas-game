@@ -90,7 +90,7 @@ public partial class Harvestable : StaticBody3D
         }
 
         if (!Net.Instance.IsDedicated)
-            Sfx.At(DropItemId switch { "wood" => "chop", "stone" => "mine", _ => "rustle" }, GlobalPosition + Vector3.Up, 0f, 0.1f);
+            Sfx.At(DropItemId switch { "wood" => "chop", "stone" or "iron_ore" or "copper_ore" or "tin_ore" => "mine", _ => "rustle" }, GlobalPosition + Vector3.Up, 0f, 0.1f);
 
         // Little shake.
         if (_health.IsDead) return;

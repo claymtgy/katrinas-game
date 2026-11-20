@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Anvil.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "anvil"
+DisplayName = "Anvil"
+Description = "Hammer ingots into nails, bronze tools, weapons and armour."
+Scene = ExtResource("2_scene")
+Cost = {"iron_ingot": 4, "stone": 4, "planks": 2}
+Footprint = Vector3(1.4, 1.0, 0.9)
+SortOrder = 18

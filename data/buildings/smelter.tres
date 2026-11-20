@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/Smelter.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "smelter"
+DisplayName = "Smelter"
+Description = "Melts copper and tin into bronze, and smelts iron better than the kiln."
+Scene = ExtResource("2_scene")
+Cost = {"stone": 10, "bricks": 6, "clay": 4}
+Footprint = Vector3(1.8, 2.6, 1.8)
+SortOrder = 17

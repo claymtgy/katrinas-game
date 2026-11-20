@@ -58,6 +58,26 @@ public partial class PlayerAbility : Node
         GetViewport().SetInputAsHandled();
     }
 
+    /// <summary>Which way to send an ability so it goes where the crosshair is. Shots leave the
+    /// chest (Net.S_Ability), not the camera; in third person the camera sits off to one side,
+    /// so aiming along the camera's own direction would fly parallel to the crosshair and pass
+    /// beside the target. Instead: find what the crosshair is on (or a point far ahead) and aim
+    /// from the chest at that.</summary>
+    private Vector3 CrosshairAim()
+    {
+        var cam = _player.Rig.Camera;
+        var fwd = -cam.GlobalBasis.Z;
+        if (_player.Rig.FirstPerson) return fwd;
+        var from = cam.GlobalPosition;
+        var query = PhysicsRayQueryParameters3D.Create(from, from + fwd * 60f, GameState.LayerWorld | GameState.LayerProps,
+            new Godot.Collections.Array<Rid> { _player.GetRid() });
+        var hit = _player.GetWorld3D().DirectSpaceState.IntersectRay(query);
+        var point = hit.Count > 0 ? hit["position"].AsVector3() : from + fwd * 60f;
+        var d = point - (_player.GlobalPosition + Vector3.Up * 1.35f);
+        // Something right up against the camera (or behind the chest): keep the camera's direction.
+        return d.Length() > 1.5f && d.Normalized().Dot(fwd) > 0.5f ? d.Normalized() : fwd;
+    }
+
     /// <summary>Local player: use this ability, aimed where the camera looks.</summary>
     public bool TryUse()
     {
@@ -70,7 +90,7 @@ public partial class PlayerAbility : Node
             return false;
         }
         if (CooldownLeft > 0) return false;
-        var aim = -_player.Rig.Camera.GlobalBasis.Z;
+        var aim = CrosshairAim();
         // Abilities that need something to work with: don't spend stamina for nothing.
         if (def.Id == PlayerClasses.ShadowstepId && Net.ShadowstepTarget(_player, aim) == null)
         {

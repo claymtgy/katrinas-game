@@ -10,7 +10,34 @@ public partial class WorldNav : NavigationRegion3D
 {
     public const string SourceGroup = "nav_source";
 
+    /// <summary>The home region (the plateau, the vale and Ashby).</summary>
     public static WorldNav Instance { get; private set; }
+    /// <summary>Every region (home, and the forest and mine to the west).</summary>
+    public static readonly System.Collections.Generic.List<WorldNav> All = new();
+
+    /// <summary>The plateau, the vale and Ashby (enemies never leave Wildlife's world box).</summary>
+    public static readonly Aabb HomeBox = new(new Vector3(Wildlife.WorldMinX - 4, -3, Wildlife.WorldMinZ - 4),
+        new Vector3(Wildlife.WorldMaxX - Wildlife.WorldMinX + 8, 14, Wildlife.WorldMaxZ - Wildlife.WorldMinZ + 8));
+    /// <summary>The Forest Road and the Hollow Mine (HomeCliffs.Mine).</summary>
+    public static readonly Aabb WestBox = new(new Vector3(HomeCliffs.MineBox.Position.X - 2, -3, HomeCliffs.ForestBounds.Position.Y - 8),
+        new Vector3(HomeCliffs.ForestBounds.End.X - HomeCliffs.MineBox.Position.X + 6, 9.5f, HomeCliffs.MineBox.End.Y - HomeCliffs.ForestBounds.Position.Y + 10));
+
+    /// <summary>What this region bakes.</summary>
+    public Aabb BakeBox { get; set; } = HomeBox;
+
+    /// <summary>The baked region this point is in (null before its first bake, or outside them all).</summary>
+    public static WorldNav For(Vector3 pos)
+    {
+        foreach (var n in All)
+            if (n.Ready && IsInstanceValid(n) && n.BakeBox.Grow(-1f).HasPoint(new Vector3(pos.X, n.BakeBox.Position.Y + 1f, pos.Z))) return n;
+        return null;
+    }
+
+    /// <summary>Buildings changed: every region bakes again soon.</summary>
+    public static void RebakeAll()
+    {
+        foreach (var n in All) if (IsInstanceValid(n)) n.RequestRebake();
+    }
     /// <summary>A navmesh is in use (the first bake finished).</summary>
     public bool Ready { get; private set; }
     public int Bakes { get; private set; }
@@ -20,11 +47,16 @@ public partial class WorldNav : NavigationRegion3D
 
     public Rid Map => GetWorld3D().NavigationMap;
 
-    public override void _EnterTree() => Instance = this;
+    public override void _EnterTree()
+    {
+        if (BakeBox == HomeBox) Instance = this;
+        if (!All.Contains(this)) All.Add(this);
+    }
 
     public override void _ExitTree()
     {
         if (Instance == this) Instance = null;
+        All.Remove(this);
     }
 
     public override void _Ready()
@@ -41,9 +73,7 @@ public partial class WorldNav : NavigationRegion3D
             GeometryCollisionMask = GameState.LayerWorld | GameState.LayerProps,
             GeometrySourceGeometryMode = NavigationMesh.SourceGeometryMode.GroupsWithChildren,
             GeometrySourceGroupName = SourceGroup,
-            // The plateau, the vale and Ashby (enemies never leave Wildlife's world box).
-            FilterBakingAabb = new Aabb(new Vector3(Wildlife.WorldMinX - 4, -3, Wildlife.WorldMinZ - 4),
-                new Vector3(Wildlife.WorldMaxX - Wildlife.WorldMinX + 8, 14, Wildlife.WorldMaxZ - Wildlife.WorldMinZ + 8)),
+            FilterBakingAabb = BakeBox,
         };
         BakeFinished += OnBakeFinished;
         CallDeferred(MethodName.Rebake);
@@ -72,7 +102,7 @@ public partial class WorldNav : NavigationRegion3D
     {
         Bakes++;
         Ready = true;
-        GD.Print($"[WorldNav] Navmesh baked ({NavigationMesh.GetPolygonCount()} polygons)");
+        GD.Print($"[WorldNav] {Name} navmesh baked ({NavigationMesh.GetPolygonCount()} polygons)");
         if (_pending) { _pending = false; Rebake(); }
     }
 

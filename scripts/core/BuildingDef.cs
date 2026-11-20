@@ -16,6 +16,11 @@ public partial class BuildingDef : Resource
     /// <summary>Bounding box (meters) used for overlap checks while placing.</summary>
     [Export] public Vector3 Footprint { get; set; } = Vector3.One;
     [Export] public int SortOrder { get; set; } = 0;
+    /// <summary>Can go up outside the land claim (torches, to light the mine).</summary>
+    [Export] public bool Anywhere { get; set; } = false;
+    /// <summary>Hangs on a wall instead of standing on the ground (wall torch). Its scene's
+    /// origin is the point on the wall, and its local +Z faces out of it.</summary>
+    [Export] public bool WallMount { get; set; } = false;
 
     public Dictionary<string, int> GetCost() => ItemDb.ToCost(Cost);
 }

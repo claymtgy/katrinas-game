@@ -205,7 +205,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | of Leeching | heal 6% of the melee damage you deal |
 
 **Planned (later tiers):**
-- **Tier 2, bronze:** Bronze Cap and Scale Shirt (the smelter).
+- **Tier 2, bronze (built):** Bronze Cap (5) and Scale Shirt (12), both heavy, made at the anvil from bronze and boar hide. See §11, step 1.
 - **Tier 3, iron:** a Chain Mail set and a **Shield** for a new Off-hand slot: blocks cost less stamina and the parry window grows.
 - **Tier 4, steel:** Plate (armour 14 for the body, heavy).
 - **Tier 5, ember:** **Heat-ward** armour and cloak: the volcano's heat meter rises more slowly.
@@ -355,7 +355,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Step | Region | Metal tier | New stations | Sanctuary | Boss → drop | House |
 |---|---|---|---|---|---|---|
 | 0 | (fill in tier 1, built) | Clay, planks, bricks, charcoal | Sawhorse, Kiln, Brick Oven | — | — | Cottage (built) |
-| 1 | Hollow Mine | Bronze (copper + tin, charcoal) | Smelter, Anvil | Mine Blossom, in a sunlit shaft | Crawler Mother → Bellows Plans | Stone walls |
+| 1 | Hollow Mine (built) | Bronze (copper + tin, charcoal) | Smelter, Anvil | Mine Blossom, in a sunlit shaft | Crawler Mother → Bellows Plans | Stone walls |
 | 2 | Spire Cliffs | Iron | Bellows (smelter upgrade) | Spire Blossom, on the tallest spire | Storm Harpy Queen → Longhouse Blueprint | **Longhouse** |
 | 3 | Cinder Foothills | Steel (coal + iron) | Blast Forge | Ashen Blossom, by a cool spring | Bandit Warlord → Keep Blueprint, Ember Pass key | **Keep** |
 | 4 | Volcano / Ember Wastes | Ember steel | Sacred Forge | (the last sanctuary, at the crater rim) | Ember Warden → the Warden's crown | — |
@@ -366,9 +366,22 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Kiln** (8 stone, 4 clay): 3 clay + 1 wood → 2 bricks; 3 wood → 2 charcoal; 3 iron ore + 1 charcoal → 2 iron ingots, a better yield than the campfire's 2 ore for 1. So the kiln is the first upgrade to the iron path.
 - **Brick Oven** (6 bricks, 2 stone): bakes 2 loaves from 3 wheat and roasts 2 turnips from 2, twice what a campfire makes.
 - **Prices:** Marta buys clay (1), planks (2), charcoal (2) and bricks (4). The watchtower now costs 8 planks and 6 stone, so planks have a use from the start.
-- Still to do: move the Cottage's iron nails onto a recipe (nails from iron ingots at the anvil, step 1), while Marta keeps selling them so the cottage stays reachable before the mine. Later tiers (stone walls, the Longhouse) are priced in bricks and planks.
+- **Nails:** the Anvil (step 1) hammers 1 iron ingot into 6 nails, and Marta keeps selling them, so the cottage stays reachable before the mine. Later tiers (stone walls, the Longhouse) are priced in bricks and planks.
 
-#### Step 1: Hollow Mine (bronze)
+#### Step 1: Hollow Mine (bronze) (built)
+- **Built (2026-11-19):**
+  - **The Forest Road:** west out of Ashby's square, through a gap in the vale's west wall, and a short walk through dense forest to the mine mouth. It stays a walk (no camp or hamlet for now). Two clearings hold **wild boars** (2 each, more in co-op): they graze and only charge if you come within 7 m or hit them. They drop a **boar hide**, which backs bronze armour. Herds come back the next day.
+  - **Darkness:** inside the mine the sun, moon and sky light fade out (per screen, by where your camera is), so only real lights show anything. Glowing fungus lets you make out the walls.
+  - **Torches:** two new buildings that can go up **anywhere**, not only in the land claim (but not in Ashby): a **Torch** on a post (2 wood, 1 charcoal) and a **Wall Torch** in a bracket (1 wood, 1 charcoal; aim at a wall or rock face). Each lights 6.5 m, and crawlers won't enter it.
+  - **Lantern:** a **charm** (workbench: 4 iron nails, 2 charcoal, 1 wood). It hangs on your hip, everyone sees its light, and it lights 3.5 m round you. That's small on purpose: crawlers wait just past its edge and lunge in, so it gets you through the mine but doesn't clear it. It takes the charm slot, so it competes with the blossom or wolf-tooth charm.
+  - **Cave crawlers:** low-poly faceted spiders (55 health, 13 damage, a little armour). They steer out of any light (torches, fires, the shaft, lanterns), and only attack while they're in the dark themselves, with a lunge that reaches 5 m. Three nests: the upper gallery (2), the deep gallery (3) and the lair (the Mother plus 2). Nests fill again after 2 days, never while someone is near. A crawler sometimes drops a rune shard.
+  - **The Crawler Mother:** 650 health (scaled for co-op like the bandit captain), heavy bites, 5 armour. Light doesn't bother her. Every 11 s in a fight she calls one more of her brood (up to 3 at once). She drops 30 coins, 3 rune shards and, the first time, the **Bellows Plans**. Worth 300 XP the first time (boss XP rises by 100 a region).
+  - **The layout:** one floor carved out of solid rock: the entrance tunnel, the **upper gallery** (copper and tin, an old ore cart), a tunnel south to the **shaft hall**, where daylight falls on the **Mine Blossom** (a sanctuary with fast travel), a tunnel west to the **deep gallery** (more ore, and the **locked iron gate** with a note pointing to the spires), and a tunnel north to the **Mother's lair**. Timber frames hold up the tunnels. No flooded rooms yet.
+  - **Ores:** 7 copper and 5 tin veins (any pickaxe; they come back after 5 minutes).
+  - **Smelter** (10 stone, 6 bricks, 4 clay): 3 copper + 1 tin + 1 charcoal makes 2 bronze ingots; 2 iron ore + 1 charcoal makes 2 iron ingots (better than the kiln).
+  - **Anvil** (4 iron ingots, 4 stone, 2 planks): iron nails, and the bronze gear: **Bronze Sword** (29 damage, quicker than iron: 4 bronze, 1 plank), **Bronze Pickaxe** (mines 1.5x as fast as iron: 3 bronze, 2 planks), **Bronze Cap** (head, 5 armour, heavy: 3 bronze, 1 boar hide), **Scale Shirt** (body, 12 armour, heavy: 6 bronze, 2 boar hides).
+  - **Guidance:** five new journal goals after the cottage (reach the mine, bring light, find the Mine Blossom, smelt bronze, slay the Mother) and a tip the first time it goes dark.
+  - Code: `HomeCliffs.Mine.cs` (the forest, the mine, the shaft), `LightSources` (what counts as light), `Torch`, `Crawler`, `Boar`, `Wildlife.West.cs` (herds and nests), `DayNight.Underground`, `WorldNav` (a second navmesh region for the west).
 - **Where:** off the Forest Road past Ashby, an old mine dug into the valley wall. The road is the trip there (a short forest walk with wild boars, whose hides make the **furs** planned in §6); the mine is the region.
 - **The hook:** the first place where **darkness** is the hazard. Torches can be placed on walls, and a crafted **Lantern** (Charm or a held tool) lights a circle round you. Night mist already teaches "light is safety"; the mine makes it the whole level.
 - **Layout:** an upper gallery with copper and tin veins near the entrance, then deeper flooded galleries (once swimming exists, they hide side rooms). A collapsed shaft lets daylight in: the **Mine Blossom** grows there.
@@ -401,8 +414,8 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - As planned in §9 and §14: the full heat meter, lava flows, ash storms, Ember Ore, the **Sacred Forge**, and the Ember Warden. It now starts with players in steel and plate who already know how the heat meter works.
 
 #### Open questions
-- **Tool tiers:** does mining a vein need a pickaxe of the right tier (bronze for iron, iron for coal), or does any tool work and the region gate is enough? Tool tiers make the chain stronger but add a chore.
-- **Forest Road:** does it get a camp, a toll gate or a small hamlet, or stay a short walk to the mine?
+- **Tool tiers:** does mining a vein need a pickaxe of the right tier (bronze for iron, iron for coal), or does any tool work and the region gate is enough? Tool tiers make the chain stronger but add a chore. *For now (step 1): any pickaxe mines copper and tin; a better one is just faster.*
+- **Forest Road:** does it get a camp, a toll gate or a small hamlet, or stay a short walk to the mine? *For now: a short walk.*
 - **Fast travel** (§8, planned) becomes more important with every region. Build it before or with step 2.
 - **Swimming** (§8, planned) is what the flooded galleries in step 1 would use. Make those rooms optional until it exists.
 
@@ -502,10 +515,10 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities:** (in progress: XP, the level curve, saving, the XP bar, the level-up banner, levels on nameplates, the level-5 and level-12 abilities and their keys, talents at levels 3 and 8 and the downed state are built: this step is done apart from the level-15 and 20 talents, which come with their regions) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
-7. **Tier 1 fill-in:** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
-8. **Hollow Mine (bronze):** the Forest Road, darkness with torches and the lantern, cave crawlers, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom.
-9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. Fast travel between sanctuaries lands here at the latest. Also the level-12 abilities and the third ability key, since players reach level 12 here.
+6. **Levels and abilities (done):** (the level-15 and 20 talents come with their regions) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+7. **Tier 1 fill-in (done):** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
+8. **Hollow Mine (bronze) (built, not yet playtested):** the Forest Road with wild boars, darkness with torches and the lantern, cave crawlers and the Crawler Mother, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom, the iron gate. Still to do: scripted tests for it, the flooded side rooms, and tuning.
+9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. (Fast travel and the level-12 abilities are already built.)
 10. **Cinder Foothills (steel):** the heat meter (gentle), coal, the Blast Forge, the Bandit Warlord's fort, plate, the Keep, and the level-15 talents.
 11. **Volcano:** the full heat system, lava hazards, Ember Ore, the Sacred Forge, the Ember Warden, and the level-20 talents at the level cap.
 12. **Cities and workers:** automation and the regional economy. Workers can start earlier, with the Longhouse's worker slots (step 9).

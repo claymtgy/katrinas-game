@@ -354,6 +354,8 @@ public partial class Hud
             "You have armour in your pack. Put it on from the character sheet ({inventory})."),
         new("glider", (gs, p) => p.Pack.Count("glider") > 0,
             "You have a glider: jump, then press {jump} in the air to open it. Updrafts lift you high."),
+        new("dark", (gs, p) => DayNight.Underground > 0.6f,
+            "It's dark down here. Build torches (build mode: they go up anywhere, even on walls) or wear a Lantern. Cave crawlers won't come into the light, and strike only from the dark."),
         new("shard", (gs, p) => p.Pack.Count(Gear.ShardId) > 0,
             "Rune shards enchant armour at a Rune Altar (build one in build mode)."),
     };

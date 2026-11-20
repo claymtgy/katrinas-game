@@ -105,6 +105,38 @@ public partial class PlayerController : CharacterBody3D
         Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetLook(Gear.Dress(Look, Worn));
         if (Health != null && BaseMaxHealth > 0) UpdateMaxHealth();
         if (Vanished) SetVanished(true);
+        UpdateLantern();
+    }
+
+    private Node3D _lantern;
+
+    /// <summary>Every machine: a lantern on the hip (and its light) while one is worn.</summary>
+    private void UpdateLantern()
+    {
+        bool on = LightSources.Wears(this);
+        if (Body == null || Net.Instance.IsDedicated) return;
+        if (_lantern == null || !IsInstanceValid(_lantern))
+        {
+            if (!on) return;
+            _lantern = new Node3D { Name = "Lantern", Position = new Vector3(0.28f, 0.95f, -0.05f) };
+            var iron = StyleMaterials.Toon(new Color(0.2f, 0.2f, 0.22f));
+            var glow = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(1f, 0.78f, 0.4f), EmissionEnabled = true, Emission = new Color(1f, 0.7f, 0.3f),
+                EmissionEnergyMultiplier = 3f, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            };
+            _lantern.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.12f, 0.16f, 0.12f) }, MaterialOverride = glow, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+            _lantern.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.15f, 0.03f, 0.15f) }, MaterialOverride = iron, Position = new Vector3(0, 0.095f, 0) });
+            _lantern.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.15f, 0.03f, 0.15f) }, MaterialOverride = iron, Position = new Vector3(0, -0.095f, 0) });
+            _lantern.AddChild(new MeshInstance3D { Mesh = new TorusMesh { InnerRadius = 0.03f, OuterRadius = 0.045f }, MaterialOverride = iron, Position = new Vector3(0, 0.14f, 0), Rotation = new Vector3(Mathf.Pi / 2f, 0, 0) });
+            _lantern.AddChild(new OmniLight3D
+            {
+                Position = new Vector3(0, 0.2f, 0), LightColor = new Color(1f, 0.74f, 0.45f), LightEnergy = 1.6f,
+                OmniRange = LightSources.LanternRadius + 3.5f, OmniAttenuation = 1.1f, ShadowEnabled = false,
+            });
+            Body.AddChild(_lantern);
+        }
+        _lantern.Visible = on;
     }
 
     /// <summary>Every machine: show a new look (the server decides; see Net.RequestLook).</summary>
@@ -575,6 +607,18 @@ public partial class PlayerController : CharacterBody3D
             LastHurtAt = Net.Now;
             if (amount > 0 && !Net.Instance.IsDedicated) Sfx.At("hit_flesh", GlobalPosition + Vector3.Up * 1.1f, IsLocal ? 2f : 0f, 0.1f);
             if (amount > 0 && IsLocal) Gamepad.Rumble(0.4f, Mathf.Clamp(amount / 30f, 0.2f, 0.9f), 0.22f);
+            if (amount > 0 && !Net.Instance.IsDedicated)
+            {
+                // Everyone sees it: a burst of red at the chest.
+                Fx.Sparks(GetTree().CurrentScene, GlobalPosition + Vector3.Up * 1.1f, new Color(0.9f, 0.12f, 0.1f), 10 + (int)Mathf.Min(amount, 20f), 3f, 0.25f, 0.45f);
+            }
+            if (amount > 0 && IsLocal)
+            {
+                float share = Health.Max > 0 ? amount / Health.Max : 0.1f;
+                bool blocked = GuardShown;
+                Hud.Instance?.OnHurt(share, blocked);
+                Rig?.Shake(blocked ? 0.04f : Mathf.Clamp(0.06f + share * 0.6f, 0.06f, 0.22f));
+            }
         };
         if (IsLocal)
         {

@@ -777,6 +777,63 @@ def icon_charcoal(ic):
     ic.line(sd_segment(x, y, 27, 25, 36, 24, 0.5), (0.85, 0.4, 0.15), 0.7)
 
 
+def icon_ore_tinted(ic, rock, nugget):
+    x, y = ic.x, ic.y
+    pts = [(12, 44), (16, 24), (30, 13), (47, 17), (55, 33), (48, 49), (26, 52)]
+    ic.fill(sd_poly(x, y, pts), rock)
+    for cx, cy, r in ((25, 27, 4.5), (40, 23, 3.5), (36, 40, 5.0), (47, 36, 3.0), (21, 42, 3.0)):
+        ic.fill(sd_circle(x, y, cx, cy, r), nugget, outline=1.0, dome=0.8)
+
+
+def icon_bronze_ingot(ic):
+    x, y = ic.x, ic.y
+    top = sd_poly(x, y, [(14, 30), (24, 20), (52, 20), (44, 30)])
+    front = sd_poly(x, y, [(14, 30), (44, 30), (50, 46), (8, 46)])
+    side = sd_poly(x, y, [(44, 30), (52, 20), (58, 36), (50, 46)])
+    ic.fill(front, (0.76, 0.5, 0.24), grad=0.2)
+    ic.fill(side, (0.6, 0.38, 0.18), grad=0.1)
+    ic.fill(top, (0.95, 0.7, 0.4), grad=0.1)
+    ic.line(sd_segment(x, y, 20, 25, 44, 25, 0.6), (1, 0.95, 0.8), 0.5)
+
+
+def icon_hide(ic):
+    icon_pelt(ic, (0.45, 0.32, 0.22))
+    x, y = ic.x, ic.y
+    for k in range(5):
+        ic.line(sd_segment(x, y, 22 + k * 5, 20, 20 + k * 6, 44, 0.45), (0.22, 0.15, 0.1), 0.5)
+
+
+def icon_plans(ic):
+    x, y = ic.x, ic.y
+    ic.fill(sd_box(x, y, 32, 32, 18, 14, 1), (0.82, 0.7, 0.48))
+    ic.fill(sd_ellipse(x, y, 14, 32, 4, 15), (0.7, 0.58, 0.38))
+    ic.fill(sd_ellipse(x, y, 50, 32, 4, 15), (0.7, 0.58, 0.38))
+    # a bellows, sketched
+    ic.line(np.abs(sd_poly(x, y, [(22, 26), (36, 22), (36, 42), (22, 38)])) - 0.5, (0.35, 0.22, 0.12), 0.9)
+    ic.line(sd_segment(x, y, 36, 32, 44, 32, 0.8), (0.35, 0.22, 0.12), 0.9)
+    for k in range(3):
+        ic.line(sd_segment(x, y, 25 + k * 4, 25 - k, 25 + k * 4, 39 + k, 0.4), (0.35, 0.22, 0.12), 0.6)
+
+
+def icon_lantern(ic):
+    x, y = ic.x, ic.y
+    ic.line(np.abs(sd_ellipse(x, y, 32, 12, 7, 6)) - 1.0, (0.22, 0.2, 0.2))
+    ic.fill(sd_box(x, y, 32, 18, 12, 3, 1), (0.25, 0.23, 0.24), outline=1.4)
+    ic.fill(sd_box(x, y, 32, 35, 10, 13, 2), (1.0, 0.78, 0.38), dome=0.6)
+    ic.fill(sd_ellipse(x, y, 32, 36, 4, 7), (1.0, 0.97, 0.8), outline=0, grad=0)
+    for cx in (22, 42):
+        ic.fill(sd_box(x, y, cx, 35, 1.5, 13, 0.5), (0.25, 0.23, 0.24), outline=0.8)
+    ic.fill(sd_box(x, y, 32, 51, 13, 3, 1), (0.25, 0.23, 0.24), outline=1.4)
+
+
+def icon_torch(ic):
+    x, y = ic.x, ic.y
+    ic.fill(sd_segment(x, y, 26, 58, 34, 26, 3.0), (0.48, 0.3, 0.16), dome=0.3)
+    ic.fill(sd_box(x, y, 34, 26, 5, 3, 1), (0.25, 0.23, 0.24), outline=1.2)
+    ic.fill(union(sd_ellipse(x, y, 35, 16, 7, 10), sd_poly(x, y, [(30, 12), (36, 2), (40, 12)])), (1.0, 0.55, 0.15), outline=1.2)
+    ic.fill(sd_ellipse(x, y, 35, 18, 3.5, 5), (1.0, 0.9, 0.5), outline=0, grad=0)
+
+
 ICONS = {
     "wooden_sword": lambda ic: icon_sword(ic, blade=(0.78, 0.58, 0.34), wooden=True),
     "stone_club": icon_club,
@@ -820,6 +877,17 @@ ICONS = {
     "planks": icon_planks,
     "bricks": icon_bricks,
     "charcoal": icon_charcoal,
+    "copper_ore": lambda ic: icon_ore_tinted(ic, (0.34, 0.36, 0.33), (0.88, 0.5, 0.28)),
+    "tin_ore": lambda ic: icon_ore_tinted(ic, (0.4, 0.4, 0.43), (0.82, 0.84, 0.88)),
+    "bronze_ingot": icon_bronze_ingot,
+    "boar_hide": icon_hide,
+    "bellows_plans": icon_plans,
+    "lantern": icon_lantern,
+    "torch": icon_torch,
+    "bronze_sword": lambda ic: icon_sword(ic, blade=(0.9, 0.64, 0.34), guard=(0.6, 0.42, 0.2)),
+    "bronze_pickaxe": lambda ic: icon_pickaxe(ic, head=(0.86, 0.6, 0.32)),
+    "bronze_cap": lambda ic: icon_cap(ic, (0.78, 0.55, 0.3), metal=True),
+    "scale_shirt": lambda ic: icon_tunic(ic, (0.72, 0.5, 0.28), studs=True),
 }
 
 

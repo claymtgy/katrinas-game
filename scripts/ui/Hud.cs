@@ -66,6 +66,7 @@ public partial class Hud : CanvasLayer
         _underwater = new ColorRect { Color = new Color(0.08f, 0.32f, 0.4f, 0.45f), MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
         _root.AddChild(_underwater);
         _underwater.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        BuildHurt();
 
         BuildVitals();
         BuildClock();
@@ -507,6 +508,7 @@ void fragment() {
         PadScroll((float)delta);
         UpdateSession(gs, net);
         var player = gs.LocalPlayer;
+        UpdateHurt((float)delta, player);
         if (player == null) return;
 
         _health.Set(player.Health.Current, player.Health.Max);

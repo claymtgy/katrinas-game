@@ -18,6 +18,8 @@ public partial class Campfire : CraftingStation, IServerInteractable
     /// <summary>Wolves keep this far from any fire (GDD §9).</summary>
     public const float WolfWardRadius = 7f;
     private static readonly System.Collections.Generic.List<Campfire> Fires = new();
+    /// <summary>Every fire in the world (LightSources counts them as light).</summary>
+    public static System.Collections.Generic.IReadOnlyList<Campfire> All => Fires;
 
     public override void _EnterTree() { if (!Fires.Contains(this)) Fires.Add(this); }
     public override void _ExitTree() => Fires.Remove(this);
