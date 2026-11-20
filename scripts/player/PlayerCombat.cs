@@ -320,7 +320,14 @@ public partial class PlayerCombat : Node
     /// <summary>Local player: swing now (animation, stamina) and ask the server to resolve the hit.</summary>
     public void TryAttack(bool heavy)
     {
-        if (_cooldown > 0 || GuardUp || _player.Dodging || _player.Downed || _player.Mode != PlayerController.MoveMode.Normal) return;
+        // On a rock face you can still swing a pickaxe (iron seams on the spires), nothing else.
+        bool climbSwing = _player.Climbing && ItemDb.Get(_player.Equipped)?.ToolKind == "pick";
+        if (_cooldown > 0 || GuardUp || _player.Dodging || _player.Downed) return;
+        if (_player.Mode != PlayerController.MoveMode.Normal && !climbSwing)
+        {
+            if (_player.Climbing) Hud.Toast("Only a pickaxe can be swung while you climb.");
+            return;
+        }
         if (!_player.TrySpendStamina(heavy ? HeavyStamina : LightStamina))
         {
             Hud.Toast("Too tired to swing!");

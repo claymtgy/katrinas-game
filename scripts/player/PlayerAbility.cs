@@ -83,7 +83,7 @@ public partial class PlayerAbility : Node
     {
         var def = Def;
         if (def == null) return false;
-        if (_player.Health.IsDead || _player.Downed || _player.Sleeping || GameState.Instance.UiOpen || _player.Dodging || _player.Climbing || _player.Swimming) return false;
+        if (_player.Health.IsDead || _player.Downed || _player.Sleeping || GameState.Instance.UiOpen || _player.Dodging || _player.Climbing || _player.Swimming || _player.Grappling) return false;
         if (_player.Level < def.UnlockLevel)
         {
             Hud.Toast($"{def.Name} unlocks at level {def.UnlockLevel}.");

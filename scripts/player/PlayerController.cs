@@ -282,7 +282,7 @@ public partial class PlayerController : CharacterBody3D
 
     // ---------------------------------------------------------------- climbing / gliding
 
-    public enum MoveMode { Normal = 0, Climb = 1, Glide = 2, Swim = 3 }
+    public enum MoveMode { Normal = 0, Climb = 1, Glide = 2, Swim = 3, Grapple = 4 }
     /// <summary>Walking, on a rock face, under the glider or swimming (remote players: what they last sent).</summary>
     public MoveMode Mode { get; private set; }
     public bool Climbing => Mode == MoveMode.Climb;
@@ -457,7 +457,9 @@ public partial class PlayerController : CharacterBody3D
         // In the mist column you hang and turn rather than race through it.
         float speed = GlideSpeed * (input.Y < -0.3f ? 1.2f : input.Y > 0.3f ? 0.6f : 1f) * (lifting ? 0.35f : 1f) * (1f + 0.4f * dive);
         var heading = (forward + right * input.X * 0.6f).Normalized();
-        var h = new Vector3(v.X, 0, v.Z).Lerp(heading * speed, Mathf.Min(1f, 1.8f * dt));
+        // Wind gusts over the Spire Cliffs shove you sideways while they blow.
+        var gust = HomeCliffs.GustAt(GlobalPosition, Net.Now);
+        var h = new Vector3(v.X, 0, v.Z).Lerp(heading * speed + gust, Mathf.Min(1f, 1.8f * dt));
         float targetY = lifting ? UpdraftLift : -Mathf.Lerp(GlideFall, GlideDiveFall, dive);
         float vy = Mathf.Lerp(v.Y, targetY, Mathf.Min(1f, (lifting ? 1.5f : 3f) * dt));
         return new Vector3(h.X, vy, h.Z);
@@ -849,7 +851,9 @@ public partial class PlayerController : CharacterBody3D
     public void ApplyRemoteState(Vector3 pos, float yaw, float pitch, Vector3 velocity, bool onFloor, int mode = 0)
     {
         if (IsLocal) return;
-        SetMode((MoveMode)Mathf.Clamp(mode, 0, 3));
+        // The mode, and (grappling) the anchor above it: see NetMode.
+        GrappleAnchor = (mode >> 3) - 1;
+        SetMode((MoveMode)Mathf.Clamp(mode & 7, 0, 4));
         _targetPos = pos;
         _targetYaw = yaw;
         _targetPitch = pitch;
@@ -918,6 +922,16 @@ public partial class PlayerController : CharacterBody3D
         }
         GiveUpHeld = 0f;
         _gaveUp = false;
+
+        // On the grapple line: reeled in (GrappleStep).
+        if (Mode == MoveMode.Grapple)
+        {
+            Velocity = GrappleStep(dt, blocked);
+            MoveAndSlide();
+            _wasOnFloor = false;
+            FinishLocalStep(dt, false);
+            return;
+        }
 
         // Pools: deep water at your feet and you swim (a glider folds; a fall is broken).
         float surface = gs.WaterSurfaceAt(GlobalPosition);
@@ -993,6 +1007,12 @@ public partial class PlayerController : CharacterBody3D
             for (int i = 0; i < GetSlideCollisionCount(); i++)
                 if (GetSlideCollision(i).GetNormal().Dot(_dashDir) < -0.6f) { _dashTime = 0; break; }
         }
+        if (_shoveTime > 0)
+        {
+            // Knocked flying (Shove): you keep the momentum for a moment.
+            _shoveTime -= dt;
+            accel = Mathf.Min(1f, 0.6f * dt);
+        }
         if (Mode == MoveMode.Glide) accel = 0f; // the glider steers itself (GlideStep)
         v.X = Mathf.Lerp(v.X, target.X, accel);
         v.Z = Mathf.Lerp(v.Z, target.Z, accel);
@@ -1017,6 +1037,13 @@ public partial class PlayerController : CharacterBody3D
         if (Mode == MoveMode.Glide)
         {
             if (onFloor) SetMode(MoveMode.Normal);
+            // Flying into climbable rock: fold the glider and grab on.
+            else if (!blocked && input.Y < -0.5f && Stamina > 5f && TryGrab(forward))
+            {
+                SetMode(MoveMode.Climb);
+                v = Vector3.Zero;
+                _airVelocityY = 0;
+            }
             else v = GlideStep(v, dt, input, forward, right);
         }
         else if (!blocked && input.Y < -0.5f && _regrabIn <= 0 && _dodgeTime <= 0 && _mantleTime <= 0 && !guarding && Stamina > 5f && TryGrab(forward))
@@ -1052,7 +1079,7 @@ public partial class PlayerController : CharacterBody3D
     private void FinishLocalStep(float dt, bool guarding)
     {
         if (_regenDelay > 0) _regenDelay -= dt;
-        else if (Mode is not (MoveMode.Climb or MoveMode.Glide))
+        else if (Mode is not (MoveMode.Climb or MoveMode.Glide or MoveMode.Grapple))
             Stamina = Mathf.Min(MaxStamina, Stamina + StaminaRegen * Class.StaminaRegen * Gear.StaminaRegenMult(this) * (1f + BuffAmount(BuffStamina)) * (guarding ? 0.4f : 1f) * dt);
 
         if (Mode == MoveMode.Climb)
@@ -1068,6 +1095,7 @@ public partial class PlayerController : CharacterBody3D
             Net.Instance.ReportFellOut();
         }
 
+        UpdateRope();
         Net.Instance.SendLocalState(this, dt);
     }
 
@@ -1079,6 +1107,7 @@ public partial class PlayerController : CharacterBody3D
         var (yaw, pitch) = Rig.Look;
         Rig.SetLook(Mathf.LerpAngle(yaw, _targetYaw, Mathf.Min(1f, 15f * dt)), Mathf.Lerp(pitch, _targetPitch, Mathf.Min(1f, 15f * dt)));
         FaceCamera(Rig.Rotation.Y, dt);
+        UpdateRope();
     }
 
     /// <summary>Body faces where the camera looks (over-the-shoulder style).</summary>

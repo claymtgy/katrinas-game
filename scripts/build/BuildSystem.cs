@@ -190,8 +190,11 @@ public partial class BuildSystem : Node
             var flatOffset = new Vector2(spot.X - gs.ClaimCenter.X, spot.Z - gs.ClaimCenter.Z);
             if (flatOffset.Length() > gs.ClaimRadius) return "Outside your land claim";
         }
-        if (gs.HomeTier < 2 && HomeUpgradeBoard.InCottage(spot, 0.6f)) return "Space kept for the cottage";
+        if (HomeUpgradeBoard.KeptForNextHome(spot, 0.6f)) return gs.HomeTier < 2 ? "Space kept for the cottage" : "Space kept for the longhouse";
         if (def.Anywhere && gs.InSafeZone(spot) && Ashby(spot)) return "Not in the village";
+        if (def.NearBuilding != "" && !System.Linq.Enumerable.Any(gs.PlacedBuildings, b => b.Id == def.NearBuilding
+                && new Vector2(b.Position.X - spot.X, b.Position.Z - spot.Z).Length() <= def.NearRadius))
+            return $"Build it beside your {ItemDb.GetBuilding(def.NearBuilding)?.DisplayName ?? def.NearBuilding}";
 
         // Overlap test against props, other buildings and players.
         var shapeQuery = new PhysicsShapeQueryParameters3D

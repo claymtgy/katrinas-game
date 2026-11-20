@@ -87,6 +87,15 @@ public partial class CharacterModel : Node3D
             }
         }
         DressGear(_model, Look);
+        // The Rogue has no shield part: a round one in the left hand (not on the archer: the bow goes there).
+        if (Look.Shield != "" && Look.Body != Appearance.Knight && LeftHandSlot != null && Look.Class != PlayerClasses.ArcherId)
+        {
+            var shield = HeldModels.Shield(Color.FromHtml(Look.Shield));
+            LeftHandSlot.AddChild(shield);
+            // The bone slot carries the rig's own scale: size it against the slot's real size.
+            float slot = Mathf.Max(LeftHandSlot.GlobalBasis.Scale.X, 0.0001f);
+            shield.Scale = Vector3.One * (TargetHeight * Look.Height / 1.8f) / slot;
+        }
         if (_fade > 0) SetFade(_fade);
         Rebuilt?.Invoke();
     }

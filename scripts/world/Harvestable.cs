@@ -132,6 +132,7 @@ public partial class Harvestable : StaticBody3D
         var p = source as PlayerController;
         int got = Supplies.Give(p, DropItemId, count);
         if (p != null && got > 0) Net.Instance.ToastTo(p.PeerId, $"+{got} {ItemDb.NameOf(DropItemId)}");
+        if (p != null && got > 0 && Name.ToString().StartsWith("SpireSeam")) Journal.Fact("mined:spire_seam");
     }
 
     private void Respawn()

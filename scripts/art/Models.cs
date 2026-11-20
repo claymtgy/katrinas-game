@@ -43,6 +43,7 @@ public static class Models
     {
         var node = Load(path)?.Instantiate<Node3D>() ?? new Node3D { Name = "MissingModel" };
         if (style) StyleMaterials.Apply(node);
+        if (style && path == CherryTree) Blossom.Dress(node); // the floret canopy
         return node;
     }
 

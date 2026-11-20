@@ -21,6 +21,9 @@ public partial class BuildingDef : Resource
     /// <summary>Hangs on a wall instead of standing on the ground (wall torch). Its scene's
     /// origin is the point on the wall, and its local +Z faces out of it.</summary>
     [Export] public bool WallMount { get; set; } = false;
+    /// <summary>Must stand within NearRadius metres of one of these (the Bellows by a smelter). "" = anywhere.</summary>
+    [Export] public string NearBuilding { get; set; } = "";
+    [Export] public float NearRadius { get; set; } = 4f;
 
     public Dictionary<string, int> GetCost() => ItemDb.ToCost(Cost);
 }

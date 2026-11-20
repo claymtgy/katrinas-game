@@ -834,6 +834,28 @@ def icon_torch(ic):
     ic.fill(sd_ellipse(x, y, 35, 18, 3.5, 5), (1.0, 0.9, 0.5), outline=0, grad=0)
 
 
+def icon_grapple(ic):
+    x, y = ic.x, ic.y
+    # Coiled rope round the bottom, the line up to a three-pronged iron hook.
+    for k in range(3):
+        ic.line(np.abs(sd_ellipse(x, y, 26, 46 - k * 2, 16 - k * 3, 8 - k)) - 1.6, (0.55, 0.42, 0.28))
+    ic.line(sd_segment(x, y, 30, 40, 40, 22, 1.6), (0.55, 0.42, 0.28))
+    ic.fill(sd_segment(x, y, 40, 22, 46, 10, 2.4), (0.62, 0.64, 0.7), dome=0.4)
+    hooks = union(sd_segment(x, y, 46, 10, 56, 12, 2.0), sd_segment(x, y, 56, 12, 56, 20, 1.8),
+                  sd_segment(x, y, 46, 10, 38, 6, 2.0), sd_segment(x, y, 38, 6, 34, 12, 1.8))
+    ic.fill(hooks, (0.62, 0.64, 0.7), outline=1.6)
+    ic.fill(sd_circle(x, y, 40, 22, 3.2), (0.45, 0.46, 0.5), outline=1.2)
+
+
+def icon_shield(ic, face=(0.45, 0.3, 0.2), rim=(0.62, 0.64, 0.7)):
+    x, y = ic.x, ic.y
+    ic.fill(sd_circle(x, y, 32, 33, 25), rim, dome=0.5)
+    ic.fill(sd_circle(x, y, 32, 33, 20.5), face, outline=1.2, dome=0.25)
+    for cx in (25, 39):
+        ic.fill(sd_box(x, y, cx, 33, 2, 19, 0.5), rim, outline=0.8)
+    ic.fill(sd_circle(x, y, 32, 33, 6.5), rim, outline=1.2, dome=0.8)
+
+
 ICONS = {
     "wooden_sword": lambda ic: icon_sword(ic, blade=(0.78, 0.58, 0.34), wooden=True),
     "stone_club": icon_club,
@@ -888,6 +910,12 @@ ICONS = {
     "bronze_pickaxe": lambda ic: icon_pickaxe(ic, head=(0.86, 0.6, 0.32)),
     "bronze_cap": lambda ic: icon_cap(ic, (0.78, 0.55, 0.3), metal=True),
     "scale_shirt": lambda ic: icon_tunic(ic, (0.72, 0.5, 0.28), studs=True),
+    "grapple_hook": icon_grapple,
+    "goat_hide": lambda ic: icon_pelt(ic, (0.86, 0.83, 0.76)),
+    "longhouse_blueprint": icon_scroll,
+    "chain_mail": lambda ic: icon_tunic(ic, (0.6, 0.62, 0.68), studs=True),
+    "chain_gloves": lambda ic: icon_glove(ic, (0.6, 0.62, 0.68)),
+    "iron_shield": icon_shield,
 }
 
 

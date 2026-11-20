@@ -9,6 +9,8 @@ public partial class Interactor : Node
     [Export] public float Reach { get; set; } = 3.2f;
 
     public IInteractable Target { get; private set; }
+    /// <summary>With nothing to use in reach: the grapple anchor under the crosshair (-1 none).</summary>
+    public int GrappleTarget { get; private set; } = -1;
     /// <summary>A downed friend within reach: holding Interact revives them (GDD §16).</summary>
     public PlayerController ReviveTarget { get; private set; }
     /// <summary>Scripted tests: hold Interact without the key.</summary>
@@ -28,9 +30,16 @@ public partial class Interactor : Node
     public override void _PhysicsProcess(double delta)
     {
         Target = null;
+        GrappleTarget = -1;
         UpdateRevive();
         if (ReviveTarget != null || _player.Downed) return;
         if (GameState.Instance.UiOpen || _player.Build.Active || _player.Sleeping) return;
+        FindTarget();
+        if (Target == null) GrappleTarget = _player.FindAnchor();
+    }
+
+    private void FindTarget()
+    {
 
         var cam = _player.Rig.Camera;
         var from = cam.GlobalPosition;
@@ -86,6 +95,11 @@ public partial class Interactor : Node
         else if (e.IsActionPressed("interact") && Target != null && !GameState.Instance.UiOpen)
         {
             Target.Interact(_player);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (e.IsActionPressed("interact") && GrappleTarget >= 0 && !GameState.Instance.UiOpen)
+        {
+            _player.StartGrapple(GrappleTarget);
             GetViewport().SetInputAsHandled();
         }
     }

@@ -10,14 +10,23 @@ public partial class DayNight : Node3D
     [Export] public float DayLengthSeconds { get; set; } = 600f;
 
     // Palette from the visual brief.
-    private static readonly Color DayTop = new(0.27f, 0.45f, 0.78f);
-    private static readonly Color DayHorizon = new(0.98f, 0.82f, 0.66f);
+    // Day stays hazy: a soft periwinkle overhead fading to peach, never a hard blue (concept 1).
+    private static readonly Color DayTop = new(0.36f, 0.53f, 0.88f);
+    private static readonly Color DayHorizon = new(0.99f, 0.85f, 0.74f);
     private static readonly Color DuskTop = new(0.13f, 0.11f, 0.32f);      // twilight indigo
     private static readonly Color DuskHorizon = new(0.98f, 0.46f, 0.2f);   // magma orange / sunset gold
     private static readonly Color NightTop = new(0.04f, 0.06f, 0.17f);    // deep night blue
     private static readonly Color NightHorizon = new(0.14f, 0.18f, 0.36f);
     private static readonly Color SunNoon = new(1f, 0.93f, 0.82f);
     private static readonly Color SunLow = new(1f, 0.55f, 0.35f);
+    /// <summary>The air itself by day: distance fades into this warm peach (mixed with the horizon).</summary>
+    private static readonly Color Haze = new(0.96f, 0.85f, 0.8f);
+    /// <summary>Shadows take this violet, not brown or black (the brief: lavender shadows, peach light).</summary>
+    private static readonly Color ShadowTint = new(0.62f, 0.6f, 0.9f);
+
+    /// <summary>Haze thickness on a dry day (rain and the mine thicken it).</summary>
+    public const float HazeDensity = 0.0024f;
+    private const float BaseExposure = 1.2f;
 
     private const string SkyShader = @"shader_type sky;
 global uniform vec3 sun_dir;
@@ -76,10 +85,16 @@ void sky() {
             BackgroundMode = Godot.Environment.BGMode.Sky,
             Sky = new Sky { SkyMaterial = _sky },
             AmbientLightSource = Godot.Environment.AmbientSource.Sky,
-            AmbientLightSkyContribution = 0.6f,
+            AmbientLightColor = ShadowTint,
+            AmbientLightSkyContribution = 0.5f,
             AmbientLightEnergy = 0.8f,
-            TonemapMode = Godot.Environment.ToneMapper.Aces,
-            TonemapExposure = 1.0f,
+            // AgX rolls highlights off softly and keeps sunsets from going red-brown (ACES did).
+            TonemapMode = Godot.Environment.ToneMapper.Agx,
+            TonemapExposure = BaseExposure,
+            // A gentle grade: a little less saturation so the palette holds together.
+            AdjustmentEnabled = true,
+            AdjustmentSaturation = 0.9f,
+            AdjustmentContrast = 1.04f,
             GlowEnabled = true,
             GlowIntensity = 0.9f,
             GlowBloom = 0.12f,
@@ -87,12 +102,13 @@ void sky() {
             GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Softlight,
             SsaoEnabled = true,
             FogEnabled = true,
-            FogDensity = 0.0012f,
-            FogSkyAffect = 0.08f,
+            // Aerial perspective: far cliffs fade into warm haze, so the world reads in layers.
+            FogDensity = HazeDensity,
+            FogSkyAffect = 0.12f,
             FogHeight = -15f,
             FogHeightDensity = 0.06f,
-            FogAerialPerspective = 0.3f,
-            FogSunScatter = 0.35f,
+            FogAerialPerspective = 0.55f,
+            FogSunScatter = 0.3f,
         };
         AddChild(new WorldEnvironment { Environment = _env });
 
@@ -172,7 +188,7 @@ void sky() {
         float under = Underground;
         _sun.LightEnergy *= 1f - under;
         _moon.LightEnergy *= 1f - under;
-        _env.FogDensity = Mathf.Lerp(0.0012f + 0.0055f * wet, 0.035f, under);
+        _env.FogDensity = Mathf.Lerp(HazeDensity + 0.005f * wet, 0.035f, under);
         RenderingServer.GlobalShaderParameterSet("wetness", wet);
         _sky.SetShaderParameter("top_color", top);
         _sky.SetShaderParameter("horizon_color", horizon);
@@ -181,9 +197,13 @@ void sky() {
         _sky.SetShaderParameter("glow_strength", Mathf.Clamp(dusk * 1.2f, 0f, 1f) * (1f - night * 0.6f) * (1f - 0.7f * wet));
         _sky.SetShaderParameter("energy", Mathf.Lerp(1f, 0.85f, night));
 
-        _env.FogLightColor = horizon.Lerp(new Color(1f, 0.75f, 0.8f), 0.3f * dusk).Lerp(new Color(0.015f, 0.014f, 0.02f), under);
+        // By day the haze is warm peach; at dusk it warms to rose; at night it goes blue with the sky.
+        var haze = horizon.Lerp(Haze, 0.4f * (1f - night)).Lerp(new Color(1f, 0.72f, 0.74f), 0.3f * dusk);
+        _env.FogLightColor = haze.Lerp(new Color(0.015f, 0.014f, 0.02f), under);
         _env.FogHeightDensity = Mathf.Lerp(0.06f, 0f, under);
-        _env.FogSunScatter = Mathf.Lerp(0.35f, 0f, under);
+        _env.FogSunScatter = Mathf.Lerp(0.3f, 0f, under);
+        // Night shadows go indigo rather than violet.
+        _env.AmbientLightColor = ShadowTint.Lerp(new Color(0.35f, 0.42f, 0.85f), night);
 
         // Shared with the stylized shaders (rim light, blossom glow).
         RenderingServer.GlobalShaderParameterSet("sun_dir", toSun);
@@ -191,6 +211,6 @@ void sky() {
         RenderingServer.GlobalShaderParameterSet("night", night);
         _env.AmbientLightEnergy = Mathf.Lerp(Mathf.Lerp(0.8f, 0.6f, night), 0.035f, under);
         _env.ReflectedLightSource = under > 0.5f ? Godot.Environment.ReflectionSource.Disabled : Godot.Environment.ReflectionSource.Bg;
-        _env.TonemapExposure = Mathf.Lerp(1f, 1.25f, under);
+        _env.TonemapExposure = Mathf.Lerp(BaseExposure, 1.35f, under);
     }
 }

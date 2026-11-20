@@ -76,7 +76,9 @@ public partial class HomeCliffs
     {
         var path = Models.AllRocks[_vrng.RandiRange(0, Models.AllRocks.Length - 1)];
         size *= 1.15f;
-        Node3D node = collide ? Models.RockBody(path, size) : Models.Instance(path);
+        // Tall rocks are columnar basalt clusters (the concept art's cliffs); the rest stay rock models.
+        Node3D node = Basalt.Suits(size) ? Basalt.Make(Basalt.VariantAt(pos), size, collide)
+            : collide ? Models.RockBody(path, size) : Models.Instance(path);
         if (!collide) node.Scale = size;
         node.Position = pos;
         node.Rotation = rot;
@@ -131,8 +133,9 @@ public partial class HomeCliffs
         {
             float h = _vrng.RandfRange(50, 100);
             var pos = new Vector3(_vrng.RandfRange(100, 260), -70 + h / 2f, _vrng.RandfRange(-80, -200));
-            VRock(pos, new Vector3(_vrng.RandfRange(10, 22), h, _vrng.RandfRange(10, 20)),
+            var spire = VRock(pos, new Vector3(_vrng.RandfRange(10, 22), h, _vrng.RandfRange(10, 20)),
                 new Vector3(_vrng.RandfRange(-0.1f, 0.1f), _vrng.RandfRange(0, 3), _vrng.RandfRange(-0.12f, 0.12f)), collide: false);
+            if (InSpireField(pos, 14f)) spire.QueueFree(); // the Spire Cliffs are here now (made anyway: random numbers)
         }
     }
 
@@ -143,7 +146,7 @@ public partial class HomeCliffs
         // The rock itself: grass on top, dark rock on the sides (the ground shader does both).
         var mesa = Block(MesaCenter + new Vector3(0, MesaHeight / 2f, 0), new Vector3(MesaHalf * 2, MesaHeight, MesaHalf * 2), Vector3.Zero, Slate);
         mesa.Name = "Mesa";
-        ((MeshInstance3D)mesa.GetChild(0)).MaterialOverride = GroundMaterial;
+        BasaltDress(mesa, new Vector3(MesaHalf * 2, MesaHeight, MesaHalf * 2), 3);
         // Broken rock around the foot and the rim so it doesn't read as a box.
         for (int i = 0; i < 14; i++)
         {
@@ -274,6 +277,7 @@ public partial class HomeCliffs
             Block(GreatFallsPool + new Vector3(4, -0.4f, side * 8.5f), new Vector3(19, 1.2f, 1), Vector3.Zero, Slate);
 
         GameState.Instance.Updrafts.Add((GreatFallsPool, UpdraftRadius, UpdraftTop));
+        Rainbow(GreatFallsPool + new Vector3(-3, 9, 0), 24f, -Mathf.Pi / 2f);
         var lift = Particles(90, 4f, new Vector3(UpdraftRadius * 0.7f, 2, UpdraftRadius * 0.7f), GreatFallsPool + Vector3.Up * 2,
             new Color(0.95f, 0.97f, 1f, 0.3f), 0.4f, 1.1f, new Vector3(0, 8f, 0));
         lift.Name = "Updraft";

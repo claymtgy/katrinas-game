@@ -17,7 +17,7 @@ public enum NetMode { Offline, Host, Client, Dedicated }
 /// C_* methods run on clients.</summary>
 public partial class Net : Node
 {
-    public const int ProtocolVersion = 12;
+    public const int ProtocolVersion = 13;
     /// <summary>Scripted tests: force the Herbalist roll (1 = always an extra meal); null = random.</summary>
     public static float? HerbalistRoll;
     public const string MainScenePath = "res://scenes/Main.tscn";
@@ -515,7 +515,7 @@ public partial class Net : Node
         if (_stateTimer > 0) return;
         _stateTimer = StateSendInterval;
         var (yaw, pitch) = p.Rig.Look;
-        int mode = (int)p.Mode;
+        int mode = p.NetMode;
         if (IsServer) RelayState(p.PeerId, p.GlobalPosition, yaw, pitch, p.Velocity, p.IsOnFloor(), mode);
         else RpcId(1, MethodName.S_State, p.GlobalPosition, yaw, pitch, p.Velocity, p.IsOnFloor(), mode);
     }
@@ -647,7 +647,7 @@ public partial class Net : Node
         float raw = amount;
         amount *= 1f - Gear.Reduction(p); // armour
         if (p.Blocking && source is Node3D s && p.Facing(s.GlobalPosition))
-            result = Now - p.BlockStartedAt <= ParryWindow ? HitResult.Parried : HitResult.Blocked;
+            result = Now - p.BlockStartedAt <= ParryWindow + Gear.ParryBonus(p) ? HitResult.Parried : HitResult.Blocked;
 
         switch (result)
         {
@@ -656,7 +656,7 @@ public partial class Net : Node
                 break;
             case HitResult.Blocked:
                 p.Health.TakeDamage(amount * BlockedDamageFactor, source);
-                ToPeer(p.PeerId, MethodName.C_Guard, false, (8f + amount * 0.8f) * p.Class.GuardCost);
+                ToPeer(p.PeerId, MethodName.C_Guard, false, (8f + amount * 0.8f) * p.Class.GuardCost * Gear.GuardCostMult(p));
                 break;
             case HitResult.Parried:
                 ToPeer(p.PeerId, MethodName.C_Guard, true, 0f);
@@ -684,6 +684,13 @@ public partial class Net : Node
 
     [Rpc(MultiplayerApi.RpcMode.Authority)]
     private void C_GuardFx(int id, bool parried) => Gs.GetPlayer(id)?.Combat.PlayGuardImpact(parried);
+
+    /// <summary>Server: knock a player flying (a goat's butt, the Queen's wings). The owner moves
+    /// itself, so it's told to.</summary>
+    public void ServerShovePlayer(PlayerController p, Vector3 velocity) => ToPeer(p.PeerId, MethodName.C_Shove, velocity);
+
+    [Rpc(MultiplayerApi.RpcMode.Authority)]
+    private void C_Shove(Vector3 velocity) => Gs.LocalPlayer?.Shove(velocity);
 
     /// <summary>Server: this player's swing was parried: they reel for a moment.</summary>
     public void StaggerPlayer(PlayerController p, float seconds) => ToPeer(p.PeerId, MethodName.C_Staggered, seconds);

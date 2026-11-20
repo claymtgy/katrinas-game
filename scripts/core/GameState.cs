@@ -152,7 +152,7 @@ public partial class GameState : Node
         tier = Mathf.Clamp(tier, 1, 2);
         if (tier == HomeTier) return;
         HomeTier = tier;
-        ClaimRadius = tier >= 2 ? 42f : 30f;
+        ClaimRadius = tier >= 3 ? 54f : tier >= 2 ? 42f : 30f;
         HomeTierChanged?.Invoke(tier);
     }
 

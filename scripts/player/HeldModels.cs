@@ -29,6 +29,21 @@ public static class HeldModels
     private static Mesh Rod(float radius, float length, float top = -1f) =>
         new CylinderMesh { TopRadius = top < 0 ? radius : top, BottomRadius = radius, Height = length, RadialSegments = 8 };
 
+    /// <summary>A round iron-bound shield strapped to the forearm, for the off hand (in metres, for a
+    /// 1.8 m body): its face points out along +X, the back of the hand.</summary>
+    public static Node3D Shield(Color face)
+    {
+        var root = new Node3D { Name = "Shield" };
+        var rim = new Color(0.55f, 0.57f, 0.62f);
+        Part(root, new CylinderMesh { TopRadius = 0.27f, BottomRadius = 0.27f, Height = 0.04f, RadialSegments = 14 }, face, new Vector3(0.07f, 0.02f, 0), new Vector3(0, 0, 90));
+        Part(root, new TorusMesh { InnerRadius = 0.25f, OuterRadius = 0.29f, Rings = 14, RingSegments = 4 }, rim, new Vector3(0.08f, 0.02f, 0), new Vector3(0, 0, 90));
+        Part(root, new SphereMesh { Radius = 0.07f, Height = 0.07f, IsHemisphere = true, RadialSegments = 10, Rings = 3 }, rim, new Vector3(0.09f, 0.02f, 0), new Vector3(0, 0, -90));
+        // Two iron bands across the planks.
+        Part(root, new BoxMesh { Size = new Vector3(0.012f, 0.5f, 0.04f) }, rim, new Vector3(0.095f, 0.02f, 0.1f), Vector3.Zero);
+        Part(root, new BoxMesh { Size = new Vector3(0.012f, 0.5f, 0.04f) }, rim, new Vector3(0.095f, 0.02f, -0.1f), Vector3.Zero);
+        return root;
+    }
+
     /// <summary>Skin and sleeve colours from a look ("" = the model's defaults).</summary>
     public static (Color Skin, Color Sleeve) Colors(Appearance look) =>
         (look != null && look.Skin != "" ? new Color(look.Skin) : DefaultSkin,

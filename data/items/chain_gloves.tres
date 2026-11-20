@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "chain_gloves"
+DisplayName = "Chain Gloves"
+Category = "armor"
+IconColor = Color(0.6, 0.62, 0.68, 1)
+Slot = "hands"
+Armor = 4.0
+Heavy = true
+SellPrice = 12

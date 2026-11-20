@@ -92,6 +92,33 @@ public partial class DevAutotest : Node
     /// <summary>Character customisation: the creator from the pause menu, a live rebuild of the
     /// body (Knight, painted, taller, helmet off) that keeps the weapon hand, and a bad look from
     /// the network cleaned up.</summary>
+    /// <summary>--only=art: the same views at several times of day, to compare with the concept
+    /// art (docs/art). Screenshots only; no checks beyond spawning.</summary>
+    private async Task ArtShots(GameState gs, PlayerController p)
+    {
+        p.Rig.SetView(false, true);
+        var spawn = p.GlobalPosition;
+        async Task View(string name, Vector3 at, float yaw, float pitch, float time)
+        {
+            gs.TimeOfDay = time;
+            p.Teleport(at);
+            p.Rig.SetLook(yaw, pitch);
+            await Wait(1.2);
+            await Shot(name);
+        }
+        await View("art_01_cliff_dawn", spawn, 0.35f, -0.12f, 0.27f);
+        await View("art_02_cliff_noon", spawn, 0.35f, -0.12f, 0.5f);
+        await View("art_03_cliff_dusk", spawn, 0.35f, -0.12f, 0.73f);
+        await View("art_04_cliff_night", spawn, 0.35f, -0.12f, 0.9f);
+        await View("art_05_ashby", HomeCliffs.AshbyCenter + new Vector3(2, 0.1f, -30), Mathf.Pi + 0.1f, -0.02f, 0.42f);
+        await View("art_06_falls_valley", HomeCliffs.PassPos + new Vector3(4, 0.1f, 0), -Mathf.Pi / 2f + 0.2f, 0.05f, 0.35f);
+        await View("art_07_spires", HomeCliffs.SpireLookout + new Vector3(0, 0.1f, 2), 0.1f, -0.05f, 0.3f);
+        await View("art_08_spires_noon", HomeCliffs.SpireLookout + new Vector3(0, 0.1f, 2), 0.1f, -0.05f, 0.5f);
+        await View("art_09_ashby_square", HomeCliffs.AshbyCenter + new Vector3(-3, 0.1f, -16), Mathf.Pi - 0.15f, -0.08f, 0.45f);
+        await View("art_10_ashby_dusk", HomeCliffs.AshbyCenter + new Vector3(-3, 0.1f, -16), Mathf.Pi - 0.15f, -0.08f, 0.76f);
+        await View("art_11_great_falls", HomeCliffs.GreatFallsPool + new Vector3(-26, 0.1f, 6), -Mathf.Pi / 2f - 0.15f, 0.12f, 0.4f);
+    }
+
     private async Task Looks(GameState gs, PlayerController p)
     {
         var mesh = p.Body.GetNode<CharacterModel>("Mesh");
@@ -2510,6 +2537,13 @@ public partial class DevAutotest : Node
         if (OS.GetCmdlineUserArgs().Contains("--only=looks"))
         {
             await TrailsAndLooks(gs, p);
+            GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
+            GetTree().Quit(_fails == 0 ? 0 : 1);
+            return;
+        }
+        if (OS.GetCmdlineUserArgs().Contains("--only=art"))
+        {
+            await ArtShots(gs, p);
             GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
             GetTree().Quit(_fails == 0 ? 0 : 1);
             return;

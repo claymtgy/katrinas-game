@@ -51,7 +51,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 ## 5. Building
 - **Placement:** grid snap (0.5 m), rotation in 45° steps (free rotation later), a ghost preview showing green for valid and red for invalid.
 - **Claim radius:** you can only build near your home. Upgrading the house tier widens the claim. Later, outposts make new claims.
-- **House tiers:** Shack → Cottage → Longhouse → Keep. Each tier unlocks building types and worker slots.
+- **House tiers:** Shack → Cottage → Longhouse → Keep. Each tier unlocks building types and worker slots. The Longhouse is built (§11 step 2): four beds, a 54 m claim, and two bare bunks kept for the workers that come with step 12.
   - **Cottage (built):** pay at the **Home Plans** board by the shack: 40 wood, 20 stone, 6 iron nails, 3 wolf pelts and the Cottage Blueprint (from the bandit captain). The shack is replaced by a timber-and-plaster cottage you can walk into, with two beds. Your land claim grows from 30 m to 42 m. The cottage's footprint is kept clear of new buildings while you still live in the shack; anything already there is packed up and refunded when it goes up. The tier is saved and sent to every player.
 - **Stations:** Workbench, Sawhorse, Kiln, Smelter, Forge, Anvil, Cookfire, Loom, Storage Chest, Well, Farm Plot. Built so far: Workbench, Campfire (cooking and smelting), the **Hearth** in the shack and the cottage (rest to heal 50, cook, smelt; the shack's chimney stands on its mantel), Palisade, Bedroll, the farm plots, **Well** and **Storage Chest** (8 wood; one already stands by the shack), and the tier-1 refining stations: **Sawhorse**, **Kiln** and **Brick Oven** (see §11, step 0).
 - **Defense:** palisade → stone wall → gatehouse → watchtower. Bandit raids target bases above a "wealth" threshold.
@@ -206,7 +206,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 
 **Planned (later tiers):**
 - **Tier 2, bronze (built):** Bronze Cap (5) and Scale Shirt (12), both heavy, made at the anvil from bronze and boar hide. See §11, step 1.
-- **Tier 3, iron:** a Chain Mail set and a **Shield** for a new Off-hand slot: blocks cost less stamina and the parry window grows.
+- **Tier 3, iron (built):** Chain Mail (body, 16, heavy), Chain Gloves (hands, 4, heavy) and the **Iron Shield** in the new **Off-hand slot** (2 armour; blocks cost 40% less stamina and the parry window grows by 120 ms). All three are forged at the Bellows. The Knight carries the kit's round shield; the Wanderer gets one strapped to the left forearm (not the Archer, whose bow is there).
 - **Tier 4, steel:** Plate (armour 14 for the body, heavy).
 - **Tier 5, ember:** **Heat-ward** armour and cloak: the volcano's heat meter rises more slowly.
 - **Furs** against the night mist (if it starts to sting), from boar or bear hides.
@@ -259,7 +259,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Swim forward into an edge to haul yourself out.
   - Water breaks a fall: dive in from the cliffs or the glider with no damage. A glider folds when you hit the water.
   - No attacks, guard, rolls or class abilities while swimming.
-  - Waterfalls can't be climbed without the late-game Grapple Hook. Rivers stay wading depth (currents, above).
+  - Waterfalls can't be climbed. The Grapple Hook (built, §11 step 2) reaches marked anchor rings instead. Rivers stay wading depth (currents, above).
 - **Co-op:** everyone sees climbing, gliding and swimming. The movement state carries a mode (normal, climb, glide or swim), (protocol 5; swim from protocol 8). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot). Protocol 7 added the shared journal (`C_Journal`, `S_Errand`; `"journal"` in the snapshot).
 - **Grip boots (built):** less drain on wet rock (§6).
 
@@ -275,7 +275,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Falls Valley (built) | Slippery wet rock (rain), river currents toward the cliff, harpies | Stamina, the glider, arrows and parries, grip boots |
 | Forest Road / Ashby | Bandit camps, raids | Walls, better swords |
 | Hollow Mine (planned, tier 2) | Darkness, tight tunnels, cave crawlers, flooded galleries | Torches and the lantern, bronze gear |
-| Spire Cliffs (planned, tier 3) | Wind gusts that push gliders, long falls between spires, loose rock, storm harpies | Feather cloak, grip boots, the grapple hook, a shield |
+| Spire Cliffs (built, tier 3) | Wind gusts that push gliders, long falls between spires, loose rock, storm harpies | Feather cloak, grip boots, the grapple hook, a shield |
 | Cinder Foothills (planned, tier 4) | Steam vents, hot ground (a mild **heat meter**), ash-sick beasts, the bandit warlord's fort | Cool springs, steel gear, a first heat-ward charm |
 | Volcano (late) | **Heat meter** (rises near lava and drains health when full), lava flows, ash storms, emissive lava falls | Heat-ward cloak, blossom charms, cool springs |
 
@@ -394,7 +394,27 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - The intended early path: wooden sword → stone pickaxe → surface iron → **iron sword** → the bandit captain (blueprint) → the cottage. Leather comes from pelts (wolves or Marta).
 - Bronze (Hollow Mine) stays a sidegrade in damage, worth it for **armour** (bronze scale) and tools that mine faster. The Spire Cliffs keep the rich iron seams: enough for **chain mail, the shield and the iron helm in bulk**, plus the Bellows and the Longhouse. So the cliffs are where iron *armour* comes from, while the iron *sword* arrives early.
 
-#### Step 2: Spire Cliffs (iron)
+#### Step 2: Spire Cliffs (iron) (built)
+- **Built so far (2026-11-19), part 1, the place itself:**
+  - **The way in:** the **Spire Lookout**, a rock spur off Falls Valley's north rim (prayer flags, a sign). You glide off it. Falling into the clouds sends you home, or to the Spire Blossom once you've prayed there.
+  - **Five spires** standing out of the cloud sea, each higher or further than the last: the Ledge Spire (the first hop), the **Blossom Spire** (the **Spire Blossom**, a sanctuary with fast travel), the Rust Spire, the Windward Spire, and the **Tall Spire** (an empty nest of sticks and bones on top, for the Queen later). More spires further out are scenery.
+  - **Updrafts from cracks:** three spire tops have a crack that breathes an updraft (wisps and a roar), each lifting you high enough for the next, higher spire.
+  - **Wind gusts:** three gust zones between spires. Each blows for about 45% of its cycle (6 to 8 s), rising and falling, and shoves a glider sideways at up to 6 m/s. Wind streaks always show faintly where a gust lives and thicken while it blows. Only gliders are pushed.
+  - **Iron seams:** 9 rust-red seams up four pale climbing faces (each with a ledge at its foot to land on). You can now **swing a pickaxe while climbing** (nothing else), so you mine them hanging on; that costs stamina on top of your grip. They give 3 extra ore when they break and come back after 5 minutes. The long face up the Tall Spire is the stamina test (grip boots help).
+  - **Gliding into climbable rock** now folds the glider and grabs on (hold forward).
+  - **Guidance:** three journal goals after the Mother (reach the spires, find the Spire Blossom, mine a seam) and tips for gusts and mining while climbing.
+  - Code: `HomeCliffs.Spires.cs`; the gust push is in `PlayerController.GlideStep`.
+- **Built (2026-11-20), parts 2 to 5, the rest of the region:**
+  - **The grapple hook:** forged at the anvil (3 iron ingots, a boar hide, a plank); it rides in your pack like the glider. Aim at an **anchor ring** (an iron ring on a bracket, marked with a strip of blue cloth) within 38 m with a clear line, and press Use: the hook flies, then reels you in at 19 m/s for 12 stamina. A ring on a rim hauls you up over the edge; a ring set in a climbing face leaves you hanging on the rock. Jump lets go mid-line (open the glider straight away). Eight rings: lookout → Ledge Spire, Ledge → Blossom Spire, Blossom → the Rust Spire's west face, Rust → Windward Spire, two up the Tall Spire's east face (half way, then the top), and two on the Falls Valley mesa's north and east rims. Other players see the line (the movement mode now carries the anchor; protocol 13).
+  - **Storm harpies:** slate-blue, bigger and tougher (70 health, 14 damage, 3 feathers). Two roosts, over the Rust and Windward spires, two to a roost for one player (more in co-op). They **dive in pairs**: when one swoops, its partner comes in right behind it. Knocked out of the air over open sky, they catch themselves before the clouds.
+  - **Cliff goats:** graze on the Ledge Spire (1) and the Rust Spire (2), and only charge if you come within 6 m or hit them. The butt (0.6 s tell: head up, then down) does little damage but **throws you back and up**, usually off the spire. A roll through it takes nothing; a raised guard halves the throw; a parry stuns the goat. They drop **goat hide**, which lines the iron gear.
+  - **Shoves:** a new server-to-owner message (`Net.ServerShovePlayer`). It lets go of rock, line and glider, and the momentum carries for a moment.
+  - **The Bellows:** a building (the Mother's Bellows Plans, 4 iron ingots, 2 boar hides, 4 planks) that must stand within 4 m of a smelter. It works the iron recipes: 2 iron ore + 1 charcoal → 3 ingots (the best yield), Chain Mail (8 iron, 2 goat hides), Chain Gloves (3 iron, 1 goat hide) and the Iron Shield (5 iron, 2 planks, 1 goat hide). See §6 for the gear.
+  - **The Storm Harpy Queen:** nests on the Tall Spire (900 health, 30 damage, 4 armour, scaled for co-op like the other bosses). She circles and dives like a harpy; every 15 s in a fight she calls storm harpies (up to 2 with her); every 10 s, when you're close, she rears back with her wings spread (1.1 s tell) and beats them: a **gale** that hurls everyone within 13 m away and up (10 damage). Roll through it, or a guard halves it. A parried dive grounds her for 1.2 s. She drops 40 coins, 4 rune shards, 6 feathers and, the first time, the **Longhouse Blueprint**. Worth 400 XP the first time. Her nest fills again 3 days after she falls.
+  - **The Longhouse** (home tier 3, at the plans board): the blueprint, 40 planks, 20 bricks, 30 stone, 12 iron nails, 4 goat hides. A brick hall (8 × 6 m) on the cottage's spot with four beds, a long table, a hearth and two bare bunks waiting for workers. The land claim grows to 54 m. Worker slots themselves come with step 12.
+  - **Guidance:** five more journal goals (forge the hook and use an anchor, build the Bellows, wear a shield, slay the Queen, raise the Longhouse) and tips for anchors, goats and the gale. "Wear armour in every slot" still means the six armour slots.
+  - Code: `PlayerController.Grapple.cs`, `HomeCliffs.Grapple.cs` (the rings), `Goat`, `Harpy` (the `Storm` and `Queen` variants), `Wildlife.Spires.cs` (roosts, herds, the nest; saved with the west sites), `BellowsStation`, `HomeUpgradeBoard` (tier 3), `Gear.OffHand`.
+  - Not verified in play yet: the grapple routes' distances and the rings' clearances were set from the spire layout, not tried in the game.
 - **Where:** past Falls Valley, a field of tall rock spires over the cloud sea.
 - **The hook:** the climbing and glider test. Iron shows as rust-red seams on the spire faces, so you mine it while hanging on. **Wind gusts** shove gliders sideways (shown by streaks in the air), and updrafts from cracks in the rock link one spire to the next.
 - **The grapple hook** (already named in §8 as late game) is found or crafted here. It shoots onto marked anchor points, which keeps the routes between spires fair without lots of extra stamina.
@@ -436,6 +456,15 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - **The volcano** is a sculpted cone built in code: faceted and ridged with gullies, a concave profile (gentle foot, steep summit), a lower shoulder peak, and a crater breached toward the home cliffs. Four lava rivers pour out of the breach and fan down the flank. It is drawn without fog, with haze painted into its colours, so it keeps its facets 1 km away.
   - **Ashby** already uses the village model kit (plaster and brick walls, tiled roofs, doors, chimneys), so it needed no greybox replacement.
   - **Audio:** see §12a.
+- **Art pass, round 3 (in progress): air and colour (2026-11-19).**
+  - **Haze:** much thicker aerial perspective (fog density 0.0024, aerial 0.55), so distant cliffs fade into the air in layers. Warm peach by day, rose at dusk, blue at night.
+  - **Grade:** the AgX tonemapper (ACES turned sunsets red-brown), 10% less saturation, a touch more contrast, and violet ambient light so shadows read lavender (indigo at night).
+  - **Palette:** a softer day sky, mossier greens, and slate-blue roofs in Ashby (the kit's orange tiles recoloured in a shader).
+  - Screenshots for comparing with the concepts: `--autotest --only=art`.
+  - **Rock (built):** every tall rock (cliff walls, the drops into the clouds, scenery spires) is now a cluster of **basalt columns** built in code (`Basalt`, six shared variants: hexagonal columns of mixed heights with bevelled, tilted caps). The Falls mesa, the Spire Cliffs' spires and the lookout are flat-topped column blocks you walk on (`Basalt.Plateau`, over their old box colliders). Crowns are no longer put on top of the basalt. One cliff shader (`StyleMaterials.CliffShader`) for all rock: mid slate-violet facets of varied value, warm peach on sunlit facets (strongest at golden hour), cool in shade, moss on flat tops, and tan sandstone in the vale (concept 3). Boulders, slabs and buttresses are still the old models, now in the new shader.
+  - **Greenery (built):** clumps of round bushes (some flowering) and leafy trees banked against the feet of the cliffs in the vale, at its far end, under Falls Valley's east and south walls and on the home plateau's flanks, plus a few out in the open; six blossom trees ring Ashby (`HomeCliffs.Greenery.cs`, scenery with trunk colliders, kept off roads, water, camps, the village and 48 m round the shack). Every blossom tree's canopy is covered in about 3,200 small five-petal florets in mixed pinks (`Blossom`, one shared MultiMesh), so it reads as flowers up close.
+  - **Atmosphere (built):** smoke curls from every chimney and drifts on the breeze; window panes glow warm from dusk; every waterfall's foot dissolves into big soft billows and fine spray; a faint rainbow stands in the Great Falls' mist by day; big petals tumble off every blossom tree; three market stalls with teal, mustard and plum awnings, goods and a hanging lantern each stand round Ashby's well (`HomeCliffs.Atmosphere.cs`, petals in `Blossom`).
+  - Still open from the comparison: the hero model (concept 9: a normally proportioned hooded figure, not the chibi kit) and a stronger sense of scale.
 - **§12a Audio (built):**
   - Every sound is synthesized by `tools/make_audio.py` (numpy; noise and oscillators, no recordings and no licences) into `assets/audio/*.wav`. To replace one with a real recording, keep the file name.
   - **Ambience bed** (`Ambience`, mixed for each player): wind (stronger high up and in rain), rain (follows the weather), birdsong by day, crickets at night.
@@ -518,7 +547,7 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 6. **Levels and abilities (done):** (the level-15 and 20 talents come with their regions) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in (done):** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze) (built, not yet playtested):** the Forest Road with wild boars, darkness with torches and the lantern, cave crawlers and the Crawler Mother, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom, the iron gate. Still to do: scripted tests for it, the flooded side rooms, and tuning.
-9. **Spire Cliffs (iron):** wind gusts, the grapple hook, storm harpies, the Bellows, iron gear and the shield, the Longhouse. (Fast travel and the level-12 abilities are already built.)
+9. **Spire Cliffs (iron) (built):** the spires, updrafts, gusts and iron seams; the grapple hook and anchor rings; storm harpies and cliff goats; the Bellows, chain mail and the shield; the Storm Harpy Queen and the Longhouse.
 10. **Cinder Foothills (steel):** the heat meter (gentle), coal, the Blast Forge, the Bandit Warlord's fort, plate, the Keep, and the level-15 talents.
 11. **Volcano:** the full heat system, lava hazards, Ember Ore, the Sacred Forge, the Ember Warden, and the level-20 talents at the level cap.
 12. **Cities and workers:** automation and the regional economy. Workers can start earlier, with the Longhouse's worker slots (step 9).

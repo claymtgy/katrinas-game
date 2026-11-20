@@ -13,15 +13,20 @@ namespace KatrinasGame;
 /// network carry it like any other item. Everything here is a pure function of what's worn.</summary>
 public static class Gear
 {
-    public const string Head = "head", Body = "body", Hands = "hands", Feet = "feet", Cloak = "cloak", Charm = "charm";
-    public static readonly string[] Slots = { Head, Body, Hands, Feet, Cloak, Charm };
+    public const string Head = "head", Body = "body", Hands = "hands", Feet = "feet", Cloak = "cloak", Charm = "charm", OffHand = "offhand";
+    public static readonly string[] Slots = { Head, Body, Hands, Feet, Cloak, Charm, OffHand };
+    /// <summary>The armour slots (everything but the off hand).</summary>
+    public static readonly string[] ArmourSlots = { Head, Body, Hands, Feet, Cloak, Charm };
 
     /// <summary>Armour A cuts damage by A / (A + ArmorScale).</summary>
     public const float ArmorScale = 40f;
     public const float HeavyRegenPenalty = 0.05f;
 
     // Perks on the base items (ItemDef.Perk / PerkAmount).
-    public const string PerkGrip = "grip", PerkRegen = "regen", PerkFeather = "feather", PerkMight = "might", PerkVigor = "vigor";
+    public const string PerkGrip = "grip", PerkRegen = "regen", PerkFeather = "feather", PerkMight = "might", PerkVigor = "vigor", PerkGuard = "guard";
+
+    /// <summary>A shield (perk "guard", amount = share off the guard's stamina cost) also widens the parry window by this.</summary>
+    public const float ShieldParryBonus = 0.12f;
 
     /// <summary>Enchanting at a Rune Altar.</summary>
     public const string AltarStation = "rune_altar";
@@ -45,7 +50,7 @@ public static class Gear
 
     public static string SlotName(string slot) => slot switch
     {
-        Head => "Head", Body => "Body", Hands => "Hands", Feet => "Feet", Cloak => "Cloak", Charm => "Charm", _ => slot,
+        Head => "Head", Body => "Body", Hands => "Hands", Feet => "Feet", Cloak => "Cloak", Charm => "Charm", OffHand => "Off hand", _ => slot,
     };
 
     // ------------------------------------------------------------------ ids
@@ -99,6 +104,12 @@ public static class Gear
 
     public static float MeleeDamageMult(PlayerController p) => 1f + PerkTotal(p, PerkMight);
 
+    /// <summary>Shield: blocks cost this much of their usual stamina.</summary>
+    public static float GuardCostMult(PlayerController p) => Mathf.Max(0.3f, 1f - PerkTotal(p, PerkGuard));
+
+    /// <summary>Shield: extra seconds in which a raised guard parries.</summary>
+    public static float ParryBonus(PlayerController p) => HasPerk(p, PerkGuard) ? ShieldParryBonus : 0f;
+
     public static float ThornsShare(PlayerController p) => 0.2f * EnchantCount(p, Thorns);
 
     public static float LeechShare(PlayerController p) => 0.06f * EnchantCount(p, Leech);
@@ -121,6 +132,7 @@ public static class Gear
         if (climb < 0.999f) lines.Add($"Climbing costs {(1f - climb) * 100f:0}% less{(dry ? ", even wet" : "")}");
         float might = MeleeDamageMult(p) - 1f;
         if (might > 0.001f) lines.Add($"+{might * 100f:0}% melee damage");
+        if (HasPerk(p, PerkGuard)) lines.Add($"Blocks cost {(1f - GuardCostMult(p)) * 100f:0}% less, parry window +{ShieldParryBonus * 1000f:0} ms");
         if (ThornsShare(p) > 0) lines.Add($"Thorns {ThornsShare(p) * 100f:0}%");
         if (LeechShare(p) > 0) lines.Add($"Leeching {LeechShare(p) * 100f:0}%");
         return lines;
@@ -151,6 +163,7 @@ public static class Gear
             if (c.WornColor.A > 0 && a.Body == Appearance.Knight) a.Outfit = Hex(c.WornColor);
             a.CapeColor = c.WornColor.A > 0 ? Hex(c.WornColor) : "";
         }
+        a.Shield = worn.TryGetValue(OffHand, out var shield) && ItemDb.Get(shield) is { } sh ? Hex(sh.WornColor.A > 0 ? sh.WornColor : sh.IconColor) : "";
         return a;
     }
 

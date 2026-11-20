@@ -276,7 +276,7 @@ public abstract partial class Enemy : CharacterBody3D
         Velocity = v;
         MoveAndSlide();
 
-        GlobalPosition = Wildlife.ClampTo(GlobalPosition, Bounds);
+        GlobalPosition = Wildlife.ClampTo(GlobalPosition, Bounds, MinY);
 
         float flatSpeed = Flat(Velocity).Length();
         if (faceYaw == null && flatSpeed > 0.4f) faceYaw = YawOf(Flat(Velocity));
@@ -394,6 +394,14 @@ public abstract partial class Enemy : CharacterBody3D
     /// <summary>Everyone: the attack telegraph (windup then strike).</summary>
     public abstract void PlayAttack();
     public virtual void PlayStun() { }
+    /// <summary>Everyone: a special move's tell (the Queen's wing-gale).</summary>
+    public virtual void PlaySpecial() { }
+
+    /// <summary>Server: one of our strikes reached a player (after blocks and parries): goats butt them flying.</summary>
+    public virtual void OnStrike(PlayerController p, Net.HitResult result) { }
+
+    /// <summary>Lowest a body may go (the cloud sea under the spires is far below the plateau).</summary>
+    protected virtual float MinY => -1f;
     protected abstract void Animate(float dt);
     protected abstract void FlashHit();
     protected abstract void PlayDeath();
@@ -414,6 +422,9 @@ public abstract partial class Enemy : CharacterBody3D
         "boar" => Boar.Create(netId, group, pos, yaw, maxHealth, damage),
         "crawler" => Crawler.Create(netId, group, pos, yaw, maxHealth, damage, mother: false),
         "crawler_mother" => Crawler.Create(netId, group, pos, yaw, maxHealth, damage, mother: true),
+        "storm_harpy" => Harpy.Create(netId, group, pos, yaw, maxHealth, damage, Harpy.Variant.Storm),
+        "harpy_queen" => Harpy.Create(netId, group, pos, yaw, maxHealth, damage, Harpy.Variant.Queen),
+        "goat" => Goat.Create(netId, group, pos, yaw, maxHealth, damage),
         _ => null,
     };
 }

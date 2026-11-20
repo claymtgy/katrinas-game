@@ -137,6 +137,7 @@ public partial class HomeCliffs
         }
 
         BuildTraderStall(root);
+        MarketStalls(root);
 
         var board = new InfoSign
         {
@@ -229,6 +230,7 @@ public partial class HomeCliffs
                 var pos = start + step * (i + 0.5f);
                 var piece = Prop(Models.Village(isDoor ? door : isWindow ? window : wall), Vector3.Zero, rotY, 1f, house);
                 piece.Position = pos;
+                if (isWindow) WindowGlow(piece);
                 if (isDoor && !open)
                 {
                     var leaf = Prop(Models.Village("Door_1_Round"), Vector3.Zero, rotY, 1f, house);
@@ -260,11 +262,12 @@ public partial class HomeCliffs
             for (float z = -hd + 1; z < hd; z += 2)
                 Prop(Models.Village("Floor_WoodDark"), Vector3.Zero, 0, 1f, house).Position = new Vector3(x, 0.02f, z);
         string roof = w >= 4 ? (d >= 4 ? "Roof_RoundTiles_8x8" : "Roof_RoundTiles_8x8") : (d >= 4 ? "Roof_RoundTiles_6x8" : "Roof_RoundTiles_6x6");
-        Prop(Models.Village(roof), Vector3.Zero, 0, 1f, house).Position = new Vector3(0, 3.12f, 0);
+        SlateRoof(Prop(Models.Village(roof), Vector3.Zero, 0, 1f, house)).Position = new Vector3(0, 3.12f, 0);
         string gable = w >= 4 ? "Roof_Front_Brick8" : "Roof_Front_Brick6";
         Prop(Models.Village(gable), Vector3.Zero, 0, 1f, house).Position = new Vector3(0, 3.12f, hd);
         Prop(Models.Village(gable), Vector3.Zero, Mathf.Pi, 1f, house).Position = new Vector3(0, 3.12f, -hd);
         Prop(Models.Village("Prop_Chimney"), Vector3.Zero, 0, 0.8f, house).Position = new Vector3(hw * 0.5f, 4.2f, -hd * 0.4f);
+        Smoke(house, new Vector3(hw * 0.5f, 6.8f, -hd * 0.4f));
 
         if (!open)
         {
@@ -345,7 +348,7 @@ public partial class HomeCliffs
             RemoveChild(_home);
             _home.QueueFree();
         }
-        _home = tier >= 2 ? BuildCottage() : BuildShackTier();
+        _home = tier >= 3 ? BuildLonghouse() : tier >= 2 ? BuildCottage() : BuildShackTier();
     }
 
     private void OnHomeTierChanged(int tier) => BuildHome(tier);
@@ -365,6 +368,42 @@ public partial class HomeCliffs
         hearth.Rotation = new Vector3(0, -Mathf.Pi / 2f, 0);
         house.AddChild(hearth);
         hearth.AddStack(3.3f);
+        return house;
+    }
+
+    /// <summary>Home tier 3 (the Storm Harpy Queen's blueprint): a long brick hall on the cottage's
+    /// spot, four beds down the sides, a long table, a hearth at the east end, and two bare bunks
+    /// kept for the workers who come later (GDD §14).</summary>
+    private Node3D BuildLonghouse()
+    {
+        var house = House(this, HomeUpgradeBoard.CottageCenter, 4, 3, "UnevenBrick", 10, open: true, name: "Longhouse");
+        AddBed(house, "Bed", new Vector3(-3.0f, 0.2f, -1.8f));
+        AddBed(house, "Bed2", new Vector3(-1.6f, 0.2f, -1.8f));
+        AddBed(house, "Bed3", new Vector3(0.8f, 0.2f, -1.8f));
+        AddBed(house, "Bed4", new Vector3(-3.0f, 0.2f, 1.6f));
+        // The long table and its benches down the middle.
+        Visual(new BoxMesh { Size = new Vector3(3.2f, 0.1f, 0.9f) }, Mat(Wood), new Vector3(0.4f, 0.8f, 0.2f), Vector3.Zero, house);
+        foreach (float x in new[] { -1f, 1.8f })
+            Visual(new BoxMesh { Size = new Vector3(0.12f, 0.78f, 0.7f) }, Mat(WoodDark), new Vector3(x, 0.39f, 0.2f), Vector3.Zero, house);
+        foreach (float z in new[] { -0.55f, 0.95f })
+            Visual(new BoxMesh { Size = new Vector3(3f, 0.08f, 0.32f) }, Mat(WoodDark), new Vector3(0.4f, 0.45f, z), Vector3.Zero, house);
+        // Two bare bunks (frames, no bedding) waiting for workers.
+        foreach (float x in new[] { 2.3f, 3.3f })
+        {
+            Visual(new BoxMesh { Size = new Vector3(0.8f, 0.06f, 1.9f) }, Mat(Wood), new Vector3(x, 0.45f, -1.9f), Vector3.Zero, house);
+            Visual(new BoxMesh { Size = new Vector3(0.8f, 0.06f, 1.9f) }, Mat(Wood), new Vector3(x, 1.35f, -1.9f), Vector3.Zero, house);
+            Visual(new BoxMesh { Size = new Vector3(0.08f, 1.6f, 0.08f) }, Mat(WoodDark), new Vector3(x - 0.36f, 0.8f, -1.0f), Vector3.Zero, house);
+        }
+        Prop(Models.Village("Prop_Crate"), Vector3.Zero, 0.3f, 0.7f, house).Position = new Vector3(3.2f, 0, 1.8f);
+        var hearth = Hearth.Create();
+        hearth.Position = new Vector3(3.7f - Hearth.Depth / 2f, 0.02f, 0.3f);
+        hearth.Rotation = new Vector3(0, -Mathf.Pi / 2f, 0);
+        house.AddChild(hearth);
+        hearth.AddStack(3.3f);
+        // Banners of the spires' blue cloth over the door.
+        foreach (float x in new[] { -2.2f, 2.2f })
+            Visual(new BoxMesh { Size = new Vector3(0.6f, 1.2f, 0.04f) }, StyleMaterials.Toon(new Color(0.35f, 0.62f, 0.9f), 0.3f),
+                new Vector3(x, 2.2f, 3.15f), Vector3.Zero, house);
         return house;
     }
 
@@ -393,5 +432,50 @@ public partial class HomeCliffs
         Visual(new BoxMesh { Size = new Vector3(0.12f, 1.6f, 0.12f) }, Mat(WoodDark), new Vector3(0.6f, 0.8f, 0), Vector3.Zero, board);
         Visual(new BoxMesh { Size = new Vector3(1.4f, 0.8f, 0.06f) }, Mat(new Color(0.85f, 0.8f, 0.68f)), new Vector3(0, 1.3f, 0), Vector3.Zero, board);
         board.AddChild(new Label3D { Text = "HOME PLANS", Position = new Vector3(0, 1.45f, 0.05f), FontSize = 36, PixelSize = 0.006f, Modulate = new Color(0.2f, 0.15f, 0.3f) });
+    }
+
+    // ================================================================== slate roofs
+
+    /// <summary>The kit's roof tiles are orange terracotta; the concept art (and the palette) wants
+    /// dark blue-grey slate. Keep the tile texture's light and shade, but recolour it.</summary>
+    private const string SlateShader = @"shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform vec3 slate : source_color = vec3(0.3, 0.34, 0.46);
+void fragment() {
+    vec3 c = texture(tex, UV).rgb;
+    float l = dot(c, vec3(0.3, 0.59, 0.11));
+    ALBEDO = slate * (0.45 + l * 1.3);
+    ROUGHNESS = 0.85;
+    NORMAL_MAP = texture(normal_tex, UV).rgb;
+}";
+
+    private static readonly Dictionary<Material, ShaderMaterial> _slate = new();
+    private static Shader _slateShader;
+
+    private static Node3D SlateRoof(Node3D roof)
+    {
+        foreach (var node in roof.FindChildren("*", "MeshInstance3D", true, false))
+        {
+            var mi = (MeshInstance3D)node;
+            if (mi.Mesh == null) continue;
+            for (int i = 0; i < mi.Mesh.GetSurfaceCount(); i++)
+            {
+                if (mi.Mesh.SurfaceGetMaterial(i) is not BaseMaterial3D m) continue;
+                bool tiles = m.ResourceName.Contains("RoundTiles") || (m.AlbedoTexture?.ResourcePath.Contains("RoundTiles") ?? false);
+                if (!tiles) continue;
+                if (!_slate.TryGetValue(m, out var sm))
+                {
+                    _slateShader ??= new Shader { Code = SlateShader };
+                    sm = new ShaderMaterial { Shader = _slateShader };
+                    sm.SetShaderParameter("tex", m.AlbedoTexture);
+                    sm.SetShaderParameter("normal_tex", m.NormalTexture);
+                    _slate[m] = sm;
+                }
+                mi.SetSurfaceOverrideMaterial(i, sm);
+            }
+        }
+        return roof;
     }
 }

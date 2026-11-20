@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RecipeDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/RecipeDef.cs" id="1_recipe"]
+
+[resource]
+script = ExtResource("1_recipe")
+Id = "bellows_iron_ingot"
+DisplayName = "Iron Ingots (bellows)"
+Station = "bellows"
+Inputs = {"iron_ore": 2, "charcoal": 1}
+OutputItem = "iron_ingot"
+OutputCount = 3
+SortOrder = 60

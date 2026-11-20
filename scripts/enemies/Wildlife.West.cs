@@ -121,12 +121,18 @@ public partial class Wildlife
         return false;
     }
 
-    public GDict SaveWest() => new() { ["herds"] = SaveSites(_herds), ["nests"] = SaveSites(_nests) };
+    public GDict SaveWest()
+    {
+        var d = new GDict { ["herds"] = SaveSites(_herds), ["nests"] = SaveSites(_nests) };
+        SaveSpires(d); // the spire sites ride along (Wildlife.Spires.cs)
+        return d;
+    }
 
     public void LoadWest(GDict d)
     {
         LoadSites(_herds, d != null && d.TryGetValue("herds", out var h) ? h.AsGodotArray() : null);
         LoadSites(_nests, d != null && d.TryGetValue("nests", out var n) ? n.AsGodotArray() : null);
+        LoadSpires(d);
     }
 
     private static GArray SaveSites(Camp[] sites)

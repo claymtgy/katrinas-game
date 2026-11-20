@@ -533,7 +533,8 @@ void fragment() {
         _prompt.Text = gs.UiOpen ? ""
             : rescue != null ? $"Hold {Gamepad.ButtonName("interact")} to revive {rescue.DisplayName}"
                                + (rescue.ReviveProgress > 0.01f ? $"  ({rescue.ReviveProgress * 100f:0}%)" : "")
-            : target != null ? target.InteractPrompt : "";
+            : target != null ? target.InteractPrompt
+            : player.Interactor.GrappleTarget >= 0 ? "Grapple to the anchor ring" : "";
         UpdateDowned(player);
         _promptRow.Visible = _prompt.Text != "";
 
@@ -987,7 +988,7 @@ void fragment() {
         grid.AddThemeConstantOverride("h_separation", 8);
         grid.AddThemeConstantOverride("v_separation", 8);
         doll.AddChild(grid);
-        string[] layout = { "", Gear.Head, MainHand, Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, "", Gear.Feet };
+        string[] layout = { Gear.OffHand, Gear.Head, MainHand, Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, "", Gear.Feet };
         foreach (var slotId in layout)
         {
             if (slotId == "") { grid.AddChild(new Control { CustomMinimumSize = new Vector2(84, 84) }); continue; }

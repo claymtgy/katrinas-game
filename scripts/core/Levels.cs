@@ -38,15 +38,19 @@ public static class Levels
         "boar" => 5,
         "crawler" => 6,
         "crawler_mother" => 10,
+        "storm_harpy" => 7,
+        "goat" => 5,
+        "harpy_queen" => 12,
         _ => 4,
     };
 
-    public static bool IsBoss(string kind) => kind is "captain" or "crawler_mother";
+    public static bool IsBoss(string kind) => kind is "captain" or "crawler_mother" or "harpy_queen";
 
     /// <summary>XP for a boss the first time: the bandit captain, then 100 more each region.</summary>
     public static int BossXp(string kind) => kind switch
     {
         "crawler_mother" => Boss + 100,
+        "harpy_queen" => Boss + 200,
         _ => Boss,
     };
 
@@ -57,6 +61,9 @@ public static class Levels
         "boar" => "wild boar",
         "crawler" => "cave crawler",
         "crawler_mother" => "Crawler Mother",
+        "storm_harpy" => "storm harpy",
+        "goat" => "cliff goat",
+        "harpy_queen" => "Storm Harpy Queen",
         _ => kind,
     };
 

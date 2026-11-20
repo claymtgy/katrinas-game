@@ -26,6 +26,8 @@ public sealed class Appearance
     /// <summary>Worn gear's look (Gear.Dress), never saved or sent: a cap's colour on the Rogue
     /// body ("" = none), and the cape's colour ("" = the outfit's).</summary>
     public string HeadGear = "", CapeColor = "";
+    /// <summary>A shield in the off hand (its colour, "" none): from worn gear, never sent or saved.</summary>
+    public string Shield = "";
 
     /// <summary>False in scripted tests, so they never overwrite the player's real settings.</summary>
     public static bool Persist { get; set; } = true;
@@ -58,6 +60,8 @@ public sealed class Appearance
         string cape = Body == Knight ? "Knight_Cape" : "Rogue_Cape";
         if (!Cape) hidden = [.. hidden, cape];
         if (Body == Knight && !Helmet) hidden = [.. hidden, "Knight_Helmet"];
+        // The Knight carries the kit's own round shield when one is worn.
+        if (Body == Knight && Shield != "") hidden = System.Array.FindAll(hidden, h => h != "Round_Shield");
         return hidden;
     }
 

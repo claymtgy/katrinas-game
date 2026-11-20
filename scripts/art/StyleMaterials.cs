@@ -35,6 +35,70 @@ void fragment() {
     EMISSION = rim_color * sun_color.rgb * pow(facing, 3.0) * toward_sun * rim_strength * (0.15 + 0.85 * low_sun);
 }";
 
+    /// <summary>Cliff rock (the concept art's basalt): mid slate-violet faces, each facet a slightly
+    /// different value; facets facing the sun go warm peach (strongest at golden hour), shaded ones
+    /// stay cool; moss creeps over the flat tops. South of the plateau (the vale) the rock turns to
+    /// tan sandstone, as in the Ashby concept. Vertex colour (per basalt column) shades it too.</summary>
+    public const string CliffShader = @"shader_type spatial;
+render_mode diffuse_toon, specular_disabled;
+global uniform vec3 sun_dir;
+global uniform vec4 sun_color;
+global uniform float wetness;
+global uniform float night;
+uniform vec3 slate : source_color = vec3(0.34, 0.32, 0.44);
+uniform vec3 slate_dark : source_color = vec3(0.16, 0.15, 0.23);
+uniform vec3 sand : source_color = vec3(0.6, 0.48, 0.38);
+uniform vec3 sand_dark : source_color = vec3(0.32, 0.25, 0.24);
+uniform vec3 warm : source_color = vec3(1.0, 0.68, 0.48);
+uniform vec3 moss : source_color = vec3(0.32, 0.42, 0.24);
+uniform float moss_amount = 1.0;
+uniform vec3 rim_color : source_color = vec3(1.0, 0.55, 0.35);
+uniform float rim_strength = 0.35;
+varying vec3 wn;
+varying vec3 wp;
+float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float noise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(vec3(i, 1.0)), b = hash(vec3(i + vec2(1.0, 0.0), 1.0));
+    float c = hash(vec3(i + vec2(0.0, 1.0), 1.0)), d = hash(vec3(i + vec2(1.0, 1.0), 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+void vertex() {
+    wn = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+    wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+    // Each flat facet gets its own value, like strokes of a palette knife.
+    float facet = hash(floor(wn * 5.0 + 0.5) + floor(wp / 9.0) * 0.37);
+    float sandy = smoothstep(45.0, 110.0, wp.z) * (1.0 - smoothstep(60.0, 90.0, wp.x)); // the vale, not Falls Valley
+    vec3 lightc = mix(slate, sand, sandy);
+    vec3 darkc = mix(slate_dark, sand_dark, sandy);
+    vec3 col = mix(darkc, lightc, 0.45 + 0.55 * facet) * COLOR.rgb;
+    // Faint vertical streaking down the faces.
+    col *= 0.9 + 0.14 * noise(vec2((wp.x + wp.z) * 0.6, wp.y * 0.08));
+    // Warm where the sun strikes, cool in the shade.
+    vec3 sd = normalize(sun_dir);
+    float lit = smoothstep(0.05, 0.55, dot(wn, sd));
+    float low_sun = 1.0 - smoothstep(0.2, 0.75, sd.y);
+    col = mix(col, col * warm * 1.55, lit * (0.3 + 0.55 * low_sun) * (1.0 - night));
+    col = mix(col, col * vec3(0.88, 0.9, 1.12), (1.0 - lit) * 0.5);
+    // Moss on the flat tops, broken up.
+    float up = smoothstep(0.7, 0.88, wn.y);
+    float m = up * smoothstep(0.3, 0.5, noise(wp.xz * 0.3) * 0.7 + noise(wp.xz * 1.1) * 0.3) * moss_amount;
+    col = mix(col, moss * (0.85 + 0.3 * noise(wp.xz * 1.7)), m);
+    col *= 1.0 - wetness * 0.22;
+    ALBEDO = col;
+    ROUGHNESS = 1.0;
+    float facing = 1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+    float toward_sun = clamp(dot(wn, sd) * 0.5 + 0.5, 0.0, 1.0);
+    EMISSION = rim_color * sun_color.rgb * pow(facing, 3.0) * toward_sun * rim_strength * (0.15 + 0.85 * low_sun);
+}";
+
+    private static ShaderMaterial _cliff;
+    /// <summary>The shared cliff-rock material (all rock models and basalt clusters).</summary>
+    public static ShaderMaterial Cliff => _cliff ??= new ShaderMaterial { Shader = new Shader { Code = CliffShader } };
+
     /// <summary>Glowing blossom canopy: bright inner core, deeper pink edges, backlit.</summary>
     public const string BlossomShader = @"shader_type spatial;
 render_mode diffuse_lambert_wrap, specular_disabled;
@@ -392,7 +456,7 @@ void fragment() {
     {
         switch (key)
         {
-            case "Rock": return Rock(new Color(0.09f, 0.08f, 0.115f), new Color(0.2f, 0.19f, 0.26f));
+            case "Rock": return Cliff;
             case "Stone": return Rock(new Color(0.24f, 0.24f, 0.3f), new Color(0.36f, 0.36f, 0.42f), 0.6f, 0.3f);
             case "Bark": return Rock(new Color(0.11f, 0.065f, 0.075f), new Color(0.18f, 0.11f, 0.11f), 0.8f, 0.9f);
             case "Blossom": return new ShaderMaterial { Shader = new Shader { Code = BlossomShader } };

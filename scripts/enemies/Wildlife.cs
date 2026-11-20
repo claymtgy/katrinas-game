@@ -30,7 +30,7 @@ public partial class Wildlife : Node3D
     public const int SoloCampSize = 2;
     /// <summary>A cleared camp is re-occupied after this many days.</summary>
     public const int CampRespawnDays = 3;
-    public const int AnimAttack = 0, AnimStun = 1;
+    public const int AnimAttack = 0, AnimStun = 1, AnimSpecial = 2;
 
     /// <summary>The plateau and the vale, where ground enemies live (and the navmesh is baked).</summary>
     public const float WorldMinX = -56f, WorldMaxX = 56f, WorldMinZ = -27f, WorldMaxZ = 232f;
@@ -108,8 +108,8 @@ public partial class Wildlife : Node3D
     /// <summary>Full daylight: wolves give up and slink off.</summary>
     public static bool IsDay(float t) => t >= 0.24f && t < 0.76f;
 
-    public static Vector3 ClampTo(Vector3 p, Rect2 r) =>
-        new(Mathf.Clamp(p.X, r.Position.X, r.End.X), Mathf.Max(p.Y, -1f), Mathf.Clamp(p.Z, r.Position.Y, r.End.Y));
+    public static Vector3 ClampTo(Vector3 p, Rect2 r, float minY = -1f) =>
+        new(Mathf.Clamp(p.X, r.Position.X, r.End.X), Mathf.Max(p.Y, minY), Mathf.Clamp(p.Z, r.Position.Y, r.End.Y));
 
     public override void _EnterTree() => Instance = this;
 
@@ -135,6 +135,7 @@ public partial class Wildlife : Node3D
             for (int i = 0; i < _camps.Length; i++) TendCamp(i);
             for (int i = 0; i < _roosts.Length; i++) TendRoost(i);
             TendWest();
+            TendSpires();
         }
 
         // Raids come at dusk.
@@ -237,7 +238,7 @@ public partial class Wildlife : Node3D
         RemoveChild(e);
         e.QueueFree();
         foreach (var peer in Net.Instance.JoinedPeers) RpcId(peer, MethodName.C_Despawn, id);
-        if ((e.Group < CampGroupBase || (e.Group >= RaidGroupBase && !IsWestGroup(e.Group))) && Enemies.Values.All(o => o.Group != e.Group)) _anchors.Remove(e.Group);
+        if ((e.Group < CampGroupBase || (e.Group >= RaidGroupBase && !IsWestGroup(e.Group) && !IsSpireGroup(e.Group))) && Enemies.Values.All(o => o.Group != e.Group)) _anchors.Remove(e.Group);
         if (e is Bandit { Raider: true } r && r.CarriedCount > 0 && r.Current != Enemy.State.Dead)
             Net.Instance.ToastAll($"A raider got away with {r.CarriedCount} items from the stockpile.");
     }
@@ -260,6 +261,7 @@ public partial class Wildlife : Node3D
         int roost = group - RoostGroupBase;
         if (roost >= 0 && roost < _roosts.Length) return _roosts[roost].Center;
         if (WestAnchor(group, out var west)) return west;
+        if (SpireAnchor(group, out var spire)) return spire;
         return _anchors.TryGetValue(group, out var a) ? a : fallback;
     }
 
@@ -474,7 +476,7 @@ public partial class Wildlife : Node3D
         var gs = GameState.Instance;
         if (target is StorageChest)
         {
-            var stacks = gs.Inventory.Items.Where(kv => kv.Value > 0 && kv.Key != "cottage_blueprint" && kv.Key != "bellows_plans").Select(kv => kv.Key).ToList();
+            var stacks = gs.Inventory.Items.Where(kv => kv.Value > 0 && kv.Key != "cottage_blueprint" && kv.Key != "bellows_plans" && kv.Key != "longhouse_blueprint").Select(kv => kv.Key).ToList();
             if (stacks.Count > 0)
             {
                 var id = stacks[_rng.RandiRange(0, stacks.Count - 1)];
@@ -621,8 +623,9 @@ public partial class Wildlife : Node3D
         if (result == Net.HitResult.Parried)
         {
             Parries++;
-            e.Stun(e is Bandit { Captain: true } or Crawler { Mother: true } ? 1.2f : 1.6f);
+            e.Stun(e is Bandit { Captain: true } or Crawler { Mother: true } or Harpy { Queen: true } ? 1.2f : 1.6f);
         }
+        e.OnStrike(p, result);
     }
 
     /// <summary>Server: loot into the shared stockpile; the body lingers a moment.</summary>
@@ -630,7 +633,8 @@ public partial class Wildlife : Node3D
     {
         e.ServerDropLoot(source);
         Net.Instance.ServerXpForKill(e);
-        if (IsWestGroup(e.Group)) CheckWest(e.Group);
+        if (IsSpireGroup(e.Group)) CheckSpires(e.Group);
+        else if (IsWestGroup(e.Group)) CheckWest(e.Group);
         else if (e.Group >= RaidGroupBase) CheckRaid(e.Group);
         else if (e.Group >= RoostGroupBase) CheckRoost(e.Group - RoostGroupBase);
         else if (e.Group >= CampGroupBase) CheckCamp(e.Group - CampGroupBase);
@@ -650,6 +654,7 @@ public partial class Wildlife : Node3D
     {
         if (Net.Instance.IsDedicated) return;
         if (anim == AnimAttack) e.PlayAttack();
+        else if (anim == AnimSpecial) e.PlaySpecial();
         else e.PlayStun();
     }
 

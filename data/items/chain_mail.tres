@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "chain_mail"
+DisplayName = "Chain Mail"
+Category = "armor"
+IconColor = Color(0.6, 0.62, 0.68, 1)
+Slot = "body"
+Armor = 16.0
+Heavy = true
+WornColor = Color(0.56, 0.58, 0.63, 1)
+WornTrim = Color(0.3, 0.26, 0.24, 1)
+SellPrice = 30

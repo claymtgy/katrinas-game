@@ -34,7 +34,8 @@ public partial class HomeCliffs : Node3D
     /// <summary>The painterly grass-and-rock ground shared by the plateau and the vale.</summary>
     private static ShaderMaterial _ground;
     private static ShaderMaterial GroundMaterial => _ground ??= StyleMaterials.Terrain(
-        new Color(0.11f, 0.1f, 0.14f), new Color(0.26f, 0.38f, 0.27f), new Color(0.36f, 0.46f, 0.26f), new Color(0.48f, 0.44f, 0.29f));
+        // Mossy, slightly cool greens (not lime), and an olive-gold for the sunlit patches.
+        new Color(0.11f, 0.1f, 0.14f), new Color(0.24f, 0.34f, 0.26f), new Color(0.34f, 0.42f, 0.26f), new Color(0.47f, 0.43f, 0.3f));
 
     private RandomNumberGenerator _rng;
     private int _resourceCount;
@@ -46,7 +47,7 @@ public partial class HomeCliffs : Node3D
     {
         float t = GameState.Instance.TimeOfDay;
         if (_fireflies != null) _fireflies.Emitting = t < 0.24f || t > 0.77f;
-        if (!Net.Instance.IsDedicated) TickMine();
+        if (!Net.Instance.IsDedicated) { TickMine(); TickSpires(); }
     }
 
     public override void _Ready()
@@ -87,6 +88,8 @@ public partial class HomeCliffs : Node3D
         BuildOreVeins();    // after everything else, so the other resource names don't shift
         BuildClay();
         BuildForestAndMine(); // the Forest Road and the Hollow Mine: own random numbers
+        BuildSpireCliffs();   // the Spire Cliffs over the clouds: own random numbers
+        BuildGreenery();      // art pass: bushes and trees against the cliffs: own random numbers
         ClearTrailsOfScatter();
 
         AddChild(new Weather { Name = "Weather" });
@@ -185,7 +188,9 @@ public partial class HomeCliffs : Node3D
             var body = Rock(pos, new Vector3(_rng.RandfRange(10, 24), h, _rng.RandfRange(10, 22)),
                 new Vector3(_rng.RandfRange(-0.1f, 0.1f), _rng.RandfRange(0, 3), _rng.RandfRange(-0.12f, 0.12f)),
                 _rng.Randf() < 0.5f ? Obsidian : Slate, collide: false);
-            Crag(pos + new Vector3(0, h / 2f - 4f, 0), _rng.RandfRange(12, 20), _rng.RandfRange(14, 28), on: body);
+            var crown = Crag(pos + new Vector3(0, h / 2f - 4f, 0), _rng.RandfRange(12, 20), _rng.RandfRange(14, 28), on: body);
+            // Made anyway (so the random numbers don't shift), but kept out of the Spire Cliffs.
+            if (InSpireField(pos, 14f)) { body.QueueFree(); crown?.QueueFree(); }
         }
         // Obsidian blades along the western cliff lip: the jagged silhouette left of the hero shot.
         for (int i = 0; i < 9; i++)
@@ -217,10 +222,20 @@ public partial class HomeCliffs : Node3D
     /// find the rock's real top from its mesh, sink the crown's base well into it, tilt it with the
     /// rock, and make its base a little narrower than the rock is at that depth (a wider crown
     /// overhangs and reads as a separate piece). Keeps the crown's height and spin.</summary>
+    /// <summary>Dress a box (a spire, the mesa) as a block of basalt columns: hide its mesh and put
+    /// columns of the same size in its place. The box keeps its collider.</summary>
+    private void BasaltDress(Node3D block, Vector3 size, int seed)
+    {
+        if (block.GetChildCount() > 0 && block.GetChild(0) is MeshInstance3D boxMesh) boxMesh.Visible = false;
+        block.AddChild(Basalt.Plateau(size, seed));
+    }
+
     private void SeatCrown(Node3D crown, Node3D rock, float depthRatio)
     {
         var mi = Models.FindMesh(rock);
         if (mi?.Mesh == null) return;
+        // Basalt clusters have their own broken tops: no crown (made anyway, for the random numbers).
+        if (mi.Name == "Basalt") { crown.Visible = false; crown.QueueFree(); return; }
         var toHere = RelativeTo(mi, this);
         var verts = mi.Mesh.GetFaces();
         if (verts.Length == 0) return;
@@ -474,9 +489,10 @@ void fragment() {
     float flow = fract(UV.y * (3.0 + hash(col) * 3.0) - TIME * speed * (0.7 + hash(col + 7.0) * 0.6) + hash(col + 3.0) * 10.0);
     float streak = smoothstep(0.5, 1.0, flow);
     float edge = smoothstep(0.0, 0.12, UV.x) * smoothstep(1.0, 0.88, UV.x);
-    float foam = smoothstep(0.85, 1.0, UV.y);
+    float foam = smoothstep(0.75, 0.95, UV.y);
     ALBEDO = mix(base_color.rgb, streak_color.rgb, clamp(streak * 0.8 + foam, 0.0, 1.0)) * 1.15;
-    ALPHA = base_color.a * edge * (0.65 + streak * 0.35);
+    // The foot of the fall dissolves into its own spray rather than ending in a hard edge.
+    ALPHA = base_color.a * edge * (0.65 + streak * 0.35) * (1.0 - smoothstep(0.88, 1.0, UV.y) * 0.85);
 }",
         };
         var mat = new ShaderMaterial { Shader = shader };
@@ -494,6 +510,7 @@ void fragment() {
         var basePos = center - new Vector3(0, size.Y / 2f, 0);
         Particles(60, 4f, new Vector3(size.X * 0.6f, 1, 2), basePos + Vector3.Up,
             new Color(0.95f, 0.97f, 1f, 0.35f), 1.5f, 3.5f, new Vector3(0, 0.6f, 0));
+        Spray(basePos, size.X);
         // The roar: loudest at the plunge pool, carries further for the big falls.
         Sfx.Loop(this, "amb_waterfall", basePos + Vector3.Up * 2f, Mathf.Lerp(-6f, 4f, Mathf.Clamp(size.X * size.Y / 500f, 0f, 1f)), 40f + size.X * 8f, 3f + size.X);
     }
@@ -751,7 +768,9 @@ void fragment() {
         parent ??= this;
         var path = Models.AllRocks[_rng.RandiRange(0, Models.AllRocks.Length - 1)];
         size *= 1.15f;
-        Node3D node = collide ? Models.RockBody(path, size) : Models.Instance(path);
+        // Tall rocks are columnar basalt clusters (the concept art's cliffs); the rest stay rock models.
+        Node3D node = Basalt.Suits(size) ? Basalt.Make(Basalt.VariantAt(pos), size, collide)
+            : collide ? Models.RockBody(path, size) : Models.Instance(path);
         if (!collide) node.Scale = size;
         node.Position = pos;
         node.Rotation = rot;
