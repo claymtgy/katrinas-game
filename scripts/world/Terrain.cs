@@ -12,8 +12,13 @@ namespace KatrinasGame;
 /// The world is still laid out at y = 0, so the hills flatten out to 0 under everything that
 /// needs flat ground (<see cref="FlattenDisc"/>, <see cref="FlattenLine"/>, <see cref="FlattenRect"/>):
 /// roads run along the valley floors, and villages, camps and ponds sit on level ground. Other
-/// regions that still have ground of their own (Falls Valley, the forest, the mine) are
-/// <see cref="Hole"/>s: the hills ease down to 0 at their edges and skip them.
+/// regions that still have ground of their own (the forest, the mine) are <see cref="Hole"/>s:
+/// the hills ease down to 0 at their edges and skip them.
+///
+/// Besides the country (<see cref="Domain"/>) there can be other stretches of land (<see cref="Land"/>):
+/// Falls Valley's floor is one, its hills gentler (<see cref="Calm"/>) and rising into scree at the
+/// foot of its cliffs (<see cref="Wall"/>). It's all one height function, so where two stretches
+/// meet the ground runs on without a seam.
 ///
 /// Built in chunks (<see cref="ChunkCells"/> cells of <see cref="Cell"/> metres), each a mesh in the
 /// painterly ground material and a trimesh collider on the world layer (enemies' navmesh too).</summary>
@@ -34,6 +39,12 @@ public partial class Terrain : Node3D
     private const float AmpNear = 18f, AmpFar = 170f;
 
     private static readonly List<Rect2> Holes = new();
+    /// <summary>Stretches of land besides the country (Falls Valley's floor).</summary>
+    private static readonly List<Rect2> Lands = new();
+    /// <summary>Where the hills are lower (scale), easing back to full height 30 m outside.</summary>
+    private static readonly List<(Rect2 R, float Scale)> Calms = new();
+    /// <summary>Ground that rises against a cliff along a line: height at the line, and how far out.</summary>
+    private static readonly List<(Vector2 A, Vector2 B, float Height, float Reach)> Walls = new();
     private static readonly List<(Vector2 C, float Inner, float Outer)> Discs = new();
     private static readonly List<(Vector2 A, Vector2 B, float Inner, float Outer)> Lines = new();
     private static readonly List<(Rect2 R, float Outer)> Rects = new();
@@ -46,7 +57,7 @@ public partial class Terrain : Node3D
     /// <summary>Forget every flat zone and hole (the world is being built again).</summary>
     public static void Reset(int seed)
     {
-        Holes.Clear(); Discs.Clear(); Lines.Clear(); Rects.Clear(); RimEdges.Clear();
+        Holes.Clear(); Discs.Clear(); Lines.Clear(); Rects.Clear(); RimEdges.Clear(); Lands.Clear(); Calms.Clear(); Walls.Clear();
         _hills = new FastNoiseLite
         {
             Seed = seed, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth, Frequency = 1f / 210f,
@@ -67,6 +78,20 @@ public partial class Terrain : Node3D
     public static void FlattenRect(Rect2 r, float outer) => Rects.Add((r, outer));
     /// <summary>This stretch of the domain's north edge rises into mountains.</summary>
     public static void RimEdge(Vector2 a, Vector2 b) => RimEdges.Add((a, b));
+    /// <summary>More land for the hills to cover (x, z), besides <see cref="Domain"/>.</summary>
+    public static void Land(Rect2 r) => Lands.Add(r);
+    /// <summary>Lower hills over a rectangle: <paramref name="scale"/> of their height.</summary>
+    public static void Calm(Rect2 r, float scale) => Calms.Add((r, scale));
+    /// <summary>The ground banks up against a cliff along a - b: <paramref name="height"/> at the
+    /// line, down to nothing <paramref name="reach"/> away (roads and flat zones still win).</summary>
+    public static void Wall(Vector2 a, Vector2 b, float height, float reach) => Walls.Add((a, b, height, reach));
+
+    private static bool OnLand(Vector2 p)
+    {
+        if (Domain.HasPoint(p)) return true;
+        foreach (var l in Lands) if (l.HasPoint(p)) return true;
+        return false;
+    }
 
     /// <summary>Every flat zone and hole is in: heights can be asked for from now on.</summary>
     public static void Lock() => _ready = true;
@@ -79,7 +104,7 @@ public partial class Terrain : Node3D
     /// <summary>True when (x, z) is on the hills' own ground (not outside them, or in a hole).</summary>
     public static bool Covers(float x, float z)
     {
-        if (!Domain.HasPoint(new Vector2(x, z))) return false;
+        if (!OnLand(new Vector2(x, z))) return false;
         foreach (var h in Holes) if (h.HasPoint(new Vector2(x, z))) return false;
         return true;
     }
@@ -87,7 +112,7 @@ public partial class Terrain : Node3D
     private static float RawHeight(float x, float z)
     {
         var p = new Vector2(x, z);
-        if (!Domain.HasPoint(p)) return 0f;
+        if (!OnLand(p)) return 0f;
         foreach (var h in Holes) if (h.HasPoint(p)) return 0f;
 
         // How flat (0) or free (1) the ground is here, and how far the nearest road or village is.
@@ -115,6 +140,7 @@ public partial class Terrain : Node3D
 
         // Rolling hills, low by the roads and taller out in the country.
         float amp = Mathf.Lerp(NearAmp, FarAmp, Smooth(AmpNear, AmpFar, near));
+        foreach (var (r, scale) in Calms) amp *= Mathf.Lerp(scale, 1f, Smooth(0f, 30f, RectDistance(p, r)));
         float n = _hills.GetNoise2D(x, z) * 0.5f + 0.5f;           // 0..1
         float hills = amp * Mathf.Pow(Mathf.Clamp(n * 1.3f - 0.12f, 0f, 1f), 1.35f);
         hills += _detail.GetNoise2D(x, z) * 1.2f * Smooth(0.2f, 1f, free);
@@ -126,6 +152,12 @@ public partial class Terrain : Node3D
         // Ridged noise breaks the ring into peaks and saddles instead of one smooth bank.
         float ridge = 1f - Mathf.Abs(_detail.GetNoise2D(x * 0.35f, z * 0.35f));
         float mountains = RimHeight * rim * rim * (0.45f + 0.75f * ridge * ridge);
+        // Scree banked against cliffs.
+        foreach (var (a, b, height, reach) in Walls)
+        {
+            float bank = 1f - Smooth(0f, reach, SegDistance(p, a, b));
+            mountains = Mathf.Max(mountains, height * bank * bank * (0.55f + 0.6f * ridge));
+        }
 
         return Mathf.Max(0f, hills + mountains) * free;
     }
@@ -152,10 +184,18 @@ public partial class Terrain : Node3D
     public void Build(Material material)
     {
         if (!_ready) Lock();
-        int nx = Mathf.RoundToInt(Domain.Size.X / ChunkSize), nz = Mathf.RoundToInt(Domain.Size.Y / ChunkSize);
-        for (int cz = 0; cz < nz; cz++)
-            for (int cx = 0; cx < nx; cx++)
+        // Chunks on the country's grid, out as far as every stretch of land goes.
+        var all = Domain;
+        foreach (var l in Lands) all = all.Merge(l);
+        int x0 = Mathf.FloorToInt((all.Position.X - Domain.Position.X) / ChunkSize), x1 = Mathf.CeilToInt((all.End.X - Domain.Position.X) / ChunkSize);
+        int z0 = Mathf.FloorToInt((all.Position.Y - Domain.Position.Y) / ChunkSize), z1 = Mathf.CeilToInt((all.End.Y - Domain.Position.Y) / ChunkSize);
+        for (int cz = z0; cz < z1; cz++)
+            for (int cx = x0; cx < x1; cx++)
+            {
+                var area = new Rect2(Domain.Position.X + cx * ChunkSize, Domain.Position.Y + cz * ChunkSize, ChunkSize, ChunkSize);
+                if (!area.Intersects(Domain) && !Lands.Exists(l => l.Intersects(area))) continue;
                 BuildChunk(cx, cz, material);
+            }
     }
 
     private void BuildChunk(int cx, int cz, Material material)

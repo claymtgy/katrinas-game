@@ -233,6 +233,22 @@ public partial class PlayerCombat : Node
         else if (def.ToolKind == "axe") _weapon = HeldModels.Axe(def.IconColor);
         else if (def.ToolKind == "pick") _weapon = HeldModels.Pickaxe(def.IconColor);
         else if (itemId.Contains("club")) _weapon = HeldModels.Club(def.IconColor);
+        else if (itemId.Contains("knife") || itemId.Contains("knives"))
+        {
+            _weapon = HeldModels.Knife(def.IconColor);
+            // Twin knives: the second one rides in the other hand (seen in third person).
+            if (itemId.Contains("knives") && !FirstPerson && _model?.LeftHandSlot is { } left && !IsArcher)
+            {
+                var off = HeldModels.Knife(def.IconColor.Darkened(0.1f));
+                off.Name = "OffhandKnife";
+                float slot = Mathf.Max(left.GlobalBasis.Scale.X, 0.0001f);
+                off.Scale = Vector3.One * (_model.TargetHeight * _model.Look.Height / 1.8f) / slot;
+                _weapon.TreeExiting += () => { if (IsInstanceValid(off)) off.QueueFree(); };
+                left.AddChild(off);
+            }
+        }
+        else if (itemId.Contains("staff")) _weapon = HeldModels.Staff(def.IconColor);
+        else if (itemId.Contains("mace")) _weapon = HeldModels.Mace(def.IconColor);
         else if (itemId.Contains("sword"))
         {
             var sword = Models.Instance(Models.Sword, style: false);

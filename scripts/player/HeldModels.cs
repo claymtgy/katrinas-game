@@ -164,4 +164,47 @@ public static class HeldModels
         Part(root, Rod(0.026f, 0.1f), Lashing, new Vector3(0, -0.02f, 0), Vector3.Zero);
         return root;
     }
+
+    /// <summary>A short knife: a wrapped grip, a little crossguard and a tapering blade.</summary>
+    public static Node3D Knife(Color blade)
+    {
+        var root = new Node3D { Name = "Knife" };
+        Part(root, Rod(0.019f, 0.12f), Lashing, new Vector3(0, 0.0f, 0), Vector3.Zero);
+        Part(root, Ball, Handle.Darkened(0.2f), new Vector3(0, -0.07f, 0), Vector3.Zero, Vector3.One * 0.024f);
+        Part(root, new BoxMesh { Size = new Vector3(0.09f, 0.016f, 0.03f) }, new Color(0.55f, 0.57f, 0.62f), new Vector3(0, 0.068f, 0), Vector3.Zero);
+        // The blade: a flat prism, point up, edge toward +X.
+        Part(root, new PrismMesh { Size = new Vector3(0.045f, 0.24f, 0.012f), LeftToRight = 0.15f }, blade,
+            new Vector3(0.004f, 0.196f, 0), Vector3.Zero, null, 0.6f);
+        return root;
+    }
+
+    /// <summary>A gnarled oak staff with an ember stone in its crook (it reads as a staff in either hand).</summary>
+    public static Node3D Staff(Color wood)
+    {
+        var root = new Node3D { Name = "Staff" };
+        Part(root, Rod(0.024f, 1.5f, 0.02f), wood, new Vector3(0, 0.35f, 0), Vector3.Zero);
+        Part(root, Rod(0.03f, 0.16f, 0.018f), wood.Darkened(0.15f), new Vector3(0.04f, 1.12f, 0), new Vector3(0, 0, -28));
+        Part(root, Rod(0.028f, 0.14f, 0.016f), wood.Darkened(0.1f), new Vector3(-0.035f, 1.14f, 0), new Vector3(0, 0, 32));
+        var stone = Part(root, Ball, new Color(1f, 0.55f, 0.2f), new Vector3(0, 1.17f, 0), Vector3.Zero, Vector3.One * 0.05f, 0.8f);
+        stone.AddChild(new OmniLight3D { LightColor = new Color(1f, 0.6f, 0.3f), LightEnergy = 0.5f, OmniRange = 2.2f, ShadowEnabled = false });
+        Part(root, Rod(0.029f, 0.12f), Lashing, new Vector3(0, -0.01f, 0), Vector3.Zero);
+        return root;
+    }
+
+    /// <summary>A flanged mace: a short haft and a round iron head ringed with flanges.</summary>
+    public static Node3D Mace(Color head)
+    {
+        var root = new Node3D { Name = "Mace" };
+        Part(root, Rod(0.022f, 0.52f, 0.02f), Handle, new Vector3(0, 0.2f, 0), Vector3.Zero);
+        Part(root, Ball, head, new Vector3(0, 0.5f, 0), Vector3.Zero, Vector3.One * 0.07f, 0.5f);
+        for (int i = 0; i < 6; i++)
+        {
+            float a = i * Mathf.Tau / 6f;
+            Part(root, new BoxMesh { Size = new Vector3(0.05f, 0.12f, 0.014f) }, head.Darkened(0.15f),
+                new Vector3(Mathf.Cos(a) * 0.065f, 0.5f, Mathf.Sin(a) * 0.065f), new Vector3(0, -Mathf.RadToDeg(a), 0));
+        }
+        Part(root, Ball, head.Lightened(0.2f), new Vector3(0, 0.58f, 0), Vector3.Zero, Vector3.One * 0.025f, 0.5f);
+        Part(root, Rod(0.026f, 0.1f), Lashing, new Vector3(0, -0.02f, 0), Vector3.Zero);
+        return root;
+    }
 }

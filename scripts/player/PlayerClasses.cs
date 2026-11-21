@@ -111,5 +111,16 @@ public static class PlayerClasses
 
     public static ClassDef Get(string id) => All.FirstOrDefault(c => c.Id == id) ?? Warrior;
 
+    /// <summary>The weapon each class starts with in hand (data/items): Warriors a sword, Rogues a
+    /// pair of knives, Wizards a staff, Healers a mace, Archers a knife for when things get close.</summary>
+    public static string StarterWeapon(string classId) => classId switch
+    {
+        RogueId => "rogue_knives",
+        WizardId => "oak_staff",
+        HealerId => "pilgrim_mace",
+        ArcherId => "hunting_knife",
+        _ => "soldiers_sword",
+    };
+
     public static bool IsValid(string id) => All.Any(c => c.Id == id);
 }

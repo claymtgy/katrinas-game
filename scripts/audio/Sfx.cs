@@ -62,6 +62,7 @@ public static class Sfx
             PitchScale = 1f + (float)GD.RandRange(-pitchVar, pitchVar),
             AttenuationFilterCutoffHz = 9000f,
             AttenuationFilterDb = -12f,
+            Bus = AudioSettings.EffectsBus,
         };
         root.AddChild(p);
         p.GlobalPosition = position;
@@ -78,6 +79,7 @@ public static class Sfx
             Stream = stream,
             VolumeDb = volumeDb,
             PitchScale = 1f + (float)GD.RandRange(-pitchVar, pitchVar),
+            Bus = AudioSettings.EffectsBus,
         };
         root.AddChild(p);
         p.Finished += p.QueueFree;
@@ -97,6 +99,7 @@ public static class Sfx
             MaxDistance = maxDistance,
             Position = localPos,
             AttenuationFilterCutoffHz = 6000f,
+            Bus = AudioSettings.AmbienceBus,
         };
         parent.AddChild(p);
         // Start each loop somewhere different so identical emitters don't phase.

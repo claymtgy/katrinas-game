@@ -33,9 +33,11 @@ public partial class HomeCliffs
 
         // Roads first: the hills keep level ground under every one of them.
         Trail(0.022f, 3.2f, SouthTrack, ruts: false, tone: Dirt.Darkened(0.05f));
+        WaysideTracks();
         ConfigureTerrain();
         BuildWaystone();
         ScatterCountry();
+        BuildWayside(); // after the scatter, so its resource names don't shift
     }
 
     /// <summary>Where the hills are level, and where other ground lies.</summary>
@@ -43,7 +45,7 @@ public partial class HomeCliffs
     {
         Terrain.Reset(Seed);
         // Regions that still have flat ground of their own.
-        Terrain.Hole(Regions.Move(new Rect2(60, 90, 144, 24), Regions.Falls)); // Falls Valley's south end
+        FallsTerrain(); // Falls Valley's floor is hills too
         Terrain.Hole(Regions.Move(new Rect2(-150, 166, 90, 68), Regions.West)); // the forest floor
         Terrain.Hole(new Rect2(MineBox.Position.X, MineBox.Position.Y, 96, 86)); // the mine
         // The plateau's own slab meets the hills along z = 90.
@@ -55,10 +57,12 @@ public partial class HomeCliffs
         foreach (var camp in Wildlife.CampSites) Terrain.FlattenDisc(camp, 22f, 46f);
         Terrain.FlattenDisc(ClayPond, 12f, 30f);
         Terrain.FlattenDisc(Waystone, 14f, 34f);
+        WaysideFlats();
         // The north edge rises into mountains, except where it meets the plateau and Falls Valley.
         Terrain.RimEdge(new Vector2(Terrain.Domain.Position.X, 90), new Vector2(-104, 90));
         Terrain.RimEdge(new Vector2(232, 90), new Vector2(Terrain.Domain.End.X, 90));
         Terrain.Lock();
+        FindWatchtowerHill();
     }
 
     /// <summary>Build the hills, then set everything laid out at y = 0 down on them.</summary>
@@ -75,7 +79,7 @@ public partial class HomeCliffs
             if (child is not Node3D n || n == terrain || n.Name == "Buildings") continue;
             if (n == _green || n == _country)
                 foreach (var g in n.GetChildren()) { if (g is Node3D gn) Seat(gn); }
-            else Seat(n);
+            else if (!_unseated.Contains(n)) Seat(n);
         }
     }
 
@@ -176,7 +180,7 @@ public partial class HomeCliffs
     {
         if (!Terrain.Covers(p.X, p.Z)) return false;
         if (Mathf.Abs(p.X - Regions.Vale.X) < 62 && p.Z > Regions.Vale.Z + 96 && p.Z < Regions.Vale.Z + 250) return false; // the vale (dressed already)
-        if (p.DistanceTo(AshbyCenter) < 52f || p.DistanceTo(Waystone) < 16f) return false;
+        if (p.DistanceTo(AshbyCenter) < 52f || p.DistanceTo(Waystone) < 16f || InWaysideClearing(p)) return false;
         foreach (var off in new[] { Vector3.Zero, new Vector3(3, 0, 0), new Vector3(-3, 0, 0), new Vector3(0, 0, 3), new Vector3(0, 0, -3) })
             if (OnPath(p + off)) return false;
         float h = Terrain.HeightAt(p);

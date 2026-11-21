@@ -464,6 +464,7 @@ public partial class Net : Node
             if (rec.TryGetValue("worn", out var worn)) p.SetWorn(Gear.FromDict(worn.AsGodotDictionary()));
             GameState.ApplyXpRecord(p, rec);
         }
+        else ServerGiveStarterWeapon(p); // a new character: their class's weapon in hand
         p.Pack.Changed += () => _packDirty.Add(id);
         GD.Print($"[Net] {name} (peer {id}) is in the world. {Gs.Players.Count}/{Config.MaxPlayers} players");
         foreach (var peer in _joined)
@@ -573,28 +574,46 @@ public partial class Net : Node
         var p = SenderPlayer();
         if (p == null) return;
         var a = Appearance.FromDict(look); // sanitised
-        if (a.Class != p.Look.Class)
+        bool newClass = a.Class != p.Look.Class;
+        if (newClass && (p.Health.IsDead || p.Downed))
         {
-            if (!Supplies.AtHome(p))
-            {
-                a.Class = p.Look.Class;
-                ToastTo(p.PeerId, "You can only change class at home.");
-            }
-            else
-            {
-                if (p.Vanished) ServerEndVanish(p);
-                p.Ability.ServerReadyAt = 0;
-                p.Ability2.ServerReadyAt = 0;
-                p.Ability3.ServerReadyAt = 0;
-                p.WarCryUntil = p.VenomUntil = 0;
-                p.CritUntil = 0;
-                ToastTo(p.PeerId, $"You are now a {PlayerClasses.Get(a.Class).Name}.");
-            }
+            a.Class = p.Look.Class;
+            ToastTo(p.PeerId, "You can't change class while you're down.");
+            newClass = false;
+        }
+        if (newClass)
+        {
+            if (p.Vanished) ServerEndVanish(p);
+            p.Ability.ServerReadyAt = 0;
+            p.Ability2.ServerReadyAt = 0;
+            p.Ability3.ServerReadyAt = 0;
+            p.WarCryUntil = p.VenomUntil = 0;
+            p.CritUntil = 0;
+            ToastTo(p.PeerId, $"You are now a {PlayerClasses.Get(a.Class).Name}.");
         }
         if (IsDedicated) p.Look = a; // (no body to rebuild, but later joiners get it)
         else p.SetLook(a);
         var clean = a.ToDict();
         foreach (var peer in _joined) RpcId(peer, MethodName.C_Look, p.PeerId, clean);
+        if (newClass) ServerGiveStarterWeapon(p);
+    }
+
+    /// <summary>New characters start with their class's weapon in hand (see PlayerClasses.StarterWeapon).
+    /// Off in the scripted tests, which count the stockpile's weapons exactly.</summary>
+    public static bool StarterWeapons = true;
+
+    /// <summary>Server: put the class's starter weapon in this player's hand: from the stockpile if
+    /// one is there, otherwise a new one (so a new class never leaves you empty-handed, and switching
+    /// back and forth doesn't pile up copies). Whatever they held goes to the stockpile.</summary>
+    public void ServerGiveStarterWeapon(PlayerController p)
+    {
+        if (!StarterWeapons || p == null) return;
+        string id = PlayerClasses.StarterWeapon(p.Class.Id);
+        if (ItemDb.Get(id) == null || p.Equipped == id) return;
+        bool fresh = !Gs.Inventory.Remove(id, 1);
+        if (p.Equipped != "") Gs.Inventory.Add(p.Equipped, 1);
+        SetEquipped(p, id);
+        ToastTo(p.PeerId, fresh ? $"You take up a {ItemDb.NameOf(id)}." : $"Equipped {ItemDb.NameOf(id)}");
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority)]

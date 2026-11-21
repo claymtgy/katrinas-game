@@ -53,9 +53,10 @@ public partial class CameraRig : Node3D
 
         if (e is InputEventMouseMotion motion && Input.MouseMode == Input.MouseModeEnum.Captured && !gs.UiOpen)
         {
-            RotateY(-motion.Relative.X * MouseSensitivity);
+            float sens = MouseSensitivity * GameplaySettings.MouseSensitivity;
+            RotateY(-motion.Relative.X * sens);
             var r = _pivot.Rotation;
-            r.X = Mathf.Clamp(r.X - motion.Relative.Y * MouseSensitivity, -1.45f, 1.3f);
+            r.X = Mathf.Clamp(r.X - motion.Relative.Y * sens * (GameplaySettings.InvertY ? -1f : 1f), -1.45f, 1.3f);
             _pivot.Rotation = r;
         }
         else if (e is InputEventMouseButton { Pressed: true } or InputEventJoypadButton { Pressed: true }
@@ -75,11 +76,12 @@ public partial class CameraRig : Node3D
     private float _shake, _shakeT;
 
     /// <summary>A short jolt of the camera (getting hit). Strength is roughly metres of wobble.</summary>
-    public void Shake(float strength) => _shake = Mathf.Max(_shake, strength);
+    public void Shake(float strength) { if (GameplaySettings.CameraShake) _shake = Mathf.Max(_shake, strength); }
 
     public override void _Process(double delta)
     {
         if (!_local) return;
+        if (!Mathf.IsEqualApprox(Camera.Fov, GameplaySettings.Fov)) Camera.Fov = GameplaySettings.Fov;
         if (_shake > 0f || Camera.HOffset != 0f)
         {
             _shakeT += (float)delta;
@@ -91,8 +93,9 @@ public partial class CameraRig : Node3D
         var gs = GameState.Instance;
         if (gs.UiOpen || Input.MouseMode != Input.MouseModeEnum.Captured) return;
         // Right stick look.
-        var look = Gamepad.LookDelta((float)delta);
+        var look = Gamepad.LookDelta((float)delta) * GameplaySettings.StickSensitivity;
         if (look == Vector2.Zero) return;
+        if (GameplaySettings.InvertY) look.Y = -look.Y;
         RotateY(-look.X);
         var r = _pivot.Rotation;
         r.X = Mathf.Clamp(r.X - look.Y, -1.45f, 1.3f);

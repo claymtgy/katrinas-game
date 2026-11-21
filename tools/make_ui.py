@@ -491,6 +491,49 @@ def icon_club(ic):
         ic.fill(sd_circle(x, y, cx, cy, 2.4), (0.38, 0.38, 0.42), outline=1.0)
 
 
+def _knife(ic, tip, base, blade=(0.8, 0.83, 0.88), grip=(0.36, 0.22, 0.12)):
+    """One short knife from its pommel end (base) to its point (tip)."""
+    x, y = ic.x, ic.y
+    dx, dy = tip[0] - base[0], tip[1] - base[1]
+    n = (dx * dx + dy * dy) ** 0.5
+    ux, uy = dx / n, dy / n
+    px, py = -uy, ux
+    hilt = (base[0] + ux * 13, base[1] + uy * 13)
+    ic.fill(sd_poly(x, y, [tip, (hilt[0] + px * 4, hilt[1] + py * 4), (hilt[0] - px * 2.5, hilt[1] - py * 2.5)]), blade, dome=0.5)
+    ic.line(sd_segment(x, y, hilt[0] + ux * 2, hilt[1] + uy * 2, tip[0] - ux * 4, tip[1] - uy * 4, 0.5), (1, 1, 1), 0.5)
+    ic.fill(sd_segment(x, y, hilt[0] + px * 5, hilt[1] + py * 5, hilt[0] - px * 5, hilt[1] - py * 5, 2.0), (0.55, 0.57, 0.62))
+    ic.fill(sd_segment(x, y, base[0], base[1], hilt[0], hilt[1], 2.6), grip)
+
+
+def icon_knives(ic):
+    _knife(ic, (52, 12), (16, 50))
+    _knife(ic, (12, 12), (48, 50), blade=(0.74, 0.77, 0.83), grip=(0.3, 0.18, 0.1))
+
+
+def icon_knife(ic):
+    _knife(ic, (50, 14), (14, 50), grip=(0.45, 0.3, 0.16))
+
+
+def icon_staff(ic):
+    x, y = ic.x, ic.y
+    ic.fill(sd_segment(x, y, 14, 56, 44, 16, 3.0), (0.55, 0.38, 0.2))
+    ic.fill(sd_segment(x, y, 40, 21, 47, 12, 4.2), (0.45, 0.3, 0.16))  # gnarled head
+    ic.fill(sd_circle(x, y, 47, 13, 5.5), (1.0, 0.6, 0.25), dome=0.9)  # ember stone
+    ic.line(sd_circle(x, y, 45.5, 11.5, 1.6), (1, 0.95, 0.8), 0.9)
+    ic.fill(sd_segment(x, y, 26, 40, 30, 35, 3.4), (0.36, 0.24, 0.14), outline=1.0)  # grip wrap
+
+
+def icon_mace(ic):
+    x, y = ic.x, ic.y
+    ic.fill(sd_segment(x, y, 16, 52, 34, 26, 3.0), (0.5, 0.32, 0.16))
+    ic.fill(sd_segment(x, y, 16, 52, 21, 45, 3.4), (0.36, 0.24, 0.14))
+    for a in range(6):
+        import math
+        t = a * math.pi / 3
+        ic.fill(sd_segment(x, y, 40, 20, 40 + math.cos(t) * 12, 20 + math.sin(t) * 12, 2.6), (0.5, 0.5, 0.54), outline=1.4)
+    ic.fill(sd_circle(x, y, 40, 20, 8), (0.62, 0.6, 0.55), dome=0.7)
+
+
 def icon_axe(ic, head=(0.44, 0.42, 0.42)):
     x, y = ic.x, ic.y
     ic.fill(sd_segment(x, y, 14, 54, 40, 14, 3.0), (0.5, 0.32, 0.16))
@@ -916,6 +959,12 @@ ICONS = {
     "chain_mail": lambda ic: icon_tunic(ic, (0.6, 0.62, 0.68), studs=True),
     "chain_gloves": lambda ic: icon_glove(ic, (0.6, 0.62, 0.68)),
     "iron_shield": icon_shield,
+    # class starter weapons
+    "soldiers_sword": lambda ic: icon_sword(ic, blade=(0.8, 0.83, 0.88), guard=(0.7, 0.55, 0.3)),
+    "rogue_knives": icon_knives,
+    "hunting_knife": icon_knife,
+    "oak_staff": icon_staff,
+    "pilgrim_mace": icon_mace,
 }
 
 

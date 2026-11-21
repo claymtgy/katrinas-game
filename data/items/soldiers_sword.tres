@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "soldiers_sword"
+DisplayName = "Soldier's Sword"
+Category = "weapon"
+IconColor = Color(0.78, 0.8, 0.86, 1)
+Damage = 18.0
+Reach = 2.1
+AttackCooldown = 0.5

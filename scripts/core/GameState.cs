@@ -166,8 +166,17 @@ public partial class GameState : Node
         Gamepad.RegisterBindings();
         ItemDb.Load();
         GraphicsSettings.Startup();
+        AudioSettings.Startup();
+        GameplaySettings.Startup();
         AddChild(new Gamepad { Name = "Gamepad" });
+        AddChild(new Music { Name = "Music" });
         AddChild(new Journal { Name = "Journal" });
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationApplicationFocusIn) AudioSettings.FocusChanged(true);
+        else if (what == NotificationApplicationFocusOut) AudioSettings.FocusChanged(false);
     }
 
     public PlayerController GetPlayer(int peerId) =>
@@ -309,6 +318,7 @@ public partial class GameState : Node
             ["pos"] = p.GlobalPosition, ["spawn"] = p.SpawnPoint, ["pack"] = p.Pack.ToDictionary(), ["worn"] = Gear.ToDict(p.Worn),
             ["xp"] = p.Xp, ["firsts"] = new GArray(p.XpFirsts.Select(f => Variant.From(f))),
             ["talents"] = Talents.ToDict(p.TalentPicks),
+            ["class"] = p.Look.Class,
         };
 
     /// <summary>Server: put a saved character's XP and firsts back on a player.</summary>
@@ -357,6 +367,7 @@ public partial class GameState : Node
                 ["xp"] = kv.Value.TryGetValue("xp", out var xp) ? xp : 0,
                 ["firsts"] = kv.Value.TryGetValue("firsts", out var firsts) ? firsts : new GArray(),
                 ["talents"] = kv.Value.TryGetValue("talents", out var talents) ? talents : new GDict(),
+                ["class"] = kv.Value.TryGetValue("class", out var cls) ? cls : "",
             };
         }
 
@@ -436,6 +447,7 @@ public partial class GameState : Node
                     ["xp"] = rec.TryGetValue("xp", out var xp) ? xp.AsInt32() : 0,
                     ["firsts"] = rec.TryGetValue("firsts", out var firsts) ? firsts.AsGodotArray() : new GArray(),
                     ["talents"] = rec.TryGetValue("talents", out var talents) ? talents.AsGodotDictionary() : new GDict(),
+                    ["class"] = rec.TryGetValue("class", out var cls) ? cls.AsString() : "",
                 };
             }
         else if (data.TryGetValue("player", out var legacy)) // version 1: one player

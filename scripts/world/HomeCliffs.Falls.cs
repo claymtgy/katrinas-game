@@ -11,7 +11,14 @@ namespace KatrinasGame;
 /// so the home plateau and the vale come out exactly as before.
 ///
 /// Placed relative to <see cref="Regions.Falls"/> (<see cref="InFalls"/>); the pass in the plateau's
-/// wall and the signs at its mouth belong to the plateau and stay put.</summary>
+/// wall and the signs at its mouth belong to the plateau and stay put.
+///
+/// The valley floor is part of the hills (<see cref="Terrain"/>, <see cref="FallsTerrain"/>): low,
+/// rolling ground that banks up into scree at the foot of the cliffs and eases down to the brink
+/// over the clouds, level along the river, round the pool and the mesa and under the roost and the
+/// road. Its old slab of ground is still there just under the hills (it's the cliff edge you see
+/// from the clouds). The valley's own pieces (cliffs, mesa, falls, river) stay where they're built;
+/// only its trees, rocks and plants are set down on the hills.</summary>
 public partial class HomeCliffs
 {
     /// <summary>The valley's floor (enemies there are kept inside it).</summary>
@@ -47,24 +54,59 @@ public partial class HomeCliffs
 
     private RandomNumberGenerator _vrng;
 
+    /// <summary>The valley floor the hills cover (x, z): from the foot of the plateau's east wall to
+    /// the east cliffs, the brink to the south wall.</summary>
+    public static readonly Rect2 FallsLand = Regions.Move(new Rect2(72, -24, 132, 138), Regions.Falls);
+
+    /// <summary>Pieces the hills leave where they are (the valley's cliffs, mesa, falls and river).</summary>
+    private readonly HashSet<Node> _unseated = new();
+
     private void BuildFallsValley()
     {
         _vrng = new RandomNumberGenerator { Seed = (ulong)Seed * 31 + 5 };
+        int first = GetChildCount();
 
-        // Floor: x 60..200 (the pass and the valley), z -24..114.
-        GroundAround(new Vector3(Regions.Falls.X + 130, Regions.Falls.Y - 6, (ValleyNorthZ + ValleySouthZ) / 2f), new Vector3(140, 12, ValleySouthZ - ValleyNorthZ), FallsPool);
+        // Floor: x 60..200 (the pass and the valley), z -24..114. Under the hills from x 72 (just
+        // below them, so it never shows through); the strip by the plateau's wall stays at 0.
+        GroundAround(new Vector3(Regions.Falls.X + 136, Regions.Falls.Y - 6.3f, (ValleyNorthZ + ValleySouthZ) / 2f), new Vector3(128, 12, ValleySouthZ - ValleyNorthZ), FallsPool);
+        var strip = Block(new Vector3(Regions.Falls.X + 66, Regions.Falls.Y - 6, (ValleyNorthZ + Regions.Falls.Z + 90) / 2f),
+            new Vector3(12, 12, Regions.Falls.Z + 90 - ValleyNorthZ), Vector3.Zero, Grass);
+        strip.Name = "Ground";
+        ((MeshInstance3D)strip.GetChild(0)).MaterialOverride = GroundMaterial;
 
         BuildValleyWalls();
         BuildMesa();
         BuildGreatFalls();
         BuildRiver();
         BuildRoost();
+        int scatter = GetChildCount();
         ScatterValley();
+        for (int i = first; i < scatter; i++) _unseated.Add(GetChild(i));
 
         // Signs at both ends of the pass.
         ValleySign("FallsSign", new Vector3(58, 0, 47), "Falls Valley", "FALLS →",
             "East through the pass: Falls Valley. Mind the river (it runs off the cliff) and the harpies. " +
             "A second blossom grows on the mesa; climb the pale rock (walk into it), or ride the mist over the falls on a glider.");
+    }
+
+    /// <summary>The valley floor's hills (in <see cref="ConfigureTerrain"/>, before Terrain.Lock):
+    /// gentler than the country's, banked against the cliffs on three sides, down to the brink on
+    /// the fourth, and level wherever the valley's pieces stand.</summary>
+    private static void FallsTerrain()
+    {
+        Terrain.Land(FallsLand);
+        Terrain.Calm(FallsLand, 0.5f);
+        Vector2 V(float x, float z) => new(Regions.Falls.X + x, Regions.Falls.Z + z);
+        Terrain.Wall(V(198, -24), V(198, 114), 16f, 30f); // under the tall east cliffs
+        Terrain.Wall(V(72, 114), V(204, 114), 12f, 24f);  // the south wall
+        Terrain.Wall(V(78, -24), V(78, 114), 9f, 18f);    // the foot of the plateau's east wall
+        Terrain.FlattenLine(V(72, -24), V(204, -24), 4f, 30f); // the brink over the clouds
+        Terrain.Hole(FallsPool);                                 // the plunge pool's basin
+        Terrain.FlattenLine(GreatFallsPool + new Vector3(-6, 0, 0), RiverBend, RiverHalfWidth + 3f, RiverHalfWidth + 22f);
+        Terrain.FlattenLine(RiverBend, RiverMouth, RiverHalfWidth + 3f, RiverHalfWidth + 22f);
+        Terrain.FlattenRect(new Rect2(MesaCenter.X - MesaHalf - 2f, MesaCenter.Z - MesaHalf - 2f, MesaHalf * 2 + 4f, MesaHalf * 2 + 4f), 16f);
+        Terrain.FlattenDisc(Wildlife.RoostSites[0], 7f, 20f);
+        Terrain.FlattenDisc(GreatFallsPool, 12f, 26f);
     }
 
     private void ValleySign(string name, Vector3 pos, string title, string label, string message)
@@ -305,8 +347,9 @@ public partial class HomeCliffs
             var d = to - from;
             var mid = (from + to) / 2f;
             float yaw = Mathf.Atan2(d.X, d.Z);
-            Visual(new BoxMesh { Size = new Vector3(RiverHalfWidth * 2f + 1f, 0.03f, d.Length() + RiverHalfWidth) }, bed, mid + new Vector3(0, 0.015f, 0), new Vector3(0, yaw, 0));
-            Visual(new BoxMesh { Size = new Vector3(RiverHalfWidth * 2f, 0.12f, d.Length() + RiverHalfWidth) }, water, mid + new Vector3(0, 0.07f, 0), new Vector3(0, yaw, 0));
+            // Clear of the ground (the hills are level at 0 here), so nothing flickers against it.
+            Visual(new BoxMesh { Size = new Vector3(RiverHalfWidth * 2f + 1f, 0.06f, d.Length() + RiverHalfWidth) }, bed, mid + new Vector3(0, 0.05f, 0), new Vector3(0, yaw, 0));
+            Visual(new BoxMesh { Size = new Vector3(RiverHalfWidth * 2f, 0.12f, d.Length() + RiverHalfWidth) }, water, mid + new Vector3(0, 0.11f, 0), new Vector3(0, yaw, 0));
             GameState.Instance.Currents.Add((from, to, RiverHalfWidth, RiverCurrent));
         }
         Leg(GreatFallsPool + new Vector3(-6, 0, 0), RiverBend);

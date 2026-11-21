@@ -13,8 +13,7 @@ public partial class CharacterCreator : Control
     private static readonly Color Gold = new(1f, 0.82f, 0.45f);
 
     private readonly Appearance _look;
-    private readonly string _startClass;
-    /// <summary>Opened from the pause menu (class changes then need you to be at home).</summary>
+    /// <summary>Opened from the pause menu.</summary>
     public bool InGame { get; set; }
     private readonly Action<Appearance> _onDone;
     private readonly Action _onCancel;
@@ -34,7 +33,6 @@ public partial class CharacterCreator : Control
     public CharacterCreator(Appearance start, Action<Appearance> onDone, Action onCancel)
     {
         _look = (start ?? new Appearance()).Clone();
-        _startClass = _look.Class;
         _onDone = onDone;
         _onCancel = onCancel;
         Name = "CharacterCreator";
@@ -217,36 +215,12 @@ public partial class CharacterCreator : Control
 
     private void BuildOptions()
     {
-        var classRow = Row("Class");
-        foreach (var c in PlayerClasses.All)
-        {
-            var button = new Button
-            {
-                Text = c.Name, ToggleMode = true, ButtonPressed = _look.Class == c.Id, CustomMinimumSize = new Vector2(78, 34),
-            };
-            if (_look.Class == c.Id) button.Modulate = c.Tint.Lightened(0.3f);
-            string id = c.Id;
-            button.Pressed += () => Set(a => a.Class = id);
-            classRow.AddChild(button);
-        }
+        // (The class has its own board: ClassPicker, before you spawn and from the Esc menu.)
         var cls = PlayerClasses.Get(_look.Class);
-        var about = new Label
-        {
-            Text = cls.Blurb + "\n[R] " + cls.AbilityName + ": " + cls.AbilityText
-                + (cls.Second is { } s ? $"\n[T, level {s.UnlockLevel}] {s.Name}: {s.Text}" : "")
-                + (cls.Third is { } t ? $"\n[G, level {t.UnlockLevel}] {t.Name}: {t.Text}" : ""),
-            AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(500, 0),
-        };
+        var about = new Label { Text = $"Class: {cls.Name} (change it from the menu's Change class…)" };
         about.AddThemeFontSizeOverride("font_size", 14);
         about.Modulate = cls.Tint.Lightened(0.35f);
         _options.AddChild(about);
-        if (_startClass != _look.Class && InGame)
-        {
-            var note = new Label { Text = "(You can only change class at home.)" };
-            note.AddThemeFontSizeOverride("font_size", 13);
-            note.Modulate = new Color(0.8f, 0.75f, 0.85f);
-            _options.AddChild(note);
-        }
 
         var bodyRow = Row("Body");
         foreach (var b in Appearance.Bodies)

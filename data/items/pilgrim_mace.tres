@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "pilgrim_mace"
+DisplayName = "Pilgrim's Mace"
+Category = "weapon"
+IconColor = Color(0.62, 0.6, 0.55, 1)
+Damage = 16.0
+Reach = 1.9
+AttackCooldown = 0.6

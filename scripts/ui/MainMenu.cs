@@ -18,7 +18,9 @@ public partial class MainMenu : Control
     private static readonly Color Gold = new(1f, 0.82f, 0.45f);
     private static readonly Color Blush = new(1f, 0.7f, 0.78f);
 
-    private LineEdit _name, _world, _address, _password;
+    private LineEdit _name, _address, _password;
+    /// <summary>The world last played (preselected nowhere, but kept for the --world default).</summary>
+    private string _lastWorld = "home";
     private SpinBox _port, _maxPlayers;
     private CheckBox _pvp;
     private Label _status;
@@ -109,6 +111,8 @@ public partial class MainMenu : Control
         Appearance.Local = new Appearance();
         // Scripted tests always start from a fresh world, and spawn wolves themselves.
         Wildlife.AutoSpawn = false;
+        Net.StarterWeapons = false; // tests count the stockpile's weapons exactly
+        AudioSettings.Persist = false;
         foreach (var world in new[] { "autotest", "autotest_mp" })
             if (FileAccess.FileExists($"user://saves/{world}.json")) DirAccess.RemoveAbsolute($"user://saves/{world}.json");
 
@@ -165,8 +169,6 @@ public partial class MainMenu : Control
         var looks = new Button { Text = "Customise character…", CustomMinimumSize = new Vector2(0, 36) };
         looks.Pressed += () => OpenCreator();
         col.AddChild(looks);
-        _world = Field(col, "World (save name)", "home");
-
         var solo = BigButton("Single Player");
         solo.Pressed += OnSolo;
         col.AddChild(solo);
@@ -183,7 +185,7 @@ public partial class MainMenu : Control
         hostRow.AddChild(Label("Port", 16));
         _port = new SpinBox { MinValue = 1024, MaxValue = 65535, Value = ServerConfig.DefaultPort };
         hostRow.AddChild(_port);
-        var host = BigButton("Host Game");
+        var host = BigButton("Host Game…");
         host.Pressed += OnHost;
         col.AddChild(host);
 
@@ -191,13 +193,13 @@ public partial class MainMenu : Control
         _address = Field(col, "Address (ip or ip:port)", "127.0.0.1");
         _password = Field(col, "Password (if any)", "");
         _password.Secret = true;
-        var join = BigButton("Join Game");
+        var join = BigButton("Join Game…");
         join.Pressed += OnJoin;
         col.AddChild(join);
 
         col.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
-        var graphics = new Button { Text = "Graphics settings…" };
-        graphics.Pressed += () => AddChild(new GraphicsMenu(() => { if (Gamepad.UsingPad) Hud.FocusFirst(this); }));
+        var graphics = new Button { Text = "Options…" };
+        graphics.Pressed += () => AddChild(new OptionsMenu(() => { if (Gamepad.UsingPad) Hud.FocusFirst(this); }));
         col.AddChild(graphics);
         var quit = new Button { Text = "Quit" };
         quit.Pressed += () => GetTree().Quit();
@@ -225,24 +227,29 @@ public partial class MainMenu : Control
         return creator;
     }
 
+    // Every way into a world goes: (pick a world) -> pick a class -> go.
+
     private void OnSolo()
     {
         Apply();
-        Net.Instance.StartOffline(_world.Text);
+        PickWorld("Single Player", world => PickClass(world, () => Net.Instance.StartOffline(world)));
     }
 
     private void OnHost()
     {
         Apply();
-        var cfg = new ServerConfig
+        PickWorld("Host a Co-op Game", world => PickClass(world, () =>
         {
-            Name = $"{Net.Instance.LocalName}'s world",
-            Port = (int)_port.Value,
-            MaxPlayers = (int)_maxPlayers.Value,
-            Pvp = _pvp.ButtonPressed,
-            World = _world.Text,
-        };
-        if (Net.Instance.StartHost(cfg) != Error.Ok) SetStatus(Net.Instance.LastError, error: true);
+            var cfg = new ServerConfig
+            {
+                Name = $"{Net.Instance.LocalName}'s world",
+                Port = (int)_port.Value,
+                MaxPlayers = (int)_maxPlayers.Value,
+                Pvp = _pvp.ButtonPressed,
+                World = world,
+            };
+            if (Net.Instance.StartHost(cfg) != Error.Ok) SetStatus(Net.Instance.LastError, error: true);
+        }));
     }
 
     private void OnJoin()
@@ -250,8 +257,47 @@ public partial class MainMenu : Control
         Apply();
         var (address, port) = ParseAddress(_address.Text, (int)_port.Value);
         if (address == "") { SetStatus("Enter the host's address.", error: true); return; }
-        if (Net.Instance.Join(address, port, _password.Text) != Error.Ok) SetStatus(Net.Instance.LastError, error: true);
-        else SetStatus($"Connecting to {address}:{port}…", error: false);
+        PickClass(null, () =>
+        {
+            if (Net.Instance.Join(address, port, _password.Text) != Error.Ok) SetStatus(Net.Instance.LastError, error: true);
+            else SetStatus($"Connecting to {address}:{port}…", error: false);
+        });
+    }
+
+    /// <summary>The save-slot list; picking (or creating) a world calls <paramref name="then"/>.</summary>
+    public SaveSlotsMenu PickWorld(string title, System.Action<string> then)
+    {
+        var menu = new SaveSlotsMenu(title, Net.Instance.LocalName, world =>
+        {
+            _lastWorld = world;
+            SaveSettings();
+            then(world);
+        }, Refocus);
+        AddChild(menu);
+        return menu;
+    }
+
+    /// <summary>Choose a class before spawning. A saved world remembers your class there, so it's
+    /// picked to start with; otherwise the one you played last.</summary>
+    public ClassPicker PickClass(string world, System.Action then)
+    {
+        string current = world != null ? SaveSlots.ClassIn(world, Net.Instance.LocalName) : "";
+        if (!PlayerClasses.IsValid(current)) current = Appearance.Local.Class;
+        var picker = new ClassPicker(current, id =>
+        {
+            var look = Appearance.Local.Clone();
+            look.Class = id;
+            Appearance.Local = look;
+            SaveSettings();
+            then();
+        }, Refocus, ClassPicker.Context.BeforeSpawn);
+        AddChild(picker);
+        return picker;
+    }
+
+    private void Refocus()
+    {
+        if (Gamepad.UsingPad && IsInsideTree()) Callable.From(() => Hud.FocusFirst(this)).CallDeferred();
     }
 
     private void Apply()
@@ -272,7 +318,7 @@ public partial class MainMenu : Control
         var cfg = new ConfigFile();
         if (cfg.Load(SettingsPath) != Error.Ok) return;
         _name.Text = cfg.GetValue("player", "name", _name.Text).AsString();
-        _world.Text = cfg.GetValue("player", "world", _world.Text).AsString();
+        _lastWorld = cfg.GetValue("player", "world", _lastWorld).AsString();
         _address.Text = cfg.GetValue("join", "address", _address.Text).AsString();
         _port.Value = cfg.GetValue("host", "port", _port.Value).AsDouble();
         _maxPlayers.Value = cfg.GetValue("host", "max_players", _maxPlayers.Value).AsDouble();
@@ -284,7 +330,7 @@ public partial class MainMenu : Control
         var cfg = new ConfigFile();
         cfg.Load(SettingsPath); // keep the other sections (graphics, tips)
         cfg.SetValue("player", "name", _name.Text);
-        cfg.SetValue("player", "world", _world.Text);
+        cfg.SetValue("player", "world", _lastWorld);
         cfg.SetValue("join", "address", _address.Text);
         cfg.SetValue("host", "port", _port.Value);
         cfg.SetValue("host", "max_players", _maxPlayers.Value);

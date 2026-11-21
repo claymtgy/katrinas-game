@@ -26,6 +26,8 @@ public static class Levels
     public const int MainGoal = 60, SideGoal = 40, Errand = 30;
     public const int FirstCraft = 20;
     public const int HomeUpgrade = 250;
+    /// <summary>Finding a landmark out in the country (Landmark), for everyone online.</summary>
+    public const int Landmark = 40;
 
     /// <summary>XP for killing an enemy again, by Enemy.Kind. A boss counts as its kind only the
     /// first time; after that it's worth a bandit.</summary>

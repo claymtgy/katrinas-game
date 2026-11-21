@@ -38,7 +38,7 @@ public partial class Ambience : Node
     {
         var stream = Sfx.Get(name, loop: true);
         if (stream == null) return null;
-        var p = new AudioStreamPlayer { Name = name, Stream = stream, VolumeDb = -80f };
+        var p = new AudioStreamPlayer { Name = name, Stream = stream, VolumeDb = -80f, Bus = AudioSettings.AmbienceBus };
         AddChild(p);
         p.Play((float)GD.RandRange(0, stream.GetLength() * 0.9));
         return p;

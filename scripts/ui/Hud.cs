@@ -392,7 +392,7 @@ public partial class Hud : CanvasLayer
         _sheet.Visible = false;
         _help.Visible = false;
         foreach (var c in GetChildren())
-            if (c is CharacterCreator or GraphicsMenu) c.QueueFree();
+            if (c is CharacterCreator or OptionsMenu or ClassPicker) c.QueueFree();
         _station = null;
         _trader = null;
         _shrine = null;
@@ -1133,14 +1133,17 @@ void fragment() {
 
     private void BuildGameMenu()
     {
-        _gameMenu = Board(400, 500, "Menu", out var body, out _);
+        _gameMenu = Board(400, 560, "Menu", out var body, out _);
         var resume = new Button { Text = "Resume" };
         resume.Pressed += CloseMenus;
         body.AddChild(resume);
         var sheet = new Button { Text = "Character & equipment" };
         sheet.Pressed += OpenCharacter;
         body.AddChild(sheet);
-        var looks = new Button { Text = "Appearance & class…" };
+        var cls = new Button { Text = "Change class…" };
+        cls.Pressed += () => OpenClassPicker();
+        body.AddChild(cls);
+        var looks = new Button { Text = "Appearance…" };
         looks.Pressed += () => OpenCreator();
         body.AddChild(looks);
         var journal = new Button { Text = "Journal" };
@@ -1149,9 +1152,9 @@ void fragment() {
         var help = new Button { Text = "Controls & help" };
         help.Pressed += () => ShowBoard(_help);
         body.AddChild(help);
-        var graphics = new Button { Text = "Graphics…" };
-        graphics.Pressed += () => OpenGraphics();
-        body.AddChild(graphics);
+        var options = new Button { Text = "Options…" };
+        options.Pressed += () => OpenOptions();
+        body.AddChild(options);
         body.AddChild(UiTheme.Divider(300));
         var leave = new Button { Text = "Leave to main menu" };
         leave.Pressed += () => Net.Instance.Leave();
@@ -1183,20 +1186,49 @@ void fragment() {
         return creator;
     }
 
-    /// <summary>Pause menu: window mode, size and vsync. Back returns to the menu.</summary>
-    public GraphicsMenu OpenGraphics()
+    /// <summary>Pause menu: audio, graphics and gameplay options. Back returns to the menu.</summary>
+    public OptionsMenu OpenOptions(OptionsMenu.Page page = OptionsMenu.Page.Audio)
+    {
+        var menu = new OptionsMenu(ReturnToMenu(), page);
+        AddChild(menu);
+        return menu;
+    }
+
+    /// <summary>The graphics page of the options (kept for the scripted tests).</summary>
+    public OptionsMenu OpenGraphics() => OpenOptions(OptionsMenu.Page.Graphics);
+
+    /// <summary>Pause menu: pick a new class. Done tells the server (which hands you its weapon).</summary>
+    public ClassPicker OpenClassPicker()
+    {
+        var back = ReturnToMenu();
+        var picker = new ClassPicker(Appearance.Local.Class, id =>
+        {
+            if (id != Appearance.Local.Class)
+            {
+                var look = Appearance.Local.Clone();
+                look.Class = id;
+                Appearance.Local = look;
+                Appearance.SaveLocal();
+                Net.Instance.RequestLook(look);
+            }
+            back();
+        }, back, ClassPicker.Context.InGame);
+        AddChild(picker);
+        return picker;
+    }
+
+    /// <summary>Hide the Esc menu while a board is over it; the returned action brings it back.</summary>
+    private System.Action ReturnToMenu()
     {
         bool fromMenu = _gameMenu.Visible;
         _gameMenu.Visible = false;
         GameState.Instance.SetUiOpen(true);
-        var menu = new GraphicsMenu(() =>
+        return () =>
         {
             if (!fromMenu || !GameState.Instance.UiOpen) return;
             _gameMenu.Visible = true;
             if (Gamepad.UsingPad) Callable.From(() => FocusFirst(_gameMenu)).CallDeferred();
-        });
-        AddChild(menu);
-        return menu;
+        };
     }
 
     // ================================================================== helpers

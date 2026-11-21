@@ -152,6 +152,158 @@ public partial class DevAutotest : Node
         await View("terrain_05_hilltop_north", top, 0f, -0.1f, 0.33f);
         await View("terrain_06_waystone", HomeCliffs.Waystone + new Vector3(-18, 0, -18), Mathf.Pi * 0.75f, 0f, 0.7f);
         await View("terrain_07_vale_from_south", HomeCliffs.InVale(30, 0, 300), 0.15f, -0.02f, 0.45f);
+
+        // Falls Valley's floor is hills too: low and rolling, banked up under the cliffs, level along
+        // the river, round the mesa, under the road and at the brink over the clouds.
+        var land = HomeCliffs.FallsLand;
+        Vector3 valleyTop = Vector3.Zero;
+        for (float x = land.Position.X + 4; x < land.End.X - 4; x += 4)
+            for (float z = land.Position.Y + 4; z < land.End.Y - 4; z += 4)
+            {
+                float h = Terrain.HeightAt(x, z);
+                if (x < HomeCliffs.InFalls(180, 0, 0).X && h > valleyTop.Y) valleyTop = new Vector3(x, h, z);
+            }
+        Check(valleyTop.Y > 2f && valleyTop.Y < 20f, $"Falls Valley's floor rolls ({valleyTop.Y:0.0} m at its highest, away from the cliffs)");
+        float scree = Terrain.HeightAt(HomeCliffs.InFalls(196, 0, 20));
+        Check(scree > 5f, $"the ground banks up under the east cliffs ({scree:0.0} m)");
+        float river = 0f;
+        foreach (var (from, to) in new[] { (HomeCliffs.GreatFallsPool + new Vector3(-6, 0, 0), HomeCliffs.RiverBend), (HomeCliffs.RiverBend, HomeCliffs.RiverMouth) })
+            for (float t = 0; t <= 1f; t += 0.05f) river = Mathf.Max(river, Terrain.HeightAt(from.Lerp(to, t)));
+        float mesa = 0f;
+        for (float u = -1; u <= 1; u += 0.25f)
+        {
+            mesa = Mathf.Max(mesa, Terrain.HeightAt(HomeCliffs.MesaCenter + new Vector3(u * (HomeCliffs.MesaHalf + 1), 0, -HomeCliffs.MesaHalf - 1)));
+            mesa = Mathf.Max(mesa, Terrain.HeightAt(HomeCliffs.MesaCenter + new Vector3(-HomeCliffs.MesaHalf - 1, 0, u * (HomeCliffs.MesaHalf + 1))));
+        }
+        float brink = 0f;
+        for (float x = land.Position.X; x <= land.End.X; x += 4) brink = Mathf.Max(brink, Terrain.HeightAt(x, land.Position.Y + 0.5f));
+        Check(river < 0.01f && mesa < 0.01f && brink < 0.3f, $"the river, the mesa's foot and the brink stay level ({river:0.00}, {mesa:0.00}, {brink:0.00} m)");
+        Check(HomeCliffs.PathPoints().Where(q => land.HasPoint(new Vector2(q.X, q.Z))).All(q => Terrain.HeightAt(q) < 0.01f), "the road through the valley stays level");
+        p.Teleport(valleyTop + Vector3.Up * 0.4f);
+        await Wait(1.0);
+        Check(p.IsOnFloor() && Mathf.Abs(p.GlobalPosition.Y - valleyTop.Y) < 0.6f, $"you stand on the valley's hills ({p.GlobalPosition.Y:0.0} m)");
+        await View("terrain_08_falls_from_pass", HomeCliffs.InFalls(90, 0, 42), Mathf.Pi * 0.5f, 0.02f, 0.4f);
+        await View("terrain_09_falls_south", HomeCliffs.InFalls(120, 0, 0), Mathf.Pi, 0.0f, 0.4f);
+        await View("terrain_10_falls_east", HomeCliffs.InFalls(130, 0, 90), Mathf.Pi * 0.25f, 0.05f, 0.45f);
+    }
+
+    /// <summary>--only=wayside (and the end of the full run): the places along the road to Ashby
+    /// (HomeCliffs.Wayside.cs). They're all there, the tower stands on a hill off the road, going near
+    /// one discovers it for everyone (toast, XP, a journal fact), a cache gives its loot once, the
+    /// Wayside Blossom is a sanctuary, the road runs clear under the Gate Stones, and you can stand
+    /// on the watchtower's lookout floor.</summary>
+    private async Task WaysideChecks(GameState gs, PlayerController p)
+    {
+        var scene = GetTree().CurrentScene;
+        string[] places = { "Poi_OldWatchtower", "Poi_ElderOak", "Poi_GateStones", "Poi_Wagon", "Poi_HermitHut", "Poi_OldQuarry" };
+        var missing = places.Where(n => scene.FindChild(n, true, false) == null).ToList();
+        Check(missing.Count == 0 && Landmark.All.Count >= places.Length, $"the places along the road are there ({Landmark.All.Count} landmarks{(missing.Count > 0 ? ", missing " + string.Join(", ", missing) : "")})");
+
+        var tower = HomeCliffs.OldWatchtower;
+        float towerH = Terrain.HeightAt(tower);
+        float roadDist = HomeCliffs.MainRoad.Min(r => new Vector2(r.X - tower.X, r.Z - tower.Z).Length());
+        Check(towerH > 5f && roadDist > 30f, $"the watchtower stands on a hilltop off the road ({towerH:0.0} m up, {roadDist:0} m from the road's nearest bend)");
+        var towerRoot = scene.FindChild("Poi_OldWatchtower", true, false) as Node3D;
+        Check(towerRoot != null && Mathf.Abs(towerRoot.GlobalPosition.Y - towerH) < 0.05f, "the tower is set down on its hill");
+        int climbable = towerRoot?.GetChildren().Count(c => c.IsInGroup(GameState.ClimbGroup)) ?? 0;
+        Check(climbable >= 6, $"the tower's walls are climbable rock ({climbable} pieces)");
+
+        // Go and find the Elder Oak.
+        var oak = Landmark.All.FirstOrDefault(l => l.Name == "Landmark_ElderOak");
+        int xp = p.Xp, level = p.Level;
+        Check(oak != null && !oak.Found, "the Elder Oak starts undiscovered");
+        p.Teleport(HomeCliffs.ElderOak + new Vector3(-8, Terrain.HeightAt(HomeCliffs.ElderOak) + 0.3f, 4));
+        bool found = oak != null && await Until(() => oak.Found, 3);
+        Check(found && Journal.Instance.Facts.Contains("found:Landmark_ElderOak"), "going near the Elder Oak discovers it (a shared journal fact)");
+        await Wait(0.3);
+        Check(p.Xp != xp || p.Level > level, $"discovering it is worth XP ({p.Xp - xp} XP)");
+        p.Rig.SetLook(Mathf.Pi * 0.3f, 0.05f);
+        await Wait(1.0);
+        await Shot("wayside_01_elder_oak");
+
+        // Search the wagon's crates, twice.
+        var cache = scene.FindChild("Cache_Wagon", true, false) as LootCache;
+        Check(cache != null && !cache.Searched, "the wagon's crates are there to search");
+        if (cache != null)
+        {
+            p.Teleport(cache.GlobalPosition + new Vector3(-1.5f, 0.3f, 0));
+            await Wait(0.5);
+            int coins = Have("coin"), bread = Have("bread");
+            cache.Interact(p);
+            await Wait(0.4);
+            Check(Have("coin") == coins + 25 && Have("bread") == bread + 3 && cache.Searched, $"searching them gives what's inside ({Have("coin") - coins} coins, {Have("bread") - bread} bread)");
+            coins = Have("coin");
+            cache.Interact(p);
+            await Wait(0.4);
+            Check(Have("coin") == coins && cache.InteractPrompt.Contains("empty"), "and only once");
+            Face(p, cache.GlobalPosition);
+            await Wait(0.6);
+            await Shot("wayside_02_wagon");
+        }
+
+        // The Wayside Blossom is a sanctuary like the others.
+        var shrine = BlossomShrine.Find("WaysideShrine");
+        Check(shrine != null && gs.SafeZones.Any(z => z.Item1.DistanceTo(HomeCliffs.WaysideShrinePos) < 1f), "the Wayside Blossom is a sanctuary (safe from enemies)");
+        if (shrine != null)
+        {
+            p.Teleport(shrine.ArrivalPoint);
+            await Wait(0.6);
+            Check(p.IsOnFloor() && HomeCliffs.OnPath(shrine.ArrivalPoint), "you arrive on its patch of ground, on your feet");
+            Face(p, shrine.GlobalPosition);
+            await Wait(0.6);
+            await Shot("wayside_03_blossom");
+        }
+
+        // The road runs clear under the Gate Stones.
+        var space = p.GetWorld3D().DirectSpaceState;
+        var gate = HomeCliffs.GateStones;
+        var down = space.IntersectRay(PhysicsRayQueryParameters3D.Create(gate + Vector3.Up * 30, gate + Vector3.Down * 2, GameState.LayerWorld));
+        float lintel = down.Count > 0 ? down["position"].AsVector3().Y : 0f;
+        var a = HomeCliffs.MainRoad[7];
+        var b = HomeCliffs.MainRoad[8];
+        var along = new Vector3(b.X - a.X, 0, b.Z - a.Z).Normalized();
+        var through = space.IntersectRay(PhysicsRayQueryParameters3D.Create(gate - along * 8 + Vector3.Up * 1.2f, gate + along * 8 + Vector3.Up * 1.2f, GameState.LayerWorld | GameState.LayerProps));
+        Check(lintel > 5.5f && through.Count == 0, $"the road runs clear under the Gate Stones (lintel {lintel:0.0} m up)");
+        p.Teleport(gate - along * 22 + Vector3.Up * 0.3f);
+        p.Rig.SetLook(Mathf.Atan2(-along.X, -along.Z), 0.05f);
+        await Wait(1.0);
+        await Shot("wayside_04_gate_stones");
+
+        // Up on the watchtower's lookout floor, with its strongbox.
+        var box = scene.FindChild("Cache_Watchtower", true, false) as LootCache;
+        if (towerRoot != null && box != null)
+        {
+            p.Teleport(towerRoot.GlobalPosition + new Vector3(-1.2f, 8.6f, 1f));
+            await Wait(0.8);
+            Check(p.IsOnFloor() && p.GlobalPosition.Y > towerRoot.GlobalPosition.Y + 7.8f, $"you can stand on the lookout floor ({p.GlobalPosition.Y - towerRoot.GlobalPosition.Y:0.0} m up)");
+            int shards = Have("rune_shard");
+            box.Interact(p);
+            await Wait(0.4);
+            Check(Have("rune_shard") == shards + 2, "the lookout's strongbox holds rune shards");
+            p.Rig.SetLook(Mathf.Pi * 0.5f, -0.15f);
+            await Wait(0.8);
+            await Shot("wayside_05_tower_view");
+            var off = tower + new Vector3(-28, 0, 10);
+            p.Teleport(off + Vector3.Up * (Terrain.HeightAt(off) + 0.3f));
+            Face(p, towerRoot.GlobalPosition + Vector3.Up * 6);
+            await Wait(1.0);
+            await Shot("wayside_06_tower");
+        }
+
+        // The hut and the quarry.
+        Check(scene.FindChild("HermitNote", true, false) is InfoSign && scene.FindChild("Cache_Hermit", true, false) is LootCache, "the hermit's hut has its note and chest");
+        Check(GetTree().GetNodesInGroup("copper_ore").Count(n => n.Name.ToString().StartsWith("QuarryVein_")) == 2
+              && GetTree().GetNodesInGroup("tin_ore").Count(n => n.Name.ToString().StartsWith("QuarryVein_")) == 1, "the old quarry has copper and tin in its walls");
+        p.Teleport(HomeCliffs.HermitHut + new Vector3(10, 0.3f, 4));
+        Face(p, HomeCliffs.HermitHut);
+        await Wait(1.0);
+        await Shot("wayside_07_hermit_hut");
+        var rim = HomeCliffs.OldQuarry + new Vector3(-24, 0, 0);
+        p.Teleport(rim + Vector3.Up * (Terrain.HeightAt(rim) + 0.3f));
+        Face(p, HomeCliffs.OldQuarry);
+        await Wait(1.0);
+        await Shot("wayside_08_quarry");
+        Check(Landmark.All.Count(l => l.Found) >= 4, $"the places you went are discovered ({Landmark.All.Count(l => l.Found)} of {Landmark.All.Count})");
     }
 
     /// <summary>--only=art: the same views at several times of day, to compare with the concept
@@ -263,14 +415,26 @@ public partial class DevAutotest : Node
         await Become(PlayerClasses.WarriorId);
         Check(Mathf.IsEqualApprox(p.Health.Max, p.BaseMaxHealth + p.LevelHealth + 30f), $"a Warrior has +30 health ({p.Health.Max})");
 
-        // Away from home the class stays.
+        // The class can change anywhere, and a new class hands you its starter weapon.
         p.Teleport(HomeCliffs.AshbyCenter + new Vector3(0, 0.1f, 10));
         await Wait(0.3);
-        var away = p.Look.Clone();
-        away.Class = PlayerClasses.WizardId;
-        Net.Instance.RequestLook(away);
-        await Wait(0.3);
-        Check(p.Class.Id == PlayerClasses.WarriorId && Appearance.Local.Class == PlayerClasses.WarriorId, "the class can't be changed away from home");
+        string heldBeforeClass = p.Equipped;
+        Net.StarterWeapons = true;
+        await Become(PlayerClasses.RogueId);
+        Check(p.Class.Id == PlayerClasses.RogueId, "the class can be changed away from home");
+        Check(await Until(() => p.Equipped == "rogue_knives", 2), "a Rogue takes up the Twin Knives");
+        await Become(PlayerClasses.WarriorId);
+        Check(await Until(() => p.Equipped == "soldiers_sword", 2) && gs.Inventory.Count("rogue_knives") == 1,
+            "back to Warrior: a Soldier's Sword in hand, the knives in the stockpile");
+        await Become(PlayerClasses.RogueId);
+        Check(await Until(() => p.Equipped == "rogue_knives", 2) && gs.Inventory.Count("rogue_knives") == 0 && gs.Inventory.Count("soldiers_sword") == 1,
+            "switching back takes the same knives out of the stockpile (no copies pile up)");
+        Net.StarterWeapons = false;
+        await Become(PlayerClasses.WarriorId);
+        if (heldBeforeClass != "") gs.Inventory.Remove(heldBeforeClass, 1); // (it went to the stockpile on the first switch)
+        Net.Instance.SetEquipped(p, heldBeforeClass);
+        gs.Inventory.Remove("rogue_knives", 1);
+        gs.Inventory.Remove("soldiers_sword", 1);
         p.Teleport(home);
         await Wait(0.3);
 
@@ -497,8 +661,9 @@ public partial class DevAutotest : Node
         var across = space.IntersectRay(PhysicsRayQueryParameters3D.Create(
             new Vector3(50, 1.2f, HomeCliffs.PassPos.Z), new Vector3(90, 1.2f, HomeCliffs.PassPos.Z), GameState.LayerWorld));
         Check(across.Count == 0, $"the pass through the east wall is open{(across.Count > 0 ? $" (blocked at {across["position"]})" : "")}");
-        var floor = space.IntersectRay(PhysicsRayQueryParameters3D.Create(HomeCliffs.InFalls(140, 5, 70), HomeCliffs.InFalls(140, -5, 70), GameState.LayerWorld));
-        Check(floor.Count > 0 && Mathf.Abs(floor["position"].AsVector3().Y) < 0.1f, "Falls Valley has a floor");
+        float floorH = Terrain.HeightAt(HomeCliffs.InFalls(140, 0, 70));
+        var floor = space.IntersectRay(PhysicsRayQueryParameters3D.Create(HomeCliffs.InFalls(140, floorH + 5, 70), HomeCliffs.InFalls(140, -5, 70), GameState.LayerWorld));
+        Check(floor.Count > 0 && Mathf.Abs(floor["position"].AsVector3().Y - floorH) < 0.6f, $"Falls Valley has a floor (its hills, {floorH:0.0} m here)");
         p.Teleport(HomeCliffs.PassPos + new Vector3(16, 0.1f, 0));
         p.Rig.SetLook(-Mathf.Pi / 2f - 0.15f, 0.08f);
         Hud.Instance.Visible = false;
@@ -1766,7 +1931,7 @@ public partial class DevAutotest : Node
         await Wait(0.2);
         var menu = hud.OpenGraphics();
         await Wait(0.3);
-        Check(menu.IsInsideTree() && gs.UiOpen, "the Esc menu opens the graphics board");
+        Check(menu.IsInsideTree() && gs.UiOpen && menu.Showing == OptionsMenu.Page.Graphics, "the Esc menu opens the options on the graphics page");
         await Shot("07_graphics_menu");
         menu.Close();
         await Wait(0.1);
@@ -2613,6 +2778,13 @@ public partial class DevAutotest : Node
             GetTree().Quit(_fails == 0 ? 0 : 1);
             return;
         }
+        if (OS.GetCmdlineUserArgs().Contains("--only=wayside"))
+        {
+            await WaysideChecks(gs, p);
+            GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
+            GetTree().Quit(_fails == 0 ? 0 : 1);
+            return;
+        }
         if (OS.GetCmdlineUserArgs().Contains("--only=art"))
         {
             await ArtShots(gs, p);
@@ -2828,6 +3000,7 @@ public partial class DevAutotest : Node
         p.Rig.GetNode<Camera3D>("Pivot/SpringArm3D/Camera3D").MakeCurrent();
         Hud.Instance.Visible = true;
 
+        await WaysideChecks(gs, p);
         Audio();
 
         GD.Print(_fails == 0 ? "[AUTOTEST] ALL PASSED" : $"[AUTOTEST] {_fails} FAILED");
