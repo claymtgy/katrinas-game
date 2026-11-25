@@ -75,6 +75,8 @@ public partial class PlayerController : CharacterBody3D
     public string Equipped { get; set; } = "";
     /// <summary>In bed, waiting for everyone else to sleep. Server-owned.</summary>
     public bool Sleeping { get; set; }
+    /// <summary>The Cinder Foothills' heat, 0..Net.HeatMax (server-run, mirrored to the owner).</summary>
+    public float Heat { get; set; }
     /// <summary>Personal respawn point (last shrine prayed at). Server-owned.</summary>
     public Vector3 SpawnPoint { get; set; }
     /// <summary>Guard raised (server's view; the local player sees Combat.GuardUp at once).</summary>
@@ -145,12 +147,6 @@ public partial class PlayerController : CharacterBody3D
         Look = look.Clone();
         Body?.GetNodeOrNull<CharacterModel>("Mesh")?.SetLook(Gear.Dress(Look, Worn));
         if (Health != null && BaseMaxHealth > 0) UpdateMaxHealth();
-        // The server may have kept our old class (changed away from home): remember what stuck.
-        if (IsLocal && Appearance.Local.Class != Look.Class)
-        {
-            Appearance.Local.Class = Look.Class;
-            Appearance.SaveLocal();
-        }
         if (Vanished) SetVanished(true); // (re-apply the fade to the new body)
     }
     /// <summary>Server: when this player's dodge i-frames end (Net.Now).</summary>
@@ -209,7 +205,14 @@ public partial class PlayerController : CharacterBody3D
     public double VenomUntil { get; set; }
 
     /// <summary>A slot's ability as this player has it: the class's, with talents applied.</summary>
-    public AbilityDef AbilityDef(int slot) => Talents.Tune(this, Class.Ability(slot));
+    public AbilityDef AbilityDef(int slot)
+    {
+        var def = Talents.Tune(this, Class.Ability(slot));
+        // An archer's Shoot draws as fast as their bow allows.
+        if (slot == 0 && def != null && Class.Id == PlayerClasses.ArcherId && Gear.BowOf(this) is { AttackCooldown: > 0f } bow)
+            def = def with { Cooldown = bow.AttackCooldown };
+        return def;
+    }
 
     // ---------------------------------------------------------------- talents (GDD §6)
 

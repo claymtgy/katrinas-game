@@ -276,12 +276,10 @@ public partial class HomeCliffs
         var body = new StaticBody3D { Name = $"{s.Name}Climb{(alongX ? "Z" : "X")}", Position = center, CollisionLayer = GameState.LayerWorld, CollisionMask = 0 };
         body.AddToGroup(GameState.ClimbGroup);
         body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
-        body.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = StyleMaterials.Toon(GripRock, 0.35f) });
         root.AddChild(body);
 
         // Handholds, and rust bleeding down the rock below the seams.
         var holds = StyleMaterials.Toon(GripRockDark, 0.2f);
-        var rust = StyleMaterials.Toon(Rust, 0.3f);
         float faceOut = 0.4f + 0.06f;
         for (int i = 0; i < (int)(width * height / 3.5f); i++)
         {
@@ -289,21 +287,19 @@ public partial class HomeCliffs
             float v = _srng.RandfRange(-height / 2f + 0.5f, height / 2f - 0.3f);
             body.AddChild(new MeshInstance3D
             {
-                Mesh = new BoxMesh { Size = alongX ? new Vector3(0.45f, 0.14f, 0.18f) : new Vector3(0.18f, 0.14f, 0.45f) },
-                MaterialOverride = holds, Position = along * u + Vector3.Up * v + outward * faceOut,
-                Rotation = new Vector3(0, 0, _srng.RandfRange(-0.3f, 0.3f)),
+                Mesh = ClimbRock.Hold(), MaterialOverride = holds, Position = along * u + Vector3.Up * v + outward * faceOut,
+                Rotation = new Vector3(0, alongX ? 0f : Mathf.Pi / 2f, _srng.RandfRange(-0.3f, 0.3f)),
             });
         }
+        // Rust bleeds down the rock below the seams: painted into the face's own colours.
+        var streaks = new List<Rect2>();
         for (int i = 0; i < 5; i++)
         {
             float u = _srng.RandfRange(-width / 2f + 0.5f, width / 2f - 0.5f), len = _srng.RandfRange(2f, 5f);
             float v = _srng.RandfRange(-height / 2f + len / 2f, height / 2f - len / 2f);
-            body.AddChild(new MeshInstance3D
-            {
-                Mesh = new BoxMesh { Size = alongX ? new Vector3(0.3f, len, 0.02f) : new Vector3(0.02f, len, 0.3f) },
-                MaterialOverride = rust, Position = along * u + Vector3.Up * v + outward * (faceOut - 0.05f),
-            });
+            streaks.Add(new Rect2(u - 0.3f, v - len / 2f, 0.6f, len));
         }
+        body.AddChild(ClimbRock.Make(size, outward, GripRock, GripRockDark, (int)GD.Hash(body.Name), streaks, Rust));
 
         // A ledge at the foot: glide in, land, start climbing.
         var ledge = Block(new Vector3(surface.X, bottom - 0.5f, surface.Z) + outward * 1.6f,

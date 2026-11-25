@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "ash_shortbow"
+DisplayName = "Ash Shortbow"
+Category = "bow"
+IconColor = Color(0.72, 0.6, 0.42, 1)
+Damage = 13.0
+AttackCooldown = 0.5
+ArrowSpeed = 0.95
+Slot = "bow"
+SellPrice = 6

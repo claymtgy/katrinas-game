@@ -13,8 +13,8 @@ namespace KatrinasGame;
 /// network carry it like any other item. Everything here is a pure function of what's worn.</summary>
 public static class Gear
 {
-    public const string Head = "head", Body = "body", Hands = "hands", Feet = "feet", Cloak = "cloak", Charm = "charm", OffHand = "offhand";
-    public static readonly string[] Slots = { Head, Body, Hands, Feet, Cloak, Charm, OffHand };
+    public const string Head = "head", Body = "body", Hands = "hands", Feet = "feet", Cloak = "cloak", Charm = "charm", OffHand = "offhand", Bow = "bow";
+    public static readonly string[] Slots = { Head, Body, Hands, Feet, Cloak, Charm, OffHand, Bow };
     /// <summary>The armour slots (everything but the off hand).</summary>
     public static readonly string[] ArmourSlots = { Head, Body, Hands, Feet, Cloak, Charm };
 
@@ -23,7 +23,7 @@ public static class Gear
     public const float HeavyRegenPenalty = 0.05f;
 
     // Perks on the base items (ItemDef.Perk / PerkAmount).
-    public const string PerkGrip = "grip", PerkRegen = "regen", PerkFeather = "feather", PerkMight = "might", PerkVigor = "vigor", PerkGuard = "guard";
+    public const string PerkGrip = "grip", PerkRegen = "regen", PerkFeather = "feather", PerkMight = "might", PerkVigor = "vigor", PerkGuard = "guard", PerkHeatward = "heatward";
 
     /// <summary>A shield (perk "guard", amount = share off the guard's stamina cost) also widens the parry window by this.</summary>
     public const float ShieldParryBonus = 0.12f;
@@ -50,7 +50,7 @@ public static class Gear
 
     public static string SlotName(string slot) => slot switch
     {
-        Head => "Head", Body => "Body", Hands => "Hands", Feet => "Feet", Cloak => "Cloak", Charm => "Charm", OffHand => "Off hand", _ => slot,
+        Head => "Head", Body => "Body", Hands => "Hands", Feet => "Feet", Cloak => "Cloak", Charm => "Charm", OffHand => "Off hand", Bow => "Bow", _ => slot,
     };
 
     // ------------------------------------------------------------------ ids
@@ -64,6 +64,21 @@ public static class Gear
     }
 
     public static string Enchanted(string id, string enchant) => $"{Split(id).Base}@{enchant}";
+
+    // ------------------------------------------------------------------ weapons
+
+    /// <summary>Every archer has at least this bow (a new archer is handed one).</summary>
+    public const string StarterBow = "hunting_bow";
+
+    /// <summary>The bow an archer shoots with: the one worn in the bow slot, else the starter bow's
+    /// numbers (so an old save's archer, or one who took theirs off, still shoots as before).</summary>
+    public static ItemDef BowOf(PlayerController p) =>
+        p != null && p.Worn.TryGetValue(Bow, out var id) && ItemDb.Get(id) is { } d ? d : ItemDb.Get(StarterBow);
+
+    /// <summary>How strong the held weapon makes class spells and heals (a staff's firebolt and
+    /// meteor, a mace's Mend): ItemDef.Power, 1 with no weapon.</summary>
+    public static float AbilityPower(PlayerController p) =>
+        p != null && p.Equipped != "" && ItemDb.Get(p.Equipped) is { } d && d.Power > 0f ? d.Power : 1f;
 
     // ------------------------------------------------------------------ stats
 
@@ -110,6 +125,9 @@ public static class Gear
     /// <summary>Shield: extra seconds in which a raised guard parries.</summary>
     public static float ParryBonus(PlayerController p) => HasPerk(p, PerkGuard) ? ShieldParryBonus : 0f;
 
+    /// <summary>How fast the Cinder Foothills' heat builds (an Ember-glass Charm slows it).</summary>
+    public static float HeatGainMult(PlayerController p) => Mathf.Max(0.3f, 1f - PerkTotal(p, PerkHeatward));
+
     public static float ThornsShare(PlayerController p) => 0.2f * EnchantCount(p, Thorns);
 
     public static float LeechShare(PlayerController p) => 0.06f * EnchantCount(p, Leech);
@@ -135,6 +153,7 @@ public static class Gear
         if (HasPerk(p, PerkGuard)) lines.Add($"Blocks cost {(1f - GuardCostMult(p)) * 100f:0}% less, parry window +{ShieldParryBonus * 1000f:0} ms");
         if (ThornsShare(p) > 0) lines.Add($"Thorns {ThornsShare(p) * 100f:0}%");
         if (LeechShare(p) > 0) lines.Add($"Leeching {LeechShare(p) * 100f:0}%");
+        if (HeatGainMult(p) < 0.999f) lines.Add($"Heat builds {(1f - HeatGainMult(p)) * 100f:0}% slower");
         return lines;
     }
 

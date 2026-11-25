@@ -99,12 +99,15 @@ public partial class Projectile : Node3D
         if (IsArrow)
         {
             float longShot = Talents.Has(shooter, Talents.LongDraw) ? Talents.LongDrawRange : ArrowLongShot;
-            float dmg = (Kind == Volley ? VolleyDamage : ArrowDamage) * (point.DistanceTo(_origin) > longShot ? ArrowLongBonus : 1f);
+            // The bow sets the arrow's weight; a volley's arrows are lighter in the same proportion.
+            float bow = Gear.BowOf(shooter)?.Damage ?? ArrowDamage;
+            float dmg = (Kind == Volley ? VolleyDamage * bow / ArrowDamage : bow) * (point.DistanceTo(_origin) > longShot ? ArrowLongBonus : 1f);
             if (Damage(collider, dmg, shooter, Talents.Has(shooter, Talents.Piercing)) && shooter != null) Net.Instance.HitMarkerTo(shooter.PeerId);
         }
         else
         {
-            bool hitAny = Damage(collider, BoltDamage + (Talents.Has(shooter, Talents.Pyromancer) ? Talents.PyromancerDamage : 0f), shooter);
+            float power = Gear.AbilityPower(shooter);
+            bool hitAny = Damage(collider, BoltDamage * power + (Talents.Has(shooter, Talents.Pyromancer) ? Talents.PyromancerDamage : 0f), shooter);
             // Burst: scorch everything else close by.
             var q = new PhysicsShapeQueryParameters3D
             {
@@ -117,7 +120,7 @@ public partial class Projectile : Node3D
             {
                 var c = h["collider"].AsGodotObject();
                 if (c == null || c == shooter || !seen.Add(c.GetInstanceId())) continue;
-                hitAny |= Damage(c, BoltSplashDamage, shooter);
+                hitAny |= Damage(c, BoltSplashDamage * power, shooter);
             }
             if (hitAny && shooter != null) Net.Instance.HitMarkerTo(shooter.PeerId);
         }

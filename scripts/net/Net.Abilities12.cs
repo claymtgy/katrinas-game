@@ -128,7 +128,7 @@ public partial class Net
                     foreach (var e in LiveEnemies().ToList())
                         if (FlatDistance(e.GlobalPosition, at) <= MeteorRadius && Mathf.Abs(e.GlobalPosition.Y - at.Y) < 4f)
                         {
-                            e.Health.TakeDamage(MeteorDamage, p);
+                            e.Health.TakeDamage(MeteorDamage * Gear.AbilityPower(p), p);
                             hit = true;
                         }
                     if (hit) HitMarkerTo(p.PeerId);

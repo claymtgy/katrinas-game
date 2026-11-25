@@ -40,6 +40,8 @@ public partial class HomeCliffs
         // The Falls Valley mesa's north and east rims (its climbing faces are west and south).
         new(new Vector3(MesaCenter.X + 4f, MesaHeight - 0.5f, MesaCenter.Z - MesaHalf - 0.15f), Vector3.Forward, false),
         new(new Vector3(MesaCenter.X + MesaHalf + 0.15f, MesaHeight - 0.5f, MesaCenter.Z + 3f), Vector3.Right, false),
+        // The Warlord's bridge: hung from the arch just past the broken stretch, facing back toward the spire.
+        new(BridgeAnchorRing, -BridgeDir, false),
     };
 
     private static readonly Color AnchorCloth = new(0.35f, 0.62f, 0.9f);

@@ -138,6 +138,7 @@ public partial class Wildlife : Node3D
             for (int i = 0; i < _roosts.Length; i++) TendRoost(i);
             TendWest();
             TendSpires();
+            TendFoothills();
         }
 
         // Raids come at dusk.
@@ -242,7 +243,7 @@ public partial class Wildlife : Node3D
         RemoveChild(e);
         e.QueueFree();
         foreach (var peer in Net.Instance.JoinedPeers) RpcId(peer, MethodName.C_Despawn, id);
-        if ((e.Group < CampGroupBase || (e.Group >= RaidGroupBase && !IsWestGroup(e.Group) && !IsSpireGroup(e.Group))) && Enemies.Values.All(o => o.Group != e.Group)) _anchors.Remove(e.Group);
+        if ((e.Group < CampGroupBase || (e.Group >= RaidGroupBase && !IsWestGroup(e.Group) && !IsSpireGroup(e.Group) && !IsFoothillsGroup(e.Group))) && Enemies.Values.All(o => o.Group != e.Group)) _anchors.Remove(e.Group);
         if (e is Bandit { Raider: true } r && r.CarriedCount > 0 && r.Current != Enemy.State.Dead)
             Net.Instance.ToastAll($"A raider got away with {r.CarriedCount} items from the stockpile.");
     }
@@ -266,6 +267,7 @@ public partial class Wildlife : Node3D
         if (roost >= 0 && roost < _roosts.Length) return _roosts[roost].Center;
         if (WestAnchor(group, out var west)) return west;
         if (SpireAnchor(group, out var spire)) return spire;
+        if (FoothillsAnchor(group, out var foot)) return foot;
         return _anchors.TryGetValue(group, out var a) ? a : fallback;
     }
 
@@ -364,6 +366,8 @@ public partial class Wildlife : Node3D
         if (gs.Day < RaidFirstDay || gs.PlacedBuildings.Count < RaidMinBuildings) return;
         int since = gs.Day - _lastRaidDay;
         if (since < RaidMinGap) return;
+        // With the Warlord dead the bandits have nobody sending them: no raids for a while.
+        if (gs.Day < WarlordPeaceUntil) return;
         if (since >= RaidMaxGap || _rng.Randf() < RaidChance) StartRaid();
     }
 
@@ -627,7 +631,7 @@ public partial class Wildlife : Node3D
         if (result == Net.HitResult.Parried)
         {
             Parries++;
-            e.Stun(e is Bandit { Captain: true } or Crawler { Mother: true } or Harpy { Queen: true } ? 1.2f : 1.6f);
+            e.Stun(e is Bandit { Captain: true } or Bandit { Warlord: true } or Crawler { Mother: true } or Harpy { Queen: true } ? 1.2f : 1.6f);
         }
         e.OnStrike(p, result);
     }
@@ -637,7 +641,8 @@ public partial class Wildlife : Node3D
     {
         e.ServerDropLoot(source);
         Net.Instance.ServerXpForKill(e);
-        if (IsSpireGroup(e.Group)) CheckSpires(e.Group);
+        if (IsFoothillsGroup(e.Group)) CheckFoothills(e.Group);
+        else if (IsSpireGroup(e.Group)) CheckSpires(e.Group);
         else if (IsWestGroup(e.Group)) CheckWest(e.Group);
         else if (e.Group >= RaidGroupBase) CheckRaid(e.Group);
         else if (e.Group >= RoostGroupBase) CheckRoost(e.Group - RoostGroupBase);

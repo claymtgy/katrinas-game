@@ -425,6 +425,10 @@ public abstract partial class Enemy : CharacterBody3D
         "storm_harpy" => Harpy.Create(netId, group, pos, yaw, maxHealth, damage, Harpy.Variant.Storm),
         "harpy_queen" => Harpy.Create(netId, group, pos, yaw, maxHealth, damage, Harpy.Variant.Queen),
         "goat" => Goat.Create(netId, group, pos, yaw, maxHealth, damage),
+        "ash_wolf" => Wolf.Create(netId, group, pos, yaw, maxHealth, damage, ash: true),
+        "ash_boar" => Boar.Create(netId, group, pos, yaw, maxHealth, damage, ash: true),
+        "fort_bandit" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: false, rank: Bandit.Rank.Fort),
+        "warlord" => Bandit.Create(netId, group, pos, yaw, maxHealth, damage, captain: false, rank: Bandit.Rank.Warlord),
         _ => null,
     };
 }

@@ -95,6 +95,7 @@ public partial class Music : Node
 
         var pos = me.GlobalPosition;
         if (HomeCliffs.InMine(pos)) return Mood.Cave;
+        if (HomeCliffs.InFoothillsArea(pos)) return Mood.Night; // under the volcano's haze
         if (new Vector2(pos.X - HomeCliffs.AshbyCenter.X, pos.Z - HomeCliffs.AshbyCenter.Z).Length() < 60f) return Mood.Village;
         float t = gs.TimeOfDay;
         return t > 0.22f && t < 0.78f ? Mood.Day : Mood.Night;

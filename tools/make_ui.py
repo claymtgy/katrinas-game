@@ -15,6 +15,7 @@ Kit (9-slice textures; the margins are in UiTheme.cs):
   icons/<id>.png   one 64 x 64 icon per item
 """
 import os
+import sys
 import struct
 import zlib
 
@@ -505,33 +506,75 @@ def _knife(ic, tip, base, blade=(0.8, 0.83, 0.88), grip=(0.36, 0.22, 0.12)):
     ic.fill(sd_segment(x, y, base[0], base[1], hilt[0], hilt[1], 2.6), grip)
 
 
-def icon_knives(ic):
-    _knife(ic, (52, 12), (16, 50))
-    _knife(ic, (12, 12), (48, 50), blade=(0.74, 0.77, 0.83), grip=(0.3, 0.18, 0.1))
+def icon_knives(ic, blade=(0.8, 0.83, 0.88)):
+    _knife(ic, (52, 12), (16, 50), blade=blade)
+    _knife(ic, (12, 12), (48, 50), blade=mix(blade, 0.92), grip=(0.3, 0.18, 0.1))
 
 
 def icon_knife(ic):
     _knife(ic, (50, 14), (14, 50), grip=(0.45, 0.3, 0.16))
 
 
-def icon_staff(ic):
+def icon_staff(ic, stone=(1.0, 0.6, 0.25), wood=(0.55, 0.38, 0.2), shod=None):
     x, y = ic.x, ic.y
-    ic.fill(sd_segment(x, y, 14, 56, 44, 16, 3.0), (0.55, 0.38, 0.2))
-    ic.fill(sd_segment(x, y, 40, 21, 47, 12, 4.2), (0.45, 0.3, 0.16))  # gnarled head
-    ic.fill(sd_circle(x, y, 47, 13, 5.5), (1.0, 0.6, 0.25), dome=0.9)  # ember stone
+    ic.fill(sd_segment(x, y, 14, 56, 44, 16, 3.0), wood)
+    if shod:
+        ic.fill(sd_segment(x, y, 14, 56, 18, 51, 3.4), shod, dome=0.6)  # metal foot
+    ic.fill(sd_segment(x, y, 40, 21, 47, 12, 4.2), shod or mix(wood, 0.82))  # head
+    ic.fill(sd_circle(x, y, 47, 13, 5.5), stone, dome=0.9)  # the stone
     ic.line(sd_circle(x, y, 45.5, 11.5, 1.6), (1, 0.95, 0.8), 0.9)
     ic.fill(sd_segment(x, y, 26, 40, 30, 35, 3.4), (0.36, 0.24, 0.14), outline=1.0)  # grip wrap
 
 
-def icon_mace(ic):
+def icon_mace(ic, head=(0.62, 0.6, 0.55), spikes=(0.5, 0.5, 0.54)):
     x, y = ic.x, ic.y
     ic.fill(sd_segment(x, y, 16, 52, 34, 26, 3.0), (0.5, 0.32, 0.16))
     ic.fill(sd_segment(x, y, 16, 52, 21, 45, 3.4), (0.36, 0.24, 0.14))
     for a in range(6):
         import math
         t = a * math.pi / 3
-        ic.fill(sd_segment(x, y, 40, 20, 40 + math.cos(t) * 12, 20 + math.sin(t) * 12, 2.6), (0.5, 0.5, 0.54), outline=1.4)
-    ic.fill(sd_circle(x, y, 40, 20, 8), (0.62, 0.6, 0.55), dome=0.7)
+        ic.fill(sd_segment(x, y, 40, 20, 40 + math.cos(t) * 12, 20 + math.sin(t) * 12, 2.6), spikes, outline=1.4)
+    ic.fill(sd_circle(x, y, 40, 20, 8), head, dome=0.7)
+
+
+def icon_key(ic):
+    """A big iron key with an ember-red bow."""
+    x, y = ic.x, ic.y
+    ic.fill(sd_segment(x, y, 26, 38, 52, 12, 3.0), (0.4, 0.4, 0.44), dome=0.5)
+    ic.fill(sd_poly(x, y, [(44, 20), (50, 26), (46, 30), (40, 24)]), (0.4, 0.4, 0.44))
+    ic.fill(sd_poly(x, y, [(48, 16), (54, 22), (51, 25), (45, 19)]), (0.4, 0.4, 0.44))
+    ring = sd_circle(x, y, 20, 44, 10)
+    ic.fill(ring, (0.95, 0.42, 0.15), dome=0.7)
+    ic.fill(sd_circle(x, y, 20, 44, 4.5), (0.12, 0.08, 0.06), light=False, outline=0)
+
+
+def icon_bow(ic, wood=(0.55, 0.38, 0.22), tips=None, long=False, recurve=False, grip=(0.36, 0.22, 0.12)):
+    """A strung bow, its back to the upper left, the string across the lower right."""
+    import math
+    x, y = ic.x, ic.y
+    top, bot = ((8, 10), (54, 56)) if long else ((12, 16), (48, 52))
+    # The limb: a bent arc bulging to the upper right, drawn as short segments.
+    bulge = 22 if long else 20
+    cx, cy = (top[0] + bot[0]) / 2, (top[1] + bot[1]) / 2
+    ctrl = (cx + bulge * 0.707 * 2, cy - bulge * 0.707 * 2)
+    mid = (cx + bulge * 0.707, cy - bulge * 0.707)
+    pts = []
+    for i in range(13):
+        t = i / 12
+        # quadratic through top -> mid -> bottom
+        px = (1 - t) ** 2 * top[0] + 2 * (1 - t) * t * ctrl[0] + t * t * bot[0]
+        py = (1 - t) ** 2 * top[1] + 2 * (1 - t) * t * ctrl[1] + t * t * bot[1]
+        pts.append((px, py))
+    if recurve:  # tips flick away from the string
+        pts.insert(0, (top[0] + 4, top[1] - 4))
+        pts.append((bot[0] + 4, bot[1] - 4))
+    ic.line(sd_segment(x, y, pts[0][0], pts[0][1], pts[-1][0], pts[-1][1], 0.55), (0.92, 0.9, 0.82), 0.95)  # string
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        ic.fill(sd_segment(x, y, ax, ay, bx, by, 2.6), wood, outline=1.6)
+    ic.fill(sd_segment(x, y, mid[0] - 3, mid[1] - 3, mid[0] + 3, mid[1] + 3, 3.3), grip, outline=1.2)
+    if tips:
+        for (px, py) in (pts[0], pts[-1]):
+            ic.fill(sd_circle(x, y, px, py, 2.8), tips, dome=0.7, outline=1.2)
 
 
 def icon_axe(ic, head=(0.44, 0.42, 0.42)):
@@ -564,14 +607,14 @@ def icon_ore(ic):
         ic.fill(sd_circle(x, y, cx, cy, r), (0.85, 0.5, 0.26), outline=1.0, dome=0.8)
 
 
-def icon_ingot(ic):
+def icon_ingot(ic, col=(0.82, 0.84, 0.9)):
     x, y = ic.x, ic.y
     top = sd_poly(x, y, [(14, 30), (24, 20), (52, 20), (44, 30)])
     front = sd_poly(x, y, [(14, 30), (44, 30), (50, 46), (8, 46)])
     side = sd_poly(x, y, [(44, 30), (52, 20), (58, 36), (50, 46)])
-    ic.fill(front, (0.58, 0.6, 0.66), grad=0.2)
-    ic.fill(side, (0.45, 0.47, 0.52), grad=0.1)
-    ic.fill(top, (0.82, 0.84, 0.9), grad=0.1)
+    ic.fill(front, mix(col, 0.71), grad=0.2)
+    ic.fill(side, mix(col, 0.55), grad=0.1)
+    ic.fill(top, col, grad=0.1)
     ic.line(sd_segment(x, y, 20, 25, 44, 25, 0.6), (1, 1, 1), 0.5)
 
 
@@ -965,11 +1008,42 @@ ICONS = {
     "hunting_knife": icon_knife,
     "oak_staff": icon_staff,
     "pilgrim_mace": icon_mace,
+    # bows
+    "hunting_bow": icon_bow,
+    "ash_shortbow": lambda ic: icon_bow(ic, wood=(0.74, 0.62, 0.44)),
+    "fletchers_recurve": lambda ic: icon_bow(ic, wood=(0.5, 0.36, 0.24), tips=(0.55, 0.6, 0.78), recurve=True),
+    "bronze_recurve": lambda ic: icon_bow(ic, wood=(0.46, 0.3, 0.18), tips=(0.9, 0.64, 0.34), recurve=True),
+    "yew_longbow": lambda ic: icon_bow(ic, wood=(0.48, 0.28, 0.16), long=True),
+    "iron_warbow": lambda ic: icon_bow(ic, wood=(0.36, 0.24, 0.16), tips=(0.62, 0.64, 0.7), long=True, recurve=True),
+    "steel_composite_bow": lambda ic: icon_bow(ic, wood=(0.3, 0.2, 0.16), tips=(0.86, 0.88, 0.94), long=True, recurve=True, grip=(0.55, 0.2, 0.15)),
+    # more weapons for every class
+    "bronze_knives": lambda ic: icon_knives(ic, blade=(0.9, 0.64, 0.34)),
+    "iron_knives": lambda ic: icon_knives(ic, blade=(0.78, 0.8, 0.86)),
+    "steel_knives": lambda ic: icon_knives(ic, blade=(0.9, 0.92, 0.97)),
+    "bronze_mace": lambda ic: icon_mace(ic, head=(0.88, 0.62, 0.34), spikes=(0.7, 0.48, 0.26)),
+    "iron_mace": lambda ic: icon_mace(ic, head=(0.68, 0.7, 0.76), spikes=(0.55, 0.57, 0.62)),
+    "steel_mace": lambda ic: icon_mace(ic, head=(0.86, 0.88, 0.94), spikes=(0.75, 0.77, 0.83)),
+    "rune_staff": lambda ic: icon_staff(ic, stone=(0.45, 0.7, 1.0)),
+    "bronze_staff": lambda ic: icon_staff(ic, stone=(0.9, 0.85, 0.6), shod=(0.88, 0.62, 0.34)),
+    "ember_staff": lambda ic: icon_staff(ic, stone=(1.0, 0.35, 0.12), wood=(0.25, 0.16, 0.14), shod=(0.82, 0.84, 0.9)),
+    "steel_sword": lambda ic: icon_sword(ic, blade=(0.92, 0.94, 0.98), guard=(0.55, 0.2, 0.15)),
+    # the Cinder Foothills
+    "coal": lambda ic: icon_ore_tinted(ic, (0.14, 0.13, 0.15), (0.3, 0.28, 0.32)),
+    "steel_ingot": lambda ic: icon_ingot(ic, (0.82, 0.84, 0.9)),
+    "keep_blueprint": icon_scroll,
+    "ember_pass_key": icon_key,
+    "plate_helm": lambda ic: icon_cap(ic, (0.78, 0.8, 0.86), metal=True),
+    "plate_cuirass": lambda ic: icon_tunic(ic, (0.74, 0.76, 0.82), studs=True),
+    "plate_gauntlets": lambda ic: icon_glove(ic, (0.74, 0.76, 0.82)),
+    "plate_sabatons": lambda ic: icon_boot(ic, (0.7, 0.72, 0.78), trim=(0.55, 0.2, 0.15)),
+    "ember_glass_charm": lambda ic: icon_charm(ic, (0.3, 0.28, 0.3), (1.0, 0.45, 0.15)),
 }
 
 
-def make_icons():
+def make_icons(only=None):
     for name, draw in ICONS.items():
+        if only and name not in only:
+            continue
         ic = Icon()
         draw(ic)
         ic.save(name)
@@ -988,6 +1062,10 @@ def make_glint():
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
+    if len(sys.argv) > 2 and sys.argv[1] == "--icons":
+        # e.g. `python tools/make_ui.py --icons coal steel_ingot`: just those icons
+        make_icons(set(sys.argv[2:]))
+        sys.exit(0)
     make_panel()
     make_button("button.png", (0.36, 0.22, 0.12), 1.0)
     make_button("button_hover.png", (0.46, 0.29, 0.15), 1.15)

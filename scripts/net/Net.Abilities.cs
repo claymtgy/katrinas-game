@@ -89,11 +89,11 @@ public partial class Net
             case PlayerClasses.HealerId:
                 foreach (var other in Gs.Players.Values)
                     if (!other.Health.IsDead && !other.Downed && other.GlobalPosition.DistanceTo(p.GlobalPosition) <= MendRadius)
-                        other.Health.Heal(MendHeal + (Talents.Has(p, Talents.Lifebloom) ? Talents.LifebloomHeal : 0f));
+                        other.Health.Heal(MendHeal * Gear.AbilityPower(p) + (Talents.Has(p, Talents.Lifebloom) ? Talents.LifebloomHeal : 0f));
                 break;
             case PlayerClasses.ArcherId:
                 // A touch of loft so a level shot carries.
-                SpawnProjectile(p, Projectile.Arrow, chest + aim * 0.6f, (aim + Vector3.Up * 0.03f).Normalized() * Projectile.ArrowSpeed);
+                SpawnProjectile(p, Projectile.Arrow, chest + aim * 0.6f, (aim + Vector3.Up * 0.03f).Normalized() * Projectile.ArrowSpeed * (Gear.BowOf(p)?.ArrowSpeed ?? 1f));
                 break;
         }
         foreach (var peer in _joined)
@@ -146,7 +146,7 @@ public partial class Net
                 {
                     float angle = Mathf.DegToRad(VolleyFanDegrees) * ((float)i / (VolleyArrows - 1) - 0.5f);
                     var dir = aim.Rotated(Vector3.Up, angle);
-                    SpawnProjectile(p, Projectile.Volley, chest + dir * 0.6f, (dir + Vector3.Up * 0.03f).Normalized() * Projectile.ArrowSpeed);
+                    SpawnProjectile(p, Projectile.Volley, chest + dir * 0.6f, (dir + Vector3.Up * 0.03f).Normalized() * Projectile.ArrowSpeed * (Gear.BowOf(p)?.ArrowSpeed ?? 1f));
                 }
                 break;
         }

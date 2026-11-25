@@ -149,10 +149,10 @@ public partial class GameState : Node
 
     public void SetHomeTier(int tier)
     {
-        tier = Mathf.Clamp(tier, 1, 2);
+        tier = Mathf.Clamp(tier, 1, HomeUpgradeBoard.MaxTier);
         if (tier == HomeTier) return;
         HomeTier = tier;
-        ClaimRadius = tier >= 3 ? 54f : tier >= 2 ? 42f : 30f;
+        ClaimRadius = tier >= 4 ? 66f : tier >= 3 ? 54f : tier >= 2 ? 42f : 30f;
         HomeTierChanged?.Invoke(tier);
     }
 
@@ -319,6 +319,8 @@ public partial class GameState : Node
             ["xp"] = p.Xp, ["firsts"] = new GArray(p.XpFirsts.Select(f => Variant.From(f))),
             ["talents"] = Talents.ToDict(p.TalentPicks),
             ["class"] = p.Look.Class,
+            // The character as it is in this world: class and looks belong to the save (and the server).
+            ["look"] = p.Look.ToDict(),
         };
 
     /// <summary>Server: put a saved character's XP and firsts back on a player.</summary>

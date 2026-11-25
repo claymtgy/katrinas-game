@@ -23,6 +23,13 @@ public partial class ItemDef : Resource
     [Export] public string ToolKind { get; set; } = "";
     /// <summary>With the right tool, each swing does this many drops' worth to a resource node.</summary>
     [Export] public float ToolPower { get; set; } = 0f;
+    /// <summary>Class spells and heals while held (a staff's firebolt, a mace's Mend): × this.</summary>
+    [Export] public float Power { get; set; } = 1f;
+
+    [ExportGroup("Bow")]
+    /// <summary>A bow (Slot "bow", worn): Damage is per arrow, AttackCooldown the draw between
+    /// shots, and arrows fly this many times the base speed (flatter, further).</summary>
+    [Export] public float ArrowSpeed { get; set; } = 1f;
 
     [ExportGroup("Food")]
     /// <summary>Health restored when eaten (F). 0 = not food.</summary>
@@ -64,7 +71,8 @@ public partial class ItemDef : Resource
     public bool IsTool => ToolKind != "";
     public bool IsWearable => Slot != "";
     /// <summary>Stays with its owner: crafted into their pack, kept at a chest, never lost on defeat.</summary>
-    public bool IsPersonal => Category is "gear" or "armor";
+    public bool IsPersonal => Category is "gear" or "armor" or "bow";
+    public bool IsBow => Slot == Gear.Bow;
     public bool HasBuff => BuffKind != "" && BuffSeconds > 0;
     public bool IsFood => FoodHeal > 0 || HasBuff;
 
@@ -72,14 +80,24 @@ public partial class ItemDef : Resource
     public string Describe()
     {
         var lines = new System.Collections.Generic.List<string> { DisplayName };
-        if (IsWearable)
+        if (IsBow)
+        {
+            lines.Add($"Bow · {Damage:0} per arrow · a shot every {AttackCooldown:0.##} s" + (ArrowSpeed > 1.05f ? " · flat, fast arrows" : ArrowSpeed < 0.95f ? " · slower arrows" : ""));
+            lines.Add("Archers shoot with it (wear it in the bow slot)");
+            if (Gear.GetEnchantment(Enchant) is { } e) lines.Add($"Enchanted: {e.Text}");
+        }
+        else if (IsWearable)
         {
             lines.Add($"{Gear.SlotName(Slot)} armour" + (Armor > 0 ? $" · {Armor:0} armour" : "") + (Heavy ? " · heavy" : ""));
             if (PerkText != "") lines.Add(PerkText);
             if (Gear.GetEnchantment(Enchant) is { } e) lines.Add($"Enchanted: {e.Text}");
         }
         else if (IsTool) lines.Add($"{(ToolKind == "axe" ? "Axe: chops trees" : "Pickaxe: mines rock and ore")} · ×{ToolPower:0.#} per swing · {Damage:0} damage");
-        else if (IsWeapon) lines.Add($"Weapon · {Damage:0} damage · {Reach:0.0} m reach");
+        else if (IsWeapon)
+        {
+            lines.Add($"Weapon · {Damage:0} damage · {Reach:0.0} m reach");
+            if (Power > 1.001f) lines.Add($"Spells and heals +{(Power - 1f) * 100f:0}%");
+        }
         else if (IsFood) lines.Add($"Food" + (FoodHeal > 0 ? $" · heals {FoodHeal:0}" : "") + (HasBuff ? $" · {BuffText}" : ""));
         else if (Category == "gear" && Id == "glider") lines.Add("Gear · Space in the air to glide");
         if (SellPrice > 0) lines.Add($"Sells for {SellPrice} coins");

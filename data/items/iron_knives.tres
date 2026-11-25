@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "iron_knives"
+DisplayName = "Iron Twin Dirks"
+Category = "weapon"
+IconColor = Color(0.8, 0.82, 0.88, 1)
+Damage = 22.0
+Reach = 1.7
+AttackCooldown = 0.27
+SellPrice = 18

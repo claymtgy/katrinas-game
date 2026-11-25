@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "steel_composite_bow"
+DisplayName = "Steel Composite Bow"
+Category = "bow"
+IconColor = Color(0.78, 0.8, 0.86, 1)
+Damage = 38.0
+AttackCooldown = 0.75
+ArrowSpeed = 1.4
+Slot = "bow"
+SellPrice = 48

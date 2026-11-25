@@ -357,7 +357,7 @@ public partial class DevAutotest : Node
         cc.Done();
         hud.CloseMenus();
         Check(await Until(() => p.Look.Body == Appearance.Knight, 3), "Done gives the player the new look");
-        Check(Appearance.Local.Outfit == "#2c5c8c" && Mathf.IsEqualApprox(p.Look.Height, 1.08f), "...colours and height included");
+        Check(p.Look.Outfit == "#2c5c8c" && Mathf.IsEqualApprox(p.Look.Height, 1.08f), "...colours and height included");
         await Wait(0.2);
         Check(mesh.FindChild("Knight", false, false) != null && mesh.FindChild("Rogue", false, false) == null, "the body was rebuilt as a Knight");
         var bodyMesh = mesh.FindChild("Knight_Body", true, false) as MeshInstance3D;
@@ -2533,7 +2533,7 @@ public partial class DevAutotest : Node
             await Wait(0.2);
         }
 
-        Check(Talents.All.Length == 20 && PlayerClasses.All.All(c => Talents.Levels.All(l => Talents.Choices(c.Id, l).Count() == 2)),
+        Check(Talents.All.Length == 30 && PlayerClasses.All.All(c => Talents.Levels.All(l => Talents.Choices(c.Id, l).Count() == 2)),
             "every class has two talents to choose from at levels 3 and 8");
         await Become(PlayerClasses.RogueId);
         Check(p.Level >= 5 && p.Level < 8, $"level {p.Level} for the talent tests");

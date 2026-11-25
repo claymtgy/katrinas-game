@@ -164,6 +164,12 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - **Repairs:** at dawn every damaged building is patched up for free.
   - Code: `Wildlife` (`MaybeRaid`, `StartRaid`, `RaidStrike`), `Bandit` (raider objective), `Watchtower`.
 
+### Bows and the weapon range (built, 2026-11-24)
+- **Bows are items now.** An archer's bow goes in its own **Bow** slot on the character sheet (personal gear, like the glider). Shoot uses the worn bow's damage, draw time (the cooldown) and arrow speed; Volley's arrows scale with it. With no bow worn, an archer shoots as if with a Hunting Bow, so old saves keep working.
+- **Getting one early:** every new archer starts with a worn **Hunting Bow** (16 damage). It's also the first bow at the workbench (6 wood, 1 wolf pelt), so a lost or sold one is easy to replace.
+- **Seven bows:** Hunting Bow and Ash Shortbow (workbench, fast and light), Fletcher's Recurve (workbench, harpy feathers), Bronze-horned Recurve (anvil), Yew Longbow (sawhorse: slow draw, hard-hitting, fast arrows), Iron Warbow (bellows), Steel Composite Bow (Blast Forge).
+- **More of every weapon:** bronze, iron and steel twin knives; bronze, iron and steel maces; rune-carved, bronze-shod and Ember staffs; and the Steel Sword. Maces and staffs have **Power**: a healer's Mend and a wizard's Firebolt and Meteor are stronger with a better one (1.15–1.6×).
+
 ### Armour, gear and enchantments (built: the system and tiers 0–1; later tiers planned)
 - **Why:** gear is the long-term thing you work toward between base upgrades. Every zone's hazard has an answer you can make (wet rock → grip boots, long falls → the feather cloak, heat → heat-ward armour), so exploring feeds crafting, and crafting opens up exploring.
 - **Slots (6):** Head, Body, Hands, Feet, Cloak, Charm. Weapons stay on the hotbar (1–5) as before.
@@ -227,7 +233,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Colours:** skin (7 tones plus a pale green), hair, outfit (the Knight's cape and cloth trim), and trim (the Wanderer's trousers and gloves, the Knight's armour). Each has 10–11 presets, and "–" keeps the model's own colour.
 - **Gear:** cape on or off, and a helmet for the Knight. **Height:** 90–110 %. **Randomise** rolls a whole look.
 - **How it works:** the KayKit models take every colour from an 8 × 4 grid of gradient swatches in one texture. The character shader recolours the swatches each slot uses (`Appearance.Slots`), keeping each swatch's light-to-dark gradient, so a recoloured part still shades like the original. Each painted player gets its own materials; unpainted models still share theirs.
-- **Where it lives:** your look belongs to you, not to the world. It's kept in `user://settings.cfg` (`[look]`), sent in the join hello (since protocol 4), and echoed to everyone. Changing it in game rebuilds your body on every screen, and your held weapon moves to the new hand. The server cleans up looks it receives: unknown bodies, bad colours and out-of-range heights fall back to defaults.
+- **Where it lives (changed 2026-11-24):** your look and class belong to the world (and so to the server you play on). The world save keeps each character's look with its class; when you come back to a world, or rejoin a server, you are the character you were there, whatever you picked last somewhere else ("Welcome back. In this world you are a …"). A new world or server starts from the look in `user://settings.cfg` (`[look]`), which **Customise new character…** on the main menu sets. The look is sent in the join hello (since protocol 4), and echoed to everyone. Changing it in game rebuilds your body on every screen, and your held weapon moves to the new hand. The server cleans up looks it receives: unknown bodies, bad colours and out-of-range heights fall back to defaults.
 
 ## 8. Traversal (verticality)
 - **Built:** walk, sprint (stamina), jump, fall damage, dodge roll, climbing, the glider, waterfall updrafts, river currents.
@@ -262,6 +268,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - Waterfalls can't be climbed. The Grapple Hook (built, §11 step 2) reaches marked anchor rings instead. Rivers stay wading depth (currents, above).
 - **Co-op:** everyone sees climbing, gliding and swimming. The movement state carries a mode (normal, climb, glide or swim), (protocol 5; swim from protocol 8). Protocol 6 added worn armour (`S_Wear`, `S_TakeOff`, `S_Enchant`, `C_Worn`; what's worn is part of each player's info in the snapshot). Protocol 7 added the shared journal (`C_Journal`, `S_Errand`; `"journal"` in the snapshot).
 - **Grip boots (built):** less drain on wet rock (§6).
+- **I'm stuck (built, 2026-11-24):** the Esc menu has **I'm stuck (go home)**. If you haven't been hurt for 8 seconds (and aren't downed or asleep), it takes you to the home blossom. The server checks the 8 seconds, so it can't be used to escape a fight.
 
 ### Roads and trails (built)
 - Unbroken dirt roads join every area: the yard → through the gap in the plateau wall → the vale → Ashby, a footpath from the road to the bandit camp, and a road east from the home road through the pass, over the stepping stones and on to the foot of the mesa's climbing face.
@@ -276,7 +283,7 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 | Forest Road / Ashby | Bandit camps, raids | Walls, better swords |
 | Hollow Mine (planned, tier 2) | Darkness, tight tunnels, cave crawlers, flooded galleries | Torches and the lantern, bronze gear |
 | Spire Cliffs (built, tier 3) | Wind gusts that push gliders, long falls between spires, loose rock, storm harpies | Feather cloak, grip boots, the grapple hook, a shield |
-| Cinder Foothills (planned, tier 4) | Steam vents, hot ground (a mild **heat meter**), ash-sick beasts, the bandit warlord's fort | Cool springs, steel gear, a first heat-ward charm |
+| Cinder Foothills (built, tier 4) | Steam vents, hot ground (a mild **heat meter**), ash wolves and boars, the Bandit Warlord's fort | Cool springs, the Ashen Blossom, steel gear, the Ember-glass Charm, the heat talents |
 | Volcano (late) | **Heat meter** (rises near lava and drains health when full), lava flows, ash storms, emissive lava falls | Heat-ward cloak, blossom charms, cool springs |
 
 ### Wolves (built)
@@ -422,7 +429,20 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
 - **Gear:** Iron Sword, Chain Mail and the **Shield** in a new Off-hand slot (§6, tier 3). Grip boots and the feather cloak pay off here.
 - **Hands off:** the Queen drops the **Longhouse Blueprint**. The Longhouse widens the land claim and opens the first **worker** slots (§14 step 12), so it's also where the economy starts running on its own.
 
-#### Step 3: Cinder Foothills (steel)
+#### Step 3: Cinder Foothills (steel) (built, 2026-11-24, not yet playtested)
+- **As built:**
+  - **Where:** a burnt highland standing out of the cloud sea north-west of the Spire Cliffs (`Regions.Foothills`), about 190 × 160 m: ash-grey hills round a low basin (≈9 m), rising to ≈24 m at the rim and ≈30 m in the north-west toward the volcano, with cliffs down into the clouds all round. Its ground is a terrain island of its own (`Terrain.Island`), with a soot-and-ash palette.
+  - **Getting there:** the **Warlord's rope bridge**, 82 m from the top of the Tall Spire down to a landing on the island's south-east lip. A stretch past the middle is broken (planks gone, one rail snapped): jump it, glide it, or throw the grapple at the ring hanging from the arch past the gap. The bridge has rope rails and walls you can't see, so you can't walk off the side.
+  - **The heat meter (`Net.Heat.cs`):** heat builds by 0.4 a second anywhere on the island (not while it rains), 8 more by a steam vent (six of them) and 3 more on glowing ground (three patches). A cool spring (four, pale blue pools) sheds 30 a second, the Ashen Blossom 15, and it drains by 6 a second anywhere else. Full heat (100) burns for 4 a second. The Ember-glass Charm makes it build 40% slower and each class's level-15 heat talent 30% slower. A heat bar shows under stamina when you have any.
+  - **Places:** the **Ashen Blossom** by a spring north of the landing (a sanctuary with fast travel), the **Old Forge** ruin in the basin (a strongbox with steel, coal and iron), the **Warlord's Fort** in the north-west (a 14 m ring palisade with gate towers, tents and his war tent), and the **Ember Pass** gate in the far north-west. Ten **coal seams** (pickaxe; they grow back after 5 minutes). Signs at the landing and the forge, landmarks for each place, dead trees, crags along the north-west rim, ash falling.
+  - **Enemies (`Wildlife.Foothills.cs`):** two dens of **ash wolves** (soot-black, ember-eyed, tougher; they hunt by day here), two herds of **ash boars**, the fort's **guard** of veteran bandits, and the **Bandit Warlord**: a 2.6 m giant with a greatsword (1,100 health scaled for co-op, armour 18). Every 12 s he raises the sword (a 1 s tell) and **slams the ground**: everyone within 6.5 m is hurt and thrown back (roll through it; a raised guard halves it). Below half health he calls two guards. His death stops raids on the base for 5 days, and he drops the **Keep Blueprint** and the **Ember Pass Key** (once each).
+  - **Steel:** the **Blast Forge** (16 bricks, 6 iron ingots, 10 stone, 6 coal) makes a steel ingot from 2 iron and 1 coal, and forges plate (helm, cuirass, gauntlets, sabatons), the steel weapons and the Steel Composite Bow. The Ember-glass Charm is made at the workbench (3 coal, 2 rune shards, 1 iron).
+  - **The Keep (home tier 4):** 60 stone, 30 bricks, 30 planks, 8 steel, 20 nails and the blueprint. A 10 × 8 m hall with six beds and a corner tower at each corner; the land claim grows to 66 m.
+  - **The Ember Pass:** the Warlord's key opens the gate (once, for the whole world), but beyond it the pass is choked with fresh lava for now. The volcano (step 4) opens it.
+  - **Talents at level 15:** each class picks one of two: a heat talent (heat builds 30% slower) or an ability boost (Warrior: blocked blows do 30% less; Rogue: Shadowstep 4 s sooner; Wizard: Meteor 6 s sooner; Healer: Blossom Ward 6 s sooner; Archer: Volley 3 s sooner).
+  - **Goals:** cross the bridge → find the Ashen Blossom → mine coal → build the Blast Forge → forge steel → slay the Warlord → raise the Keep. Side goal: unlock the Ember Pass.
+  - **Bug fixed with it:** the home tier was capped at 2 in code, so the Longhouse (tier 3) could be paid for but never stayed built. It now goes up to the Keep.
+- **The plan it was built from:**
 - **Where:** between Falls Valley and the volcano, the burnt slopes at the volcano's foot.
 - **The hook:** a gentle version of the volcano's **heat meter**. Steam vents and hot ground fill it slowly, and cool springs empty it. It teaches the endgame's system while it can't kill you quickly yet.
 - **Coal** seams in the burnt ground, which with iron make **steel** at the **Blast Forge**.
@@ -464,6 +484,10 @@ You wake in a tiny shack on the edge of a cliff above a sea of clouds. Waterfall
   - **Rock (built):** every tall rock (cliff walls, the drops into the clouds, scenery spires) is now a cluster of **basalt columns** built in code (`Basalt`, six shared variants: hexagonal columns of mixed heights with bevelled, tilted caps). The Falls mesa, the Spire Cliffs' spires and the lookout are flat-topped column blocks you walk on (`Basalt.Plateau`, over their old box colliders). Crowns are no longer put on top of the basalt. One cliff shader (`StyleMaterials.CliffShader`) for all rock: mid slate-violet facets of varied value, warm peach on sunlit facets (strongest at golden hour), cool in shade, moss on flat tops, and tan sandstone in the vale (concept 3). Boulders, slabs and buttresses are still the old models, now in the new shader.
   - **Greenery (built):** clumps of round bushes (some flowering) and leafy trees banked against the feet of the cliffs in the vale, at its far end, under Falls Valley's east and south walls and on the home plateau's flanks, plus a few out in the open; six blossom trees ring Ashby (`HomeCliffs.Greenery.cs`, scenery with trunk colliders, kept off roads, water, camps, the village and 48 m round the shack). Every blossom tree's canopy is covered in about 3,200 small five-petal florets in mixed pinks (`Blossom`, one shared MultiMesh), so it reads as flowers up close.
   - **Atmosphere (built):** smoke curls from every chimney and drifts on the breeze; window panes glow warm from dusk; every waterfall's foot dissolves into big soft billows and fine spray; a faint rainbow stands in the Great Falls' mist by day; big petals tumble off every blossom tree; three market stalls with teal, mustard and plum awnings, goods and a hanging lantern each stand round Ashby's well (`HomeCliffs.Atmosphere.cs`, petals in `Blossom`).
+  - **Ambient life (built, 2026-11-24, `AmbientLife.cs`):** harmless animals round each player, drawn on that player's screen only (they aren't networked and don't affect play). Birds burst out of trees when you walk close or chop them, and flocks cross the sky now and then; rabbits and deer graze in the hills and bolt when you come near (stags have antlers); butterflies by day. None of them on the ash of the Cinder Foothills.
+  - **Climbing faces (built, 2026-11-24, `ClimbRock.cs`):** the climbable rock on the mesa and the spires is a faceted, broken sheet of rock with ledges, ragged edges and rust streaks painted in, instead of a flat pale box. The colliders are unchanged.
+  - **Home pool (fixed, 2026-11-24):** the water and the stream are flat sheets instead of thin boxes, and the rim stones no longer share faces with the basin walls, so the pool no longer flickers.
+  - **Birdsong (2026-11-24):** a 36 s loop with five sparse phrases, about a third as loud as before.
   - Still open from the comparison: the hero model (concept 9: a normally proportioned hooded figure, not the chibi kit) and a stronger sense of scale.
 - **§12a Audio (built):**
   - Every sound is synthesized by `tools/make_audio.py` (numpy; noise and oscillators, no recordings and no licences) into `assets/audio/*.wav`. To replace one with a real recording, keep the file name.
@@ -544,13 +568,14 @@ On a controller, menus get the focus: move with the D-pad or the left stick, cho
 3. **Vertical slice (done):** wolves with AI, block/parry, farm plots and cooking, Ashby village with a trader, one bandit camp, house tier 2 (cottage). Follow-ups done: watering and rain, food buffs, dodge roll, navmesh pathing for enemies, carried packs with storage chests. Next: playtest it on two real PCs and tune the numbers.
 4. **Art pass (done, see §12):** terrain, foliage and water shaders, volumetric clouds, faceted and animated wolves, the character toon ramp with outlines, the sculpted volcano, and synthesized audio (ambience and effects). Later polish: real recorded audio, music, a sculpted rock kit for the cliffs.
 5. **Falls Valley (done):** climbing (with wet rock), the glider, updrafts, river currents, harpies, and the second sanctuary on the mesa. Also done: bandit raids on the base, with the watchtower. Follow-ups done: grip boots, swimming (the home and Great Falls pools), and fast travel between sanctuaries.
-6. **Levels and abilities (done):** (the level-15 and 20 talents come with their regions) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
+6. **Levels and abilities (done):** (the level-15 talents came with the Cinder Foothills; the level-20 ones come with the volcano) XP and the level curve up to 20, the XP bar and level-up banner, talents at levels 3 and 8, the level-5 ability for all five classes, the second ability key, levels on nameplates, and the **downed state** (§16), which co-op needs anyway and the Healer's Rekindle builds on. See §6, *Levels and abilities*. It comes before the new regions so their enemies and bosses can be tuned for the levels players will have.
 7. **Tier 1 fill-in (done):** clay, the Sawhorse and the Kiln (planks, bricks, charcoal). See §11, *Region progression*.
 8. **Hollow Mine (bronze) (built, not yet playtested):** the Forest Road with wild boars, darkness with torches and the lantern, cave crawlers and the Crawler Mother, copper and tin, the Smelter and Anvil, bronze gear, the Mine Blossom, the iron gate. Still to do: scripted tests for it, the flooded side rooms, and tuning.
 9. **Spire Cliffs (iron) (built):** the spires, updrafts, gusts and iron seams; the grapple hook and anchor rings; storm harpies and cliff goats; the Bellows, chain mail and the shield; the Storm Harpy Queen and the Longhouse.
-10. **Cinder Foothills (steel):** the heat meter (gentle), coal, the Blast Forge, the Bandit Warlord's fort, plate, the Keep, and the level-15 talents.
-11. **Volcano:** the full heat system, lava hazards, Ember Ore, the Sacred Forge, the Ember Warden, and the level-20 talents at the level cap.
-12. **Cities and workers:** automation and the regional economy. Workers can start earlier, with the Longhouse's worker slots (step 9).
+10. **Cinder Foothills (steel) (built, not yet playtested):** the rope bridge, the heat meter (gentle), coal, the Blast Forge, steel and plate, the Bandit Warlord's fort, the Keep, the Ember Pass gate, and the level-15 talents. Also done with it: bows as items (seven of them) and more weapons for every class, ambient animals, rocky climbing faces, the I'm stuck button, and characters kept per world. Still to do: playtest it, scripted tests for it, and tuning (heat rates, the Warlord).
+11. **Build out the Village of Ashby:** make Ashby a real hub instead of five houses round a well: more villagers with names and errands, a smith and an inn, a market day, a quest board with real quests, homes that grow as you help the village, and walls and a gate against the raids. It's where the workers of step 13 come from.
+12. **Volcano:** the full heat system, lava hazards, Ember Ore, the Sacred Forge, the Ember Warden, and the level-20 talents at the level cap. It opens the Ember Pass.
+13. **Cities and workers:** automation and the regional economy. Workers can start earlier, with the Longhouse's worker slots (step 9).
 
 ## 15. Code architecture notes
 - **Enemies:** `Wildlife` (Main/Wildlife) spawns and replicates every hostile (wolf packs, the bandit camp); the server runs their AI, and clients show positions sent 15 times a second. `Enemy.cs` is the shared brain (prowl around a group anchor, chase, telegraphed windup, strike, stagger, flee). A new enemy type subclasses it with its numbers, body and animations (see `Wolf.cs`, `Bandit.cs`) and registers its kind in `Enemy.Create`. Strikes on players go through `Net.ServerDamagePlayer` (block / parry).
@@ -592,7 +617,7 @@ Friends join by address for now (the host forwards the port, or everyone uses a 
 | | Food buffs |
 | Time of day, the day count | Respawn shrine |
 | Resource nodes (a felled tree is felled for all) | Camera view (1st/3rd person) |
-| | Your look and class (body, colours, gear, height): kept in your own settings, not the world save |
+| | Your look and class (body, colours, gear, height): kept per world, in the world save (and so per server) |
 | | Your glider (personal gear: it stays in your pack) |
 
 - **Packs (built):**

@@ -14,10 +14,14 @@ public partial class Boar : Enemy
     public const float ChargeWindup = 0.45f;
     public const float Size = 1.15f;
 
-    public override string Kind => "boar";
+    /// <summary>An ash boar of the Cinder Foothills: scorched hide, glowing eyes, a worse temper.</summary>
+    public bool Ash { get; private set; }
+    public const float AshHealth = 150f, AshDamage = 20f;
+
+    public override string Kind => Ash ? "ash_boar" : "boar";
     protected override float WalkSpeed => 1.6f;
     protected override float RunSpeed => 7.4f;
-    protected override float AggroRange => 7f;
+    protected override float AggroRange => Ash ? 10f : 7f;
     protected override float LeashRange => 24f;
     protected override float HomeLeash => 20f;
     protected override float AttackRange => 2.1f;
@@ -26,7 +30,7 @@ public partial class Boar : Enemy
     protected override float AttackCooldown => 1.6f;
     protected override float HitKnockback => 3f;
     protected override float WanderRadius => 5f;
-    protected override Rect2 Bounds => HomeCliffs.ForestBounds;
+    protected override Rect2 Bounds => Ash ? Wildlife.FoothillsBounds : HomeCliffs.ForestBounds;
 
     private Node3D _visual, _body, _head;
     private Node3D[] _legs;
@@ -38,10 +42,12 @@ public partial class Boar : Enemy
     private static readonly Color HideDark = new(0.2f, 0.14f, 0.11f);
     private static readonly Color Bristle = new(0.14f, 0.11f, 0.1f);
     private static readonly Color Tusk = new(0.92f, 0.88f, 0.76f);
+    private static readonly Color AshHide = new(0.2f, 0.17f, 0.16f), AshHideDark = new(0.1f, 0.08f, 0.08f), AshBristle = new(0.55f, 0.2f, 0.08f);
+    private Color HideNow => Ash ? AshHide : HideColor;
 
-    public static Boar Create(int netId, int group, Vector3 position, float yaw, float maxHealth = MaxHealth, float damage = GoreDamage)
+    public static Boar Create(int netId, int group, Vector3 position, float yaw, float maxHealth = MaxHealth, float damage = GoreDamage, bool ash = false)
     {
-        var b = new Boar { Name = $"Boar_{netId}", Damage = damage };
+        var b = new Boar { Name = $"Boar_{netId}", Damage = damage, Ash = ash };
         b.Init(netId, group, position, yaw, maxHealth, new Vector3(0.6f, 0.8f, 1.2f) * Size);
         b.Health.Armor = Armor;
         b.BuildVisual();
@@ -52,6 +58,7 @@ public partial class Boar : Enemy
     {
         var p = killer as PlayerController;
         if (Supplies.Give(p, "boar_hide", 1) > 0 && p != null) Net.Instance.ToastTo(p.PeerId, "+1 Boar Hide");
+        if (Ash && Supplies.Give(p, "coal", 1) > 0 && p != null) Net.Instance.ToastTo(p.PeerId, "+1 Coal");
     }
 
     protected override void FlashHit()
@@ -59,7 +66,7 @@ public partial class Boar : Enemy
         if (_hide == null) return;
         var t = CreateTween();
         t.TweenProperty(_hide, "shader_parameter/tint", new Color(0.85f, 0.3f, 0.3f), 0.05);
-        t.TweenProperty(_hide, "shader_parameter/tint", HideColor, 0.25);
+        t.TweenProperty(_hide, "shader_parameter/tint", HideNow, 0.25);
         Sfx.At(Health.IsDead ? "wolf_yelp" : "hit_flesh", GlobalPosition + Vector3.Up * 0.6f, Health.IsDead ? 0f : -1f);
     }
 
@@ -113,11 +120,11 @@ public partial class Boar : Enemy
 
     private void BuildVisual()
     {
-        _hide = StyleMaterials.CharacterFlat(HideColor);
-        var dark = StyleMaterials.CharacterFlat(HideDark);
-        var bristle = StyleMaterials.CharacterFlat(Bristle);
+        _hide = StyleMaterials.CharacterFlat(HideNow);
+        var dark = StyleMaterials.CharacterFlat(Ash ? AshHideDark : HideDark);
+        var bristle = Ash ? (Material)EnemyMesh.Glow(AshBristle, 1.2f) : StyleMaterials.CharacterFlat(Bristle);
         var tusk = StyleMaterials.CharacterFlat(Tusk);
-        var eyes = EnemyMesh.Glow(new Color(0.9f, 0.3f, 0.15f), 1.5f);
+        var eyes = EnemyMesh.Glow(Ash ? new Color(1f, 0.45f, 0.1f) : new Color(0.9f, 0.3f, 0.15f), Ash ? 3f : 1.5f);
 
         _visual = new Node3D { Name = "Visual" };
         AddChild(_visual);

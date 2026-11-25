@@ -6,8 +6,8 @@ namespace KatrinasGame;
 
 /// <summary>The planning board by the shack: pay for the next home tier from the shared
 /// stockpile. Tier 2 = the cottage (two beds, bigger build claim). Tier 3 = the Longhouse (four
-/// beds, the widest claim yet, bunks kept for workers), from the Storm Harpy Queen's blueprint.
-/// GDD §5, §11.</summary>
+/// beds, bunks kept for workers), from the Storm Harpy Queen's blueprint. Tier 4 = the Keep (six
+/// beds, stone towers, the widest claim), from the Bandit Warlord's blueprint. GDD §5, §11.</summary>
 public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInteractable
 {
     public static readonly Dictionary<string, int> CottageCost = new()
@@ -20,24 +20,31 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
         ["planks"] = 40, ["bricks"] = 20, ["stone"] = 30, ["iron_nails"] = 12, ["goat_hide"] = 4, ["longhouse_blueprint"] = 1,
     };
 
-    public const int MaxTier = 3;
+    public static readonly Dictionary<string, int> KeepCost = new()
+    {
+        ["stone"] = 60, ["bricks"] = 30, ["planks"] = 30, ["steel_ingot"] = 8, ["iron_nails"] = 20, ["keep_blueprint"] = 1,
+    };
+
+    public const int MaxTier = 4;
 
     /// <summary>Where the cottage stands (world space, centre and half size on the ground).</summary>
     public static readonly Vector3 CottageCenter = new(10, 0, -21);
     public static readonly Vector3 CottageHalfSize = new(3.4f, 0, 3.4f);
     /// <summary>The Longhouse stands on the same spot, longer east to west (8 × 6 m).</summary>
     public static readonly Vector3 LonghouseHalfSize = new(4.4f, 0, 3.4f);
+    /// <summary>The Keep: a 10 × 8 m stone hall with a tower at each corner.</summary>
+    public static readonly Vector3 KeepHalfSize = new(6.6f, 0, 5.6f);
 
-    public static string TierName(int tier) => tier >= 3 ? "Longhouse" : tier == 2 ? "Cottage" : "Shack";
+    public static string TierName(int tier) => tier >= 4 ? "Keep" : tier >= 3 ? "Longhouse" : tier == 2 ? "Cottage" : "Shack";
 
-    private static Dictionary<string, int> NextCost(int tier) => tier < 2 ? CottageCost : LonghouseCost;
+    private static Dictionary<string, int> NextCost(int tier) => tier < 2 ? CottageCost : tier < 3 ? LonghouseCost : KeepCost;
 
     public string InteractPrompt
     {
         get
         {
             var gs = GameState.Instance;
-            if (gs.HomeTier >= MaxTier) return "Home: Longhouse (fully upgraded for now)";
+            if (gs.HomeTier >= MaxTier) return "Home: the Keep (fully upgraded for now)";
             string next = TierName(gs.HomeTier + 1), from = TierName(gs.HomeTier).ToLowerInvariant();
             var missing = Missing();
             return missing.Count == 0
@@ -51,7 +58,7 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
 
     public void Interact(PlayerController player)
     {
-        if (GameState.Instance.HomeTier >= MaxTier) { Hud.Toast("The longhouse is finished. The Keep comes later."); return; }
+        if (GameState.Instance.HomeTier >= MaxTier) { Hud.Toast("The Keep stands finished. Ashby's walls come next."); return; }
         Net.Instance.RequestInteract(this);
     }
 
@@ -74,12 +81,17 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
         net.ServerSetHomeTier(tier + 1);
         if (tier + 1 == 2)
             net.ToastAll($"{player.DisplayName} raised the cottage! Two beds, and you can build farther from home (42 m).");
-        else
+        else if (tier + 1 == 3)
         {
             net.ToastAll($"{player.DisplayName} raised the Longhouse! Four beds, and you can build farther still (54 m). Its spare bunks wait for workers.");
             Journal.Fact("longhouse");
         }
-        net.ServerAwardXpAll(Levels.HomeUpgrade, tier + 1 == 2 ? "raised the cottage" : "raised the Longhouse");
+        else
+        {
+            net.ToastAll($"{player.DisplayName} raised the Keep! Six beds behind stone walls, and the widest claim yet (66 m).");
+            Journal.Fact("keep");
+        }
+        net.ServerAwardXpAll(Levels.HomeUpgrade, tier + 1 == 2 ? "raised the cottage" : tier + 1 == 3 ? "raised the Longhouse" : "raised the Keep");
         gs.SaveGame(silent: true);
     }
 
@@ -89,7 +101,7 @@ public partial class HomeUpgradeBoard : StaticBody3D, IInteractable, IServerInte
     /// <summary>Inside the footprint of the home at this tier (plus a margin)?</summary>
     public static bool InHome(int tier, Vector3 p, float margin = 0f)
     {
-        var half = tier >= 3 ? LonghouseHalfSize : CottageHalfSize;
+        var half = tier >= 4 ? KeepHalfSize : tier >= 3 ? LonghouseHalfSize : CottageHalfSize;
         return Mathf.Abs(p.X - CottageCenter.X) < half.X + margin && Mathf.Abs(p.Z - CottageCenter.Z) < half.Z + margin;
     }
 

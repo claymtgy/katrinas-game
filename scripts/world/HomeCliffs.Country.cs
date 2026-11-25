@@ -58,6 +58,7 @@ public partial class HomeCliffs
         Terrain.FlattenDisc(ClayPond, 12f, 30f);
         Terrain.FlattenDisc(Waystone, 14f, 34f);
         WaysideFlats();
+        FoothillsTerrain(); // the Cinder Foothills: an island of their own out in the clouds
         // The north edge rises into mountains, except where it meets the plateau and Falls Valley.
         Terrain.RimEdge(new Vector2(Terrain.Domain.Position.X, 90), new Vector2(-104, 90));
         Terrain.RimEdge(new Vector2(232, 90), new Vector2(Terrain.Domain.End.X, 90));

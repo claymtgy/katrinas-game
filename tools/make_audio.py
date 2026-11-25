@@ -130,15 +130,19 @@ def rain():
 
 
 def birds():
-    sec = 14
-    x = np.zeros(int(sec * SR)) + band(noise(sec), 2000, 4000) * 0.004
-    for _ in range(11):
-        start = rng.uniform(0.2, sec - 2)
-        kind = rng.integers(0, 3)
-        notes = rng.integers(2, 6)
+    """Sparse birdsong: a few short phrases spread over a long loop, with quiet gaps between
+    them, so it reads as the odd bird nearby rather than a constant chorus."""
+    r = np.random.default_rng(77)   # its own generator, so it can be rebuilt on its own
+    sec = 36
+    x = np.zeros(int(sec * SR)) + band(noise(sec), 2000, 4000) * 0.002
+    starts = np.sort(r.uniform(0.5, sec - 3, 5))
+    for start in starts:
+        kind = r.integers(0, 3)
+        notes = r.integers(2, 5)
+        loud = r.uniform(0.25, 0.6)
         for k in range(notes):
-            d = rng.uniform(0.06, 0.16)
-            f0 = rng.uniform(2600, 4200)
+            d = r.uniform(0.06, 0.14)
+            f0 = r.uniform(2600, 3800)
             t = t_of(d)
             if kind == 0:   # falling whistle
                 f = f0 * (1.15 - 0.3 * t / d)
@@ -146,9 +150,9 @@ def birds():
                 f = f0 * (0.8 + 0.35 * t / d)
             else:            # trill
                 f = f0 * (1 + 0.06 * np.sin(2 * np.pi * 38 * t))
-            c = tone([(f, 1.0), (f * 2, 0.15)], d) * np.sin(np.pi * t / d) ** 2
-            i = int((start + k * (d + rng.uniform(0.03, 0.09))) * SR)
-            if i + len(c) < len(x): x[i:i + len(c)] += c * rng.uniform(0.3, 0.7)
+            c = tone([(f, 1.0), (f * 2, 0.1)], d) * np.sin(np.pi * t / d) ** 2
+            i = int((start + k * (d + r.uniform(0.05, 0.12))) * SR)
+            if i + len(c) < len(x): x[i:i + len(c)] += c * loud
     return loopify(x, 0.5)
 
 
@@ -521,5 +525,8 @@ SOUNDS = {
 
 if __name__ == "__main__":
     print("Writing", os.path.abspath(OUT))
+    import sys
+    only = set(sys.argv[1:])   # e.g. `python tools/make_audio.py amb_birds` rebuilds just that one
     for name, fn in SOUNDS.items():
+        if only and name not in only: continue
         save(name, fn(), 0.7 if name.startswith("amb_") else 0.85)

@@ -111,6 +111,7 @@ public partial class MainMenu : Control
         Appearance.Local = new Appearance();
         // Scripted tests always start from a fresh world, and spawn wolves themselves.
         Wildlife.AutoSpawn = false;
+        AmbientLife.Enabled = false; // no stray birds in the screenshots
         Net.StarterWeapons = false; // tests count the stockpile's weapons exactly
         AudioSettings.Persist = false;
         foreach (var world in new[] { "autotest", "autotest_mp" })
@@ -166,7 +167,7 @@ public partial class MainMenu : Control
         board.AddChild(col);
 
         _name = Field(col, "Your name", "Player");
-        var looks = new Button { Text = "Customise character…", CustomMinimumSize = new Vector2(0, 36) };
+        var looks = new Button { Text = "Customise new character…", CustomMinimumSize = new Vector2(0, 36) };
         looks.Pressed += () => OpenCreator();
         col.AddChild(looks);
         var solo = BigButton("Single Player");
@@ -218,6 +219,7 @@ public partial class MainMenu : Control
     /// <summary>Open the character creator over the menu; Done keeps the look in settings.</summary>
     public CharacterCreator OpenCreator()
     {
+        // The default look for new characters; a world keeps its own copy once you've played there.
         var creator = new CharacterCreator(Appearance.Local, look =>
         {
             Appearance.Local = look;
@@ -277,12 +279,14 @@ public partial class MainMenu : Control
         return menu;
     }
 
-    /// <summary>Choose a class before spawning. A saved world remembers your class there, so it's
-    /// picked to start with; otherwise the one you played last.</summary>
+    /// <summary>Choose a class before spawning a new character. A world that already has your
+    /// character keeps its class and looks (they're saved with the world), so you go straight in.
+    /// (Joining a server: the server knows; a returning character's pick is ignored there.)</summary>
     public ClassPicker PickClass(string world, System.Action then)
     {
         string current = world != null ? SaveSlots.ClassIn(world, Net.Instance.LocalName) : "";
-        if (!PlayerClasses.IsValid(current)) current = Appearance.Local.Class;
+        if (PlayerClasses.IsValid(current)) { then(); return null; }
+        current = Appearance.Local.Class;
         var picker = new ClassPicker(current, id =>
         {
             var look = Appearance.Local.Clone();

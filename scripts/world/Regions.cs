@@ -26,6 +26,10 @@ public static class Regions
     public static readonly Vector3 Spires;
     /// <summary>The Forest Road and the Hollow Mine.</summary>
     public static readonly Vector3 West;
+    /// <summary>The Cinder Foothills: a burnt highland in the cloud sea north-west of the spires,
+    /// at the volcano's feet, reached over the Warlord's rope bridge from the Tall Spire (it moves
+    /// with the spires, so the bridge always meets).</summary>
+    public static readonly Vector3 Foothills;
 
     static Regions()
     {
@@ -43,6 +47,7 @@ public static class Regions
         Falls = shift;
         Spires = Falls;
         West = new Vector3(-150, 0, 360) + shift;
+        Foothills = new Vector3(110, 0, -290) + shift;
     }
 
     /// <summary>A rectangle (x, z) moved with a region.</summary>

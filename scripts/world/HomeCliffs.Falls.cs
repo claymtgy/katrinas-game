@@ -296,11 +296,11 @@ public partial class HomeCliffs
         var body = new StaticBody3D { Name = name, Position = center, CollisionLayer = GameState.LayerWorld, CollisionMask = 0 };
         body.AddToGroup(GameState.ClimbGroup);
         body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
-        body.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = StyleMaterials.Toon(GripRock, 0.35f) });
         AddChild(body);
-        // Handholds: little dark ledges scattered over the outer face.
+        // Handholds: little dark knobs scattered over the outer face.
         bool alongX = size.X > size.Z;
         var outward = alongX ? new Vector3(0, 0, Mathf.Sign(center.Z - MesaCenter.Z)) : new Vector3(Mathf.Sign(center.X - MesaCenter.X), 0, 0);
+        body.AddChild(ClimbRock.Make(size, outward, GripRock, GripRockDark, (int)GD.Hash(name)));
         float width = alongX ? size.X : size.Z;
         var holds = StyleMaterials.Toon(GripRockDark, 0.2f);
         for (int i = 0; i < (int)(width * size.Y / 3.5f); i++)
@@ -310,8 +310,8 @@ public partial class HomeCliffs
             var local = (alongX ? new Vector3(u, v, 0) : new Vector3(0, v, u)) + outward * ((alongX ? size.Z : size.X) / 2f + 0.06f);
             body.AddChild(new MeshInstance3D
             {
-                Mesh = new BoxMesh { Size = alongX ? new Vector3(0.45f, 0.14f, 0.18f) : new Vector3(0.18f, 0.14f, 0.45f) },
-                MaterialOverride = holds, Position = local, Rotation = new Vector3(0, 0, _vrng.RandfRange(-0.3f, 0.3f)),
+                Mesh = ClimbRock.Hold(), MaterialOverride = holds, Position = local,
+                Rotation = new Vector3(0, alongX ? 0f : Mathf.Pi / 2f, _vrng.RandfRange(-0.3f, 0.3f)),
             });
         }
     }

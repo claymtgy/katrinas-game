@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/crafting/BlastForgeStation.cs" id="1_station"]
+
+[sub_resource type="BoxShape3D" id="Shape_body"]
+size = Vector3(1.9, 3.0, 1.9)
+
+[node name="BlastForge" type="StaticBody3D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_station")
+StationId = "blast_forge"
+StationName = "Blast Forge"
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+shape = SubResource("Shape_body")

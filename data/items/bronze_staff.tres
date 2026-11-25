@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "bronze_staff"
+DisplayName = "Bronze-shod Staff"
+Category = "weapon"
+IconColor = Color(0.86, 0.6, 0.32, 1)
+Damage = 18.0
+Reach = 2.4
+AttackCooldown = 0.55
+Power = 1.2
+SellPrice = 12

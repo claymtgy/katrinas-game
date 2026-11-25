@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "yew_longbow"
+DisplayName = "Yew Longbow"
+Category = "bow"
+IconColor = Color(0.45, 0.28, 0.16, 1)
+Damage = 28.0
+AttackCooldown = 0.95
+ArrowSpeed = 1.35
+Slot = "bow"
+SellPrice = 24

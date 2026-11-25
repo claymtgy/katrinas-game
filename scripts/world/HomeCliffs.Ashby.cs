@@ -342,7 +342,7 @@ public partial class HomeCliffs
             RemoveChild(_home);
             _home.QueueFree();
         }
-        _home = tier >= 3 ? BuildLonghouse() : tier >= 2 ? BuildCottage() : BuildShackTier();
+        _home = tier >= 4 ? BuildKeep() : tier >= 3 ? BuildLonghouse() : tier >= 2 ? BuildCottage() : BuildShackTier();
     }
 
     private void OnHomeTierChanged(int tier) => BuildHome(tier);
@@ -398,6 +398,53 @@ public partial class HomeCliffs
         foreach (float x in new[] { -2.2f, 2.2f })
             Visual(new BoxMesh { Size = new Vector3(0.6f, 1.2f, 0.04f) }, StyleMaterials.Toon(new Color(0.35f, 0.62f, 0.9f), 0.3f),
                 new Vector3(x, 2.2f, 3.15f), Vector3.Zero, house);
+        return house;
+    }
+
+    /// <summary>Home tier 4 (the Bandit Warlord's plans): a 10 × 8 m brick hall with six beds, a long
+    /// table and a hearth, and a round stone tower at each corner with a battlemented top and a
+    /// banner.</summary>
+    private Node3D BuildKeep()
+    {
+        var house = House(this, HomeUpgradeBoard.CottageCenter, 5, 4, "UnevenBrick", 11, open: true, name: "Keep");
+        float[] xs = { -4.0f, -2.6f, -1.2f };
+        for (int i = 0; i < 3; i++)
+        {
+            AddBed(house, $"Bed{(i == 0 ? "" : (i + 1).ToString())}", new Vector3(xs[i], 0.2f, -2.6f));
+            AddBed(house, $"Bed{i + 4}", new Vector3(xs[i], 0.2f, 2.2f));
+        }
+        Visual(new BoxMesh { Size = new Vector3(3.6f, 0.1f, 1.0f) }, Mat(Wood), new Vector3(2.0f, 0.8f, -0.2f), Vector3.Zero, house);
+        foreach (float x in new[] { 0.6f, 3.4f })
+            Visual(new BoxMesh { Size = new Vector3(0.12f, 0.78f, 0.8f) }, Mat(WoodDark), new Vector3(x, 0.39f, -0.2f), Vector3.Zero, house);
+        foreach (float z in new[] { -0.95f, 0.55f })
+            Visual(new BoxMesh { Size = new Vector3(3.4f, 0.08f, 0.32f) }, Mat(WoodDark), new Vector3(2.0f, 0.45f, z), Vector3.Zero, house);
+        var hearth = Hearth.Create();
+        hearth.Position = new Vector3(4.7f - Hearth.Depth / 2f, 0.02f, -1.6f);
+        hearth.Rotation = new Vector3(0, -Mathf.Pi / 2f, 0);
+        house.AddChild(hearth);
+        hearth.AddStack(3.3f);
+        Prop(Models.Village("Prop_Crate"), Vector3.Zero, 0.3f, 0.7f, house).Position = new Vector3(4.0f, 0, 2.6f);
+
+        // Corner towers, just outside the hall's corners.
+        var stone = new Color(0.42f, 0.41f, 0.44f);
+        var banner = StyleMaterials.Toon(new Color(0.55f, 0.2f, 0.15f), 0.3f);
+        foreach (float sx in new[] { -1f, 1f })
+            foreach (float sz in new[] { -1f, 1f })
+            {
+                var at = new Vector3(sx * 5.4f, 0, sz * 4.4f);
+                var tower = new StaticBody3D { Name = $"KeepTower{(sx < 0 ? "W" : "E")}{(sz < 0 ? "N" : "S")}", Position = at, CollisionLayer = GameState.LayerWorld, CollisionMask = 0 };
+                house.AddChild(tower);
+                tower.AddChild(new CollisionShape3D { Shape = new CylinderShape3D { Radius = 1.3f, Height = 7.5f }, Position = new Vector3(0, 3.75f, 0) });
+                Visual(new CylinderMesh { TopRadius = 1.25f, BottomRadius = 1.4f, Height = 7.5f, RadialSegments = 10 }, StyleMaterials.Toon(stone, 0.2f), new Vector3(0, 3.75f, 0), Vector3.Zero, tower);
+                Visual(new CylinderMesh { TopRadius = 1.5f, BottomRadius = 1.45f, Height = 0.4f, RadialSegments = 10 }, StyleMaterials.Toon(stone.Darkened(0.15f), 0.2f), new Vector3(0, 7.6f, 0), Vector3.Zero, tower);
+                for (int k = 0; k < 8; k++)
+                {
+                    float a = Mathf.Tau * k / 8f;
+                    Visual(new BoxMesh { Size = new Vector3(0.45f, 0.5f, 0.3f) }, StyleMaterials.Toon(stone, 0.2f),
+                        new Vector3(Mathf.Cos(a) * 1.35f, 8.05f, Mathf.Sin(a) * 1.35f), new Vector3(0, -a, 0), tower);
+                }
+                Visual(new BoxMesh { Size = new Vector3(0.7f, 1.4f, 0.04f) }, banner, new Vector3(0, 5.2f, sz * 1.42f), Vector3.Zero, tower);
+            }
         return house;
     }
 

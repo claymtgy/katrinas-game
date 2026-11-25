@@ -21,6 +21,26 @@ public partial class Bandit : Enemy
     public const float RaiderHealth = 55f;
     public const float RaiderDamage = 10f;
 
+    /// <summary>The Cinder Foothills (GDD §11, step 3): the Warlord's fort is held by veterans in
+    /// soot-grey mail, and the Warlord himself, a giant with a greatsword who slams the ground.</summary>
+    public enum Rank { Camp, Fort, Warlord }
+    public const float FortHealth = 120f, FortDamage = 17f, FortArmor = 9f;
+    public const int FortCoins = 10;
+    public const float WarlordHealth = 1100f, WarlordDamage = 38f, WarlordArmor = 18f;
+    public const int WarlordCoins = 60;
+    /// <summary>The slam: every SlamInterval s he raises the greatsword (SlamWindup s: the tell),
+    /// then brings it down: everyone within SlamRadius takes SlamDamage and is thrown back (roll
+    /// through it; a raised guard halves it).</summary>
+    public const float SlamInterval = 12f, SlamWindup = 1.0f, SlamRadius = 6.5f, SlamDamage = 22f;
+    /// <summary>Below half health he bellows for this many fort guards (once).</summary>
+    public const int WarlordGuards = 2;
+
+    public Rank Grade { get; private set; }
+    public bool Warlord => Grade == Rank.Warlord;
+    public bool Fort => Grade == Rank.Fort;
+    /// <summary>The captain and the Warlord: slow, heavy blows with long reach.</summary>
+    private bool Big => Captain || Warlord;
+
     public bool Captain { get; private set; }
     /// <summary>Part of a raid on the base (Wildlife.StartRaid): goes for buildings and the stockpile.</summary>
     public bool Raider { get; private set; }
@@ -28,34 +48,39 @@ public partial class Bandit : Enemy
     public readonly Dictionary<string, int> Carried = new();
     public int CarriedCount => Carried.Values.Sum();
 
-    public override string Kind => Raider ? "raider" : Captain ? "captain" : "bandit";
+    public override string Kind => Warlord ? "warlord" : Fort ? "fort_bandit" : Raider ? "raider" : Captain ? "captain" : "bandit";
     protected override float WalkSpeed => 2.4f;
-    protected override float RunSpeed => Captain ? 4.6f : 5.4f;
-    protected override float AggroRange => Raider ? 11f : 15f;
-    protected override float LeashRange => Raider ? 22f : 30f;
-    protected override float HomeLeash => Raider ? 0f : 30f;
+    protected override float RunSpeed => Warlord ? 4.2f : Captain ? 4.6f : 5.4f;
+    protected override float AggroRange => Raider ? 11f : Fort ? 17f : 15f;
+    protected override float LeashRange => Raider ? 22f : Warlord ? 36f : 30f;
+    protected override float HomeLeash => Raider ? 0f : Warlord ? 26f : 30f;
+    protected override Rect2 Bounds => Grade != Rank.Camp ? Wildlife.FoothillsBounds : base.Bounds;
     /// <summary>Raiders slink off in the morning, with whatever they stole.</summary>
     protected override bool ShouldFlee => Raider && GameState.Instance.TimeOfDay >= 0.24f && GameState.Instance.TimeOfDay < 0.5f;
-    protected override float AttackRange => Captain ? 3.2f : 1.9f;
-    protected override float AttackReach => Captain ? 4.4f : 2.6f;
-    protected override float AttackWindup => Captain ? 0.75f : 0.55f;
-    protected override float AttackCooldown => Captain ? 2.0f : 1.6f;
-    protected override float HitStagger => Captain ? 0.15f : 0.35f;
-    protected override float HitKnockback => Captain ? 1.5f : 4f;
+    protected override float AttackRange => Warlord ? 3.6f : Captain ? 3.2f : 1.9f;
+    protected override float AttackReach => Warlord ? 4.8f : Captain ? 4.4f : 2.6f;
+    protected override float AttackWindup => Warlord ? 0.8f : Captain ? 0.75f : 0.55f;
+    protected override float AttackCooldown => Warlord ? 2.2f : Captain ? 2.0f : Fort ? 1.4f : 1.6f;
+    protected override float HitStagger => Warlord ? 0.08f : Captain ? 0.15f : 0.35f;
+    protected override float HitKnockback => Warlord ? 0.6f : Captain ? 1.5f : 4f;
     protected override float WanderRadius => 5f;
 
     private HumanoidModel _model;
 
-    public static Bandit Create(int netId, int camp, Vector3 position, float yaw, float maxHealth, float damage, bool captain, bool raider = false)
+    public static Bandit Create(int netId, int camp, Vector3 position, float yaw, float maxHealth, float damage, bool captain, bool raider = false, Rank rank = Rank.Camp)
     {
-        var b = new Bandit { Name = $"Bandit_{netId}", Captain = captain, Raider = raider, Damage = damage };
-        float height = captain ? 2.3f : 1.8f;
-        b.Init(netId, camp, position, yaw, maxHealth, new Vector3(0.7f, height, 0.7f));
-        b.Health.Armor = captain ? CaptainArmor : raider ? 0f : GruntArmor;   // raiders travel light (and the watchtower must still bring them down)
-        var hide = captain
+        var b = new Bandit { Name = $"Bandit_{netId}", Captain = captain, Raider = raider, Damage = damage, Grade = rank };
+        bool warlord = rank == Rank.Warlord, fort = rank == Rank.Fort;
+        float height = warlord ? 2.6f : captain ? 2.3f : fort ? 1.9f : 1.8f;
+        b.Init(netId, camp, position, yaw, maxHealth, new Vector3(warlord ? 0.9f : 0.7f, height, warlord ? 0.9f : 0.7f));
+        b.Health.Armor = warlord ? WarlordArmor : fort ? FortArmor : captain ? CaptainArmor : raider ? 0f : GruntArmor;   // raiders travel light (and the watchtower must still bring them down)
+        var hide = captain || warlord
             ? new[] { "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Round_Shield", "1H_Sword" } // a greatsword: his long reach
+            : fort ? new[] { "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Spike_Shield", "2H_Sword", "Knight_Cape" } // helmet and a round shield
             : new[] { "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Round_Shield", "Spike_Shield", "2H_Sword", "Knight_Helmet", "Knight_Cape" };
-        var tint = captain ? new Color(0.25f, 0.02f, 0.05f, 0.45f)
+        var tint = warlord ? new Color(0.12f, 0.06f, 0.04f, 0.55f)
+            : fort ? new Color(0.22f, 0.2f, 0.2f, 0.5f)
+            : captain ? new Color(0.25f, 0.02f, 0.05f, 0.45f)
             : raider ? new Color(0.55f, 0.3f, 0.05f, 0.45f)
             : new Color(0.6f, 0.1f, 0.06f, 0.42f);
         b._model = HumanoidModel.Create("res://assets/thirdparty/kaykit/Knight.glb", height, hide, tint);
@@ -79,13 +104,18 @@ public partial class Bandit : Enemy
             torch.AddChild(Fx.Trail(new Color(1f, 0.5f, 0.15f, 0.7f)));
             b.AddChild(torch);
         }
-        if (captain)
+        if (captain || warlord)
             b.AddChild(new Label3D
             {
-                Text = "Bandit Captain", Position = new Vector3(0, height + 0.4f, 0),
-                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled, FontSize = 40, PixelSize = 0.006f, OutlineSize = 10,
-                Modulate = new Color(1f, 0.45f, 0.35f),
+                Text = warlord ? "The Bandit Warlord" : "Bandit Captain", Position = new Vector3(0, height + 0.4f, 0),
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled, FontSize = warlord ? 48 : 40, PixelSize = 0.006f, OutlineSize = 10,
+                Modulate = warlord ? new Color(1f, 0.55f, 0.2f) : new Color(1f, 0.45f, 0.35f),
             });
+        if (warlord)
+        {
+            // Embers smoulder in his mail: you see him across the fort in the haze.
+            b.AddChild(new OmniLight3D { LightColor = new Color(1f, 0.45f, 0.15f), LightEnergy = 1.2f, OmniRange = 5f, Position = new Vector3(0, 1.6f, 0) });
+        }
         return b;
     }
 
@@ -93,6 +123,7 @@ public partial class Bandit : Enemy
     {
         var gs = GameState.Instance;
         var looter = killer as PlayerController;
+        if (Grade != Rank.Camp) { FoothillsLoot(looter); return; }
         int coins = Captain ? CaptainCoins : GruntCoins;
         if (Talents.Has(looter, Talents.Pickpocket)) coins = Mathf.RoundToInt(coins * Talents.PickpocketCoins);
         Supplies.Give(looter, "coin", coins);
@@ -118,12 +149,122 @@ public partial class Bandit : Enemy
         if (killer is PlayerController p) Net.Instance.ToastTo(p.PeerId, msg);
     }
 
+    /// <summary>Server: the fort's spoils. The Warlord carries the Keep's plans and the key to the
+    /// Ember Pass (both once: nobody needs two).</summary>
+    private void FoothillsLoot(PlayerController looter)
+    {
+        var gs = GameState.Instance;
+        int coins = Warlord ? WarlordCoins : FortCoins;
+        if (Talents.Has(looter, Talents.Pickpocket)) coins = Mathf.RoundToInt(coins * Talents.PickpocketCoins);
+        Supplies.Give(looter, "coin", coins);
+        string msg = $"+{coins} Coins";
+        int shards = Warlord ? 5 : Rng.Randf() < 0.35f ? 1 : 0;
+        if (shards > 0 && Supplies.Give(looter, Gear.ShardId, shards) > 0) msg += $", +{shards} Rune Shard{(shards > 1 ? "s" : "")}";
+        if (!Warlord && Supplies.Give(looter, "coal", 1) > 0) msg += ", +1 Coal";
+        if (Warlord)
+        {
+            bool Held(string id) => gs.Inventory.Count(id) > 0 || gs.Players.Values.Any(pl => pl.Pack.Count(id) > 0);
+            if (gs.HomeTier < HomeUpgradeBoard.MaxTier && !Held("keep_blueprint"))
+            {
+                Supplies.Give(looter, "keep_blueprint", 1);
+                msg += ", Keep Blueprint!";
+                Net.Instance.ToastAll("Rolled up in the Warlord's war-chest: plans for a stone keep. Check the board by your home.");
+            }
+            if (!Held("ember_pass_key") && !(Journal.Instance?.Facts.Contains("ember_pass_opened") ?? false))
+            {
+                Supplies.Give(looter, "ember_pass_key", 1);
+                msg += ", Ember Pass Key!";
+                Net.Instance.ToastAll("On a chain round the Warlord's neck: a heavy iron key, warm to the touch. The Ember Pass gate…");
+            }
+        }
+        if (looter != null) Net.Instance.ToastTo(looter.PeerId, msg);
+    }
+
     public override void PlayAttack()
     {
-        Sfx.At("swing_heavy", GlobalPosition + Vector3.Up * 1.2f, -2f);
+        Sfx.At("swing_heavy", GlobalPosition + Vector3.Up * 1.2f, Warlord ? 2f : -2f, Warlord ? 0.02f : 0.08f);
         if (Current == State.Dead) return;
         // Slow the swing so the blow lands when the server resolves it (after the windup).
-        _model.OneShot(Captain ? "1H_Melee_Attack_Chop" : "1H_Melee_Attack_Slice_Diagonal", Captain ? 0.85f : 1.0f);
+        if (Warlord) _model.OneShot("2H_Melee_Attack_Spin", 1.0f);
+        else _model.OneShot(Captain ? "1H_Melee_Attack_Chop" : "1H_Melee_Attack_Slice_Diagonal", Captain ? 0.85f : 1.0f);
+    }
+
+    // ================================================================== the Warlord
+
+    private float _slamIn = SlamInterval * 0.5f, _slamTime;
+    private bool _calledGuard;
+
+    protected override void Think(float dt)
+    {
+        if (Warlord && WarlordThink(dt)) return;
+        base.Think(dt);
+    }
+
+    /// <summary>Server: the Warlord's slam and his call for help. True while the slam's windup
+    /// holds him in place (skip the usual brain).</summary>
+    private bool WarlordThink(float dt)
+    {
+        if (Current is State.Dead or State.Stagger or State.Prowl || Target == null) { _slamTime = 0; return false; }
+        if (!_calledGuard && Health.Fraction < 0.5f)
+        {
+            _calledGuard = true;
+            for (int i = 0; i < WarlordGuards; i++) Wildlife.Instance.SpawnWarlordGuard(this);
+            Net.Instance.ToastAll("The Warlord bellows, and the fort's gate-guard come running…");
+        }
+        if (_slamTime > 0)
+        {
+            _slamTime -= dt;
+            var v = Velocity;
+            v.X = Mathf.Lerp(v.X, 0, Mathf.Min(1f, 8f * dt));
+            v.Z = Mathf.Lerp(v.Z, 0, Mathf.Min(1f, 8f * dt));
+            v.Y = IsOnFloor() ? -0.5f : v.Y - Gravity * dt;
+            Velocity = v;
+            MoveAndSlide();
+            if (_slamTime <= 0) Slam();
+            return true;
+        }
+        _slamIn -= dt;
+        if (_slamIn <= 0 && Current == State.Chase && Flat(Target.GlobalPosition - GlobalPosition).Length() < SlamRadius - 1f)
+        {
+            _slamIn = SlamInterval;
+            _slamTime = SlamWindup;
+            Wildlife.Instance.BroadcastAnim(this, Wildlife.AnimSpecial);
+        }
+        return false;
+    }
+
+    /// <summary>Server: the greatsword hits the ground.</summary>
+    private void Slam()
+    {
+        var net = Net.Instance;
+        foreach (var p in GameState.Instance.Players.Values)
+        {
+            if (!CanHunt(p)) continue;
+            var off = p.GlobalPosition - GlobalPosition;
+            if (Flat(off).Length() > SlamRadius || Mathf.Abs(off.Y) > 3f) continue;
+            var result = net.ServerDamagePlayer(p, Difficulty.BigMonsterDamage(SlamDamage), this);
+            if (result is Net.HitResult.Dodged or Net.HitResult.Parried) continue;
+            var away = Flat(off);
+            away = away.LengthSquared() < 0.01f ? -GlobalBasis.Z : away.Normalized();
+            float k = result == Net.HitResult.Blocked ? 0.5f : 1f;
+            net.ServerShovePlayer(p, (away * 11f + Vector3.Up * 4f) * k);
+        }
+        AttackCooldownLeft = Mathf.Max(AttackCooldownLeft, 1.2f);
+    }
+
+    /// <summary>Everyone: the greatsword goes up over his head (the tell), then crashes down in a
+    /// ring of cinders.</summary>
+    public override void PlaySpecial()
+    {
+        if (!Warlord || Current == State.Dead) return;
+        Sfx.At("raid_horn", GlobalPosition + Vector3.Up * 2f, -6f, 0.05f, 60f);
+        _model.OneShot("2H_Melee_Attack_Chop", 0.75f);
+        GetTree().CreateTimer(SlamWindup).Timeout += () =>
+        {
+            if (!IsInstanceValid(this) || Current == State.Dead) return;
+            Fx.Ring(GetParent(), GlobalPosition + Vector3.Up * 0.1f, new Color(1f, 0.5f, 0.15f, 0.7f), SlamRadius, 0.5f);
+            Sfx.At("explode", GlobalPosition, 2f, 0.1f, 70f);
+        };
     }
 
     public override void PlayStun() => _model.OneShot("Hit_B", 0.6f);

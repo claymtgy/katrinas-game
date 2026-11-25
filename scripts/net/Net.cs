@@ -454,6 +454,20 @@ public partial class Net : Node
     private void ServerAddPlayer(int id, string name, Appearance look)
     {
         var rec = Gs.PlayerRecords.TryGetValue(name, out var r) ? r : null;
+        // A character this world already knows keeps the class and look it has here; the one the
+        // player arrives with only shapes a new character.
+        bool returning = false;
+        if (rec != null && rec.TryGetValue("look", out var savedLook) && savedLook.VariantType == Variant.Type.Dictionary)
+        {
+            look = Appearance.FromDict(savedLook.AsGodotDictionary());
+            returning = true;
+        }
+        else if (rec != null && rec.TryGetValue("class", out var savedClass) && PlayerClasses.IsValid(savedClass.AsString()))
+        {
+            look = (look ?? new Appearance()).Clone();
+            look.Class = savedClass.AsString();
+            returning = true;
+        }
         int index = Gs.Players.Count;
         var pos = rec != null ? rec["pos"].AsVector3() : Gs.WorldSpawn + new Vector3(index * 1.2f, 0, index * 0.6f);
         var p = SpawnPlayerNode(id, name, pos, look);
@@ -465,6 +479,7 @@ public partial class Net : Node
             GameState.ApplyXpRecord(p, rec);
         }
         else ServerGiveStarterWeapon(p); // a new character: their class's weapon in hand
+        if (returning) ToastTo(id, $"Welcome back. In this world you are a {PlayerClasses.Get(look.Class).Name}.");
         p.Pack.Changed += () => _packDirty.Add(id);
         GD.Print($"[Net] {name} (peer {id}) is in the world. {Gs.Players.Count}/{Config.MaxPlayers} players");
         foreach (var peer in _joined)
@@ -608,6 +623,9 @@ public partial class Net : Node
     public void ServerGiveStarterWeapon(PlayerController p)
     {
         if (!StarterWeapons || p == null) return;
+        // Archers also get a bow, worn in the bow slot, unless they already have one.
+        if (p.Class.Id == PlayerClasses.ArcherId && !p.Worn.ContainsKey(Gear.Bow) && !p.Pack.Items.Keys.Any(k => ItemDb.Get(k)?.IsBow == true))
+            ServerSetWorn(p, new System.Collections.Generic.Dictionary<string, string>(p.Worn) { [Gear.Bow] = Gear.StarterBow });
         string id = PlayerClasses.StarterWeapon(p.Class.Id);
         if (ItemDb.Get(id) == null || p.Equipped == id) return;
         bool fresh = !Gs.Inventory.Remove(id, 1);
@@ -674,7 +692,7 @@ public partial class Net : Node
                 p.Health.TakeDamage(amount, source);
                 break;
             case HitResult.Blocked:
-                p.Health.TakeDamage(amount * BlockedDamageFactor, source);
+                p.Health.TakeDamage(amount * BlockedDamageFactor * (Talents.Has(p, Talents.Unbreakable) ? Talents.UnbreakableBlock : 1f), source);
                 ToPeer(p.PeerId, MethodName.C_Guard, false, (8f + amount * 0.8f) * p.Class.GuardCost * Gear.GuardCostMult(p));
                 break;
             case HitResult.Parried:
@@ -1116,6 +1134,30 @@ public partial class Net : Node
     /// <summary>Server: move a player (their own machine owns their position).</summary>
     public void ServerTeleport(PlayerController p, Vector3 pos) => ToPeer(p.PeerId, MethodName.C_Respawn, pos, "");
 
+    // ================================================================== "I'm stuck"
+
+    /// <summary>"I'm stuck" (Esc menu) sends you home, but only once nothing has hurt you for this long.</summary>
+    public const float UnstuckSafeSeconds = 8f;
+
+    /// <summary>Seconds left before "I'm stuck" works for this player (0 = now).</summary>
+    public static float UnstuckWait(PlayerController p) =>
+        p == null ? 0f : Mathf.Max(0f, UnstuckSafeSeconds - (float)(Now - p.LastHurtAt));
+
+    public void RequestUnstuck() => ToServer(MethodName.S_Unstuck);
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void S_Unstuck()
+    {
+        var p = SenderPlayer();
+        if (p == null) return;
+        if (p.Health.IsDead || p.Downed) { ToastTo(p.PeerId, "Not while you're down."); return; }
+        if (p.Sleeping) return;
+        float wait = UnstuckWait(p);
+        if (wait > 0f) { ToastTo(p.PeerId, $"You were hurt moments ago. Get clear and try again in {Mathf.CeilToInt(wait)} s."); return; }
+        // Home: the sacred blossom by the shack, where new characters first stand.
+        ToPeer(p.PeerId, MethodName.C_Respawn, Gs.WorldSpawn, "You find your way home.");
+    }
+
     // ================================================================== sleeping
 
     public void SetSleeping(PlayerController p, bool sleeping)
@@ -1263,6 +1305,7 @@ public partial class Net : Node
         if (!InSession || !IsServer) return;
         float dt = (float)delta;
         TickDowned(dt);
+        TickHeat(dt);
 
         if (_inventoryDirty)
         {

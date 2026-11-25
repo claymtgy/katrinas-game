@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="RecipeDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/RecipeDef.cs" id="1_recipe"]
+
+[resource]
+script = ExtResource("1_recipe")
+Id = "forge_plate_cuirass"
+DisplayName = "Plate Cuirass"
+Station = "blast_forge"
+Inputs = {"steel_ingot": 7, "boar_hide": 2}
+OutputItem = "plate_cuirass"
+OutputCount = 1
+SortOrder = 87

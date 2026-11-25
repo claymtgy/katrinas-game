@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "ember_glass_charm"
+DisplayName = "Ember-glass Charm"
+Category = "armor"
+IconColor = Color(1.0, 0.45, 0.2, 1)
+Slot = "charm"
+Perk = "heatward"
+PerkAmount = 0.4
+PerkText = "The Foothills' heat builds 40% slower"
+SellPrice = 16

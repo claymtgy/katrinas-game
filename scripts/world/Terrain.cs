@@ -51,13 +51,18 @@ public partial class Terrain : Node3D
     /// <summary>Stretches of the north edge that rise into mountains (the rest meets other ground).</summary>
     private static readonly List<(Vector2 A, Vector2 B)> RimEdges = new();
 
+    /// <summary>Land of its own shape and height out in the cloud sea (the Cinder Foothills):
+    /// inside the rectangle the height comes from the island's own function, its ground is
+    /// wherever <c>Inside</c> says, and it has its own material.</summary>
+    private static readonly List<(Rect2 R, System.Func<float, float, float> Height, System.Func<float, float, bool> Inside, Material Material)> Islands = new();
+
     private static FastNoiseLite _hills, _detail;
     private static bool _ready;
 
     /// <summary>Forget every flat zone and hole (the world is being built again).</summary>
     public static void Reset(int seed)
     {
-        Holes.Clear(); Discs.Clear(); Lines.Clear(); Rects.Clear(); RimEdges.Clear(); Lands.Clear(); Calms.Clear(); Walls.Clear();
+        Holes.Clear(); Discs.Clear(); Lines.Clear(); Rects.Clear(); RimEdges.Clear(); Lands.Clear(); Calms.Clear(); Walls.Clear(); Islands.Clear();
         _hills = new FastNoiseLite
         {
             Seed = seed, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth, Frequency = 1f / 210f,
@@ -86,6 +91,10 @@ public partial class Terrain : Node3D
     /// line, down to nothing <paramref name="reach"/> away (roads and flat zones still win).</summary>
     public static void Wall(Vector2 a, Vector2 b, float height, float reach) => Walls.Add((a, b, height, reach));
 
+    /// <summary>An island of its own (see <see cref="Islands"/>), before Lock.</summary>
+    public static void Island(Rect2 r, System.Func<float, float, float> height, System.Func<float, float, bool> inside, Material material) =>
+        Islands.Add((r, height, inside, material));
+
     private static bool OnLand(Vector2 p)
     {
         if (Domain.HasPoint(p)) return true;
@@ -104,6 +113,8 @@ public partial class Terrain : Node3D
     /// <summary>True when (x, z) is on the hills' own ground (not outside them, or in a hole).</summary>
     public static bool Covers(float x, float z)
     {
+        foreach (var isl in Islands)
+            if (isl.R.HasPoint(new Vector2(x, z))) return isl.Inside(x, z);
         if (!OnLand(new Vector2(x, z))) return false;
         foreach (var h in Holes) if (h.HasPoint(new Vector2(x, z))) return false;
         return true;
@@ -112,6 +123,8 @@ public partial class Terrain : Node3D
     private static float RawHeight(float x, float z)
     {
         var p = new Vector2(x, z);
+        foreach (var isl in Islands)
+            if (isl.R.HasPoint(p)) return isl.Height(x, z);
         if (!OnLand(p)) return 0f;
         foreach (var h in Holes) if (h.HasPoint(p)) return 0f;
 
@@ -187,14 +200,18 @@ public partial class Terrain : Node3D
         // Chunks on the country's grid, out as far as every stretch of land goes.
         var all = Domain;
         foreach (var l in Lands) all = all.Merge(l);
+        foreach (var isl in Islands) all = all.Merge(isl.R);
         int x0 = Mathf.FloorToInt((all.Position.X - Domain.Position.X) / ChunkSize), x1 = Mathf.CeilToInt((all.End.X - Domain.Position.X) / ChunkSize);
         int z0 = Mathf.FloorToInt((all.Position.Y - Domain.Position.Y) / ChunkSize), z1 = Mathf.CeilToInt((all.End.Y - Domain.Position.Y) / ChunkSize);
         for (int cz = z0; cz < z1; cz++)
             for (int cx = x0; cx < x1; cx++)
             {
                 var area = new Rect2(Domain.Position.X + cx * ChunkSize, Domain.Position.Y + cz * ChunkSize, ChunkSize, ChunkSize);
-                if (!area.Intersects(Domain) && !Lands.Exists(l => l.Intersects(area))) continue;
-                BuildChunk(cx, cz, material);
+                if (!area.Intersects(Domain) && !Lands.Exists(l => l.Intersects(area)) && !Islands.Exists(i => i.R.Intersects(area))) continue;
+                // An island's chunks wear its own ground.
+                var mat = material;
+                foreach (var isl in Islands) if (isl.R.Intersects(area)) mat = isl.Material;
+                BuildChunk(cx, cz, mat);
             }
     }
 

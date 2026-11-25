@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "hunting_bow"
+DisplayName = "Hunting Bow"
+Category = "bow"
+IconColor = Color(0.55, 0.38, 0.22, 1)
+Damage = 16.0
+AttackCooldown = 0.7
+ArrowSpeed = 1.0
+Slot = "bow"
+SellPrice = 4

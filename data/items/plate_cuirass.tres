@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "plate_cuirass"
+DisplayName = "Plate Cuirass"
+Category = "armor"
+IconColor = Color(0.72, 0.74, 0.8, 1)
+Slot = "body"
+Armor = 22.0
+Heavy = true
+WornColor = Color(0.68, 0.7, 0.76, 1)
+WornTrim = Color(0.55, 0.2, 0.15, 1)
+SellPrice = 50

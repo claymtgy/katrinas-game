@@ -20,7 +20,13 @@ public partial class Wolf : Enemy
     /// <summary>Scale of the model and collider (the model is built at 1).</summary>
     public const float Size = 1.6f;
 
-    public override string Kind => "wolf";
+    /// <summary>An ash wolf of the Cinder Foothills: soot-black, ember-eyed, and it hunts by day
+    /// (the haze there never lets the sun through).</summary>
+    public bool Ash { get; private set; }
+    public const float AshHealth = 200f, AshDamage = 26f;
+
+    public override string Kind => Ash ? "ash_wolf" : "wolf";
+    protected override Rect2 Bounds => Ash ? Wildlife.FoothillsBounds : base.Bounds;
     protected override float WalkSpeed => 3.2f;
     protected override float RunSpeed => Run;
     protected override float AggroRange => 22f;
@@ -29,7 +35,7 @@ public partial class Wolf : Enemy
     protected override float AttackReach => 3.2f;
     protected override float AttackWindup => BiteWindup;
     protected override float AttackCooldown => 1.1f;
-    protected override bool FleesByDay => true;
+    protected override bool FleesByDay => !Ash;
     protected override bool FearsFire => true;
 
     private Node3D _visual, _body, _head, _tail;
@@ -46,11 +52,14 @@ public partial class Wolf : Enemy
     private static readonly Color FurLight = new(0.52f, 0.5f, 0.55f);
     private static readonly Color FurDark = new(0.16f, 0.15f, 0.2f);
     private static readonly Color EyeColor = new(1f, 0.62f, 0.18f);
+    private static readonly Color AshFur = new(0.17f, 0.15f, 0.16f), AshLight = new(0.42f, 0.36f, 0.33f), AshDark = new(0.08f, 0.07f, 0.08f);
+    private static readonly Color AshEye = new(1f, 0.35f, 0.1f);
+    private Color Fur => Ash ? AshFur : FurColor;
 
     /// <summary>Build a wolf (call before adding it to the tree so its path and Health exist).</summary>
-    public static Wolf Create(int netId, int pack, Vector3 position, float yaw, float maxHealth = MaxHealth, float damage = BiteDamage)
+    public static Wolf Create(int netId, int pack, Vector3 position, float yaw, float maxHealth = MaxHealth, float damage = BiteDamage, bool ash = false)
     {
-        var w = new Wolf { Name = $"Wolf_{netId}", Damage = damage };
+        var w = new Wolf { Name = $"Wolf_{netId}", Damage = damage, Ash = ash };
         w.Init(netId, pack, position, yaw, maxHealth, new Vector3(0.5f, 0.8f, 1.2f) * Size);
         w.Health.Armor = Armor;
         w.BuildVisual();
@@ -61,6 +70,8 @@ public partial class Wolf : Enemy
     {
         var p = killer as PlayerController;
         if (Supplies.Give(p, "wolf_pelt", PeltsDropped) > 0 && p != null) Net.Instance.ToastTo(p.PeerId, $"+{PeltsDropped} Wolf Pelts");
+        // Ash wolves den in the coal seams: soot and cinders caught in the fur.
+        if (Ash && Supplies.Give(p, "coal", 1) > 0 && p != null) Net.Instance.ToastTo(p.PeerId, "+1 Coal");
     }
 
     // ================================================================== visual
@@ -70,7 +81,7 @@ public partial class Wolf : Enemy
         if (_fur == null) return;
         var t = CreateTween();
         t.TweenProperty(_fur, "shader_parameter/tint", new Color(0.85f, 0.3f, 0.3f), 0.05);
-        t.TweenProperty(_fur, "shader_parameter/tint", FurColor, 0.25);
+        t.TweenProperty(_fur, "shader_parameter/tint", Fur, 0.25);
         _howlLeft = 0;
         Sfx.At(Health.IsDead ? "wolf_yelp" : "hit_flesh", GlobalPosition + Vector3.Up * 0.6f, Health.IsDead ? 2f : 0f);
     }
@@ -171,12 +182,13 @@ public partial class Wolf : Enemy
     {
         // Low-poly faceted wolf (art pass): tapered 5/6-sided segments rather than boxes. Lean,
         // deep-chested, head low, bushy tail. Forward is -Z; legs hang from hip pivots.
-        _fur = StyleMaterials.CharacterFlat(FurColor);
-        var light = StyleMaterials.CharacterFlat(FurLight);
-        var dark = StyleMaterials.CharacterFlat(FurDark);
+        _fur = StyleMaterials.CharacterFlat(Fur);
+        var light = StyleMaterials.CharacterFlat(Ash ? AshLight : FurLight);
+        var dark = StyleMaterials.CharacterFlat(Ash ? AshDark : FurDark);
+        var eye = Ash ? AshEye : EyeColor;
         var eyes = new StandardMaterial3D
         {
-            AlbedoColor = EyeColor, EmissionEnabled = true, Emission = EyeColor, EmissionEnergyMultiplier = 3f,
+            AlbedoColor = eye, EmissionEnabled = true, Emission = eye, EmissionEnergyMultiplier = Ash ? 5f : 3f,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         };
 

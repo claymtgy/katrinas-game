@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "bronze_knives"
+DisplayName = "Bronze Twin Knives"
+Category = "weapon"
+IconColor = Color(0.9, 0.64, 0.34, 1)
+Damage = 18.0
+Reach = 1.6
+AttackCooldown = 0.28
+SellPrice = 12

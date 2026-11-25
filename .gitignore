@@ -30,3 +30,6 @@ mono_crash.*.json
 *.user
 bin/
 obj/
+
+# Exported builds
+build/

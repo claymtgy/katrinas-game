@@ -78,6 +78,8 @@ public partial class Harvestable : StaticBody3D
 
     private void OnDamaged(float amount, Node source)
     {
+        // A chopped tree lets its birds go (cosmetic, on every screen that has them).
+        if (DropItemId == "wood" && source is Node3D hitter) AmbientLife.Instance?.FlushTree(this, hitter.GlobalPosition);
         if (Net.Instance.IsServer)
         {
             _accumulated += amount;
@@ -133,6 +135,7 @@ public partial class Harvestable : StaticBody3D
         int got = Supplies.Give(p, DropItemId, count);
         if (p != null && got > 0) Net.Instance.ToastTo(p.PeerId, $"+{got} {ItemDb.NameOf(DropItemId)}");
         if (p != null && got > 0 && Name.ToString().StartsWith("SpireSeam")) Journal.Fact("mined:spire_seam");
+        if (p != null && got > 0 && DropItemId == "coal") Journal.Fact("mined:coal");
     }
 
     private void Respawn()

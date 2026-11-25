@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/ItemDef.cs" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+Id = "bronze_mace"
+DisplayName = "Bronze Mace"
+Category = "weapon"
+IconColor = Color(0.86, 0.6, 0.32, 1)
+Damage = 26.0
+Reach = 1.9
+AttackCooldown = 0.55
+Power = 1.15
+SellPrice = 12

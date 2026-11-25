@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/core/BuildingDef.cs" id="1_bld"]
+[ext_resource type="PackedScene" path="res://scenes/buildings/BlastForge.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_bld")
+Id = "blast_forge"
+DisplayName = "Blast Forge"
+Description = "A tall brick furnace fed with coal and roaring air: it turns iron and coal into steel, and forges plate, steel weapons and the best bows. Coal comes from the Cinder Foothills."
+Scene = ExtResource("2_scene")
+Cost = {"bricks": 16, "iron_ingot": 6, "stone": 10, "coal": 6}
+Footprint = Vector3(2.0, 3.2, 2.0)
+SortOrder = 20

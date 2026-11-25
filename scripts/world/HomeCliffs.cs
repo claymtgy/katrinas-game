@@ -92,11 +92,14 @@ public partial class HomeCliffs : Node3D
         BuildGreenery();      // art pass: bushes and trees against the cliffs: own random numbers
         if (WorldDump.Path is { } dump) { WorldDump.Write(this, dump); GetTree().Quit(); return; }
         BuildCountry();       // the rolling hills south of the plateau (HomeCliffs.Country)
+        BuildFoothills();     // the Cinder Foothills: needs the ground's heights, so after the terrain is laid out
         ClearTrailsOfScatter();
         RaiseTerrain();       // build the hills and set everything on them
 
         AddChild(new Weather { Name = "Weather" });
         AddChild(new Ambience { Name = "Ambience" });
+        // Harmless birds, rabbits, deer and butterflies round each player (cosmetic, per screen).
+        if (!Net.Instance.IsDedicated) AddChild(new AmbientLife { Name = "AmbientLife" });
         // Enemies path around the world (the AI runs on the server only).
         AddToGroup(WorldNav.SourceGroup);
         if (Net.Instance.IsServer)
@@ -153,7 +156,9 @@ public partial class HomeCliffs : Node3D
     {
         var mid = new Vector3(area.GetCenter().X, 0, area.GetCenter().Y);
         Block(mid + Vector3.Down * (PoolDepth + 0.5f), new Vector3(area.Size.X, 1f, area.Size.Y), Vector3.Zero, Slate.Darkened(0.3f));
-        Visual(new BoxMesh { Size = new Vector3(area.Size.X, 0.1f, area.Size.Y) }, StyleMaterials.Water(), mid + new Vector3(0, PoolSurface - 0.05f, 0), Vector3.Zero);
+        // One flat sheet, not a box: a thin transparent box drew its top and bottom faces over each
+        // other, and its sides lay exactly on the basin walls, so the water flickered.
+        Visual(new PlaneMesh { Size = new Vector2(area.Size.X, area.Size.Y) }, StyleMaterials.Water(), mid + new Vector3(0, PoolSurface, 0), Vector3.Zero);
         GameState.Instance.Waters.Add((new Vector3(area.Position.X, -PoolDepth, area.Position.Y), new Vector3(area.End.X, PoolSurface, area.End.Y)));
     }
 
@@ -456,7 +461,8 @@ public partial class HomeCliffs : Node3D
         Waterfall(new Vector3(-56.5f, 16, -4), new Vector2(7, 34), new Vector3(0, Mathf.Pi / 2f, 0));
         var water = StyleMaterials.Water();
         Pool(HomePool);
-        Block(PoolPos + new Vector3(-2, -0.4f, 6.5f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
+        // The slate lips stand 5 cm into the basin so their faces don't share a plane with the hole's walls.
+        Block(PoolPos + new Vector3(-2, -0.4f, 6.45f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
         // Draw water at the pool's east edge.
         var pool = new WaterSource
         {
@@ -465,9 +471,9 @@ public partial class HomeCliffs : Node3D
         };
         AddChild(pool);
         pool.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.2f, 0.4f, 10f) }, Position = new Vector3(0, 0.1f, 0) });
-        Block(PoolPos + new Vector3(-2, -0.4f, -6.5f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
+        Block(PoolPos + new Vector3(-2, -0.4f, -6.45f), new Vector3(15, 1.2f, 1), Vector3.Zero, Slate);
         // ...a stream runs to the edge...
-        Visual(new BoxMesh { Size = new Vector3(3, 0.12f, 20) }, water, new Vector3(-40.3f, 0.06f, -20.2f), new Vector3(0, 0.15f, 0));
+        Visual(new PlaneMesh { Size = new Vector2(3, 20) }, water, new Vector3(-40.3f, 0.07f, -20.2f), new Vector3(0, 0.15f, 0));
         // ...and spills over the cliff.
         Waterfall(new Vector3(-38, -26, -31.5f), new Vector2(4, 52), Vector3.Zero);
 

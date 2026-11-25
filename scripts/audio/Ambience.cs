@@ -56,7 +56,7 @@ public partial class Ambience : Node
 
         Wind = Ease(Wind, 0.32f + 0.25f * height + 0.3f * wet, dt);
         Rain = Ease(Rain, wet, dt);
-        Birds = Ease(Birds, day * (1f - wet) * 0.6f, dt);
+        Birds = Ease(Birds, day * (1f - wet) * (gs.LocalPlayer != null && HomeCliffs.InFoothillsArea(gs.LocalPlayer.GlobalPosition) ? 0f : 0.22f), dt);
         Crickets = Ease(Crickets, (1f - day) * (1f - wet * 0.8f) * 0.45f, dt);
 
         Set(_wind, Wind);

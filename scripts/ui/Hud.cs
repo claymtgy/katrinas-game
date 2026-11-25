@@ -17,7 +17,7 @@ public partial class Hud : CanvasLayer
     private const int GridMax = 18;
 
     private Control _root;
-    private FramedBar _health, _stamina;
+    private FramedBar _health, _stamina, _heat;
     private Label _clock, _session, _buffs, _ability, _prompt, _buildInfo, _crosshair, _sleep, _playerListText;
     private Control _promptRow, _buildPlate, _sleepPlate, _helpHint;
     private PanelContainer _playerList, _help, _gameMenu, _craftPanel, _sheet;
@@ -111,6 +111,11 @@ public partial class Hud : CanvasLayer
         box.AddChild(_health);
         _stamina = new FramedBar("bar_stamina", new Vector2(290, 22)) { ShowNumbers = false, SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin };
         box.AddChild(_stamina);
+        _heat = new FramedBar("bar_stamina", new Vector2(290, 18), new Color(1f, 0.42f, 0.12f))
+        {
+            ShowNumbers = false, Caption = "Heat", SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin, Visible = false,
+        };
+        box.AddChild(_heat);
         BuildXpRow(box);
     }
 
@@ -513,6 +518,8 @@ void fragment() {
 
         _health.Set(player.Health.Current, player.Health.Max);
         _stamina.Set(player.Stamina, player.MaxStamina);
+        _heat.Visible = player.Heat > 0.5f;
+        if (_heat.Visible) _heat.Set(player.Heat, Net.HeatMax);
         UpdateXp(player);
 
         float hours = gs.TimeOfDay * 24f;
@@ -775,7 +782,8 @@ void fragment() {
             var r = recipe;
             var station = _station;
             var out_ = ItemDb.Get(recipe.OutputItem);
-            string note = out_ is { IsWearable: true } ? $"{Gear.SlotName(out_.Slot)} · {out_.Armor:0} armour" + (out_.PerkText != "" ? $" · {out_.PerkText}" : "")
+            string note = out_ is { IsBow: true } ? $"Bow · {out_.Damage:0} per arrow · a shot every {out_.AttackCooldown:0.##} s"
+                : out_ is { IsWearable: true } ? $"{Gear.SlotName(out_.Slot)} · {out_.Armor:0} armour" + (out_.PerkText != "" ? $" · {out_.PerkText}" : "")
                 : out_ is { IsWeapon: true } ? $"Weapon · {out_.Damage:0} damage" : "";
             _craftList.AddChild(RecipeRow(recipe.OutputItem, recipe.DisplayName, note, cost, me, "Craft", canAfford,
                 () => { Sfx.Ui("craft", -4f); station.RequestCraft(r); }));
@@ -894,7 +902,7 @@ void fragment() {
     }
 
     private static string ShortNote(ItemDef d) =>
-        d.IsWearable ? (d.PerkText != "" ? d.PerkText : $"{d.Armor:0} armour") : d.IsFood ? (d.HasBuff ? d.BuffText : $"Heals {d.FoodHeal:0}") : "";
+        d.IsBow ? $"{d.Damage:0} per arrow" : d.IsWearable ? (d.PerkText != "" ? d.PerkText : $"{d.Armor:0} armour") : d.IsFood ? (d.HasBuff ? d.BuffText : $"Heals {d.FoodHeal:0}") : "";
 
     private static Control Section(string text)
     {
@@ -988,7 +996,7 @@ void fragment() {
         grid.AddThemeConstantOverride("h_separation", 8);
         grid.AddThemeConstantOverride("v_separation", 8);
         doll.AddChild(grid);
-        string[] layout = { Gear.OffHand, Gear.Head, MainHand, Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, "", Gear.Feet };
+        string[] layout = { Gear.OffHand, Gear.Head, MainHand, Gear.Cloak, Gear.Body, Gear.Charm, Gear.Hands, Gear.Bow, Gear.Feet };
         foreach (var slotId in layout)
         {
             if (slotId == "") { grid.AddChild(new Control { CustomMinimumSize = new Vector2(84, 84) }); continue; }
@@ -1133,7 +1141,7 @@ void fragment() {
 
     private void BuildGameMenu()
     {
-        _gameMenu = Board(400, 560, "Menu", out var body, out _);
+        _gameMenu = Board(400, 610, "Menu", out var body, out _);
         var resume = new Button { Text = "Resume" };
         resume.Pressed += CloseMenus;
         body.AddChild(resume);
@@ -1155,6 +1163,9 @@ void fragment() {
         var options = new Button { Text = "Options…" };
         options.Pressed += () => OpenOptions();
         body.AddChild(options);
+        var stuck = new Button { Text = "I'm stuck (go home)", TooltipText = $"Takes you back to the blossom at home, if nothing has hurt you for {Net.UnstuckSafeSeconds:0} seconds." };
+        stuck.Pressed += Unstuck;
+        body.AddChild(stuck);
         body.AddChild(UiTheme.Divider(300));
         var leave = new Button { Text = "Leave to main menu" };
         leave.Pressed += () => Net.Instance.Leave();
@@ -1175,10 +1186,10 @@ void fragment() {
         _gameMenu.Visible = false;
         GameState.Instance.SetUiOpen(true);
         void Back() { if (fromMenu && GameState.Instance.UiOpen) _gameMenu.Visible = true; }
-        var creator = new CharacterCreator(Appearance.Local, look =>
+        // Edits this world's character (the server saves it with the world), not the main menu's
+        // default look for new characters.
+        var creator = new CharacterCreator(CurrentLook(), look =>
         {
-            Appearance.Local = look;
-            Appearance.SaveLocal();
             Net.Instance.RequestLook(look);
             Back();
         }, Back) { InGame = true };
@@ -1201,21 +1212,36 @@ void fragment() {
     public ClassPicker OpenClassPicker()
     {
         var back = ReturnToMenu();
-        var picker = new ClassPicker(Appearance.Local.Class, id =>
+        var current = CurrentLook();
+        var picker = new ClassPicker(current.Class, id =>
         {
-            if (id != Appearance.Local.Class)
+            if (id != current.Class)
             {
-                var look = Appearance.Local.Clone();
-                look.Class = id;
-                Appearance.Local = look;
-                Appearance.SaveLocal();
-                Net.Instance.RequestLook(look);
+                current.Class = id;
+                Net.Instance.RequestLook(current);
             }
             back();
         }, back, ClassPicker.Context.InGame);
         AddChild(picker);
         return picker;
     }
+
+    /// <summary>Esc menu: "I'm stuck". Goes home if nothing has hurt you for a few seconds (the
+    /// server checks too); otherwise says how long to wait.</summary>
+    public void Unstuck()
+    {
+        var me = GameState.Instance.LocalPlayer;
+        if (me == null) return;
+        float wait = Net.UnstuckWait(me);
+        if (wait > 0f) { Toast($"Not while you're in danger: nothing may hurt you for {Net.UnstuckSafeSeconds:0} s. Try again in {Mathf.CeilToInt(wait)} s."); return; }
+        if (me.Downed || me.Health.IsDead) { Toast("Not while you're down."); return; }
+        CloseMenus();
+        Net.Instance.RequestUnstuck();
+    }
+
+    /// <summary>The local character's look in this world (without what worn gear adds).</summary>
+    private static Appearance CurrentLook() =>
+        GameState.Instance.LocalPlayer is { } me ? Appearance.FromDict(me.Look.ToDict()) : Appearance.Local.Clone();
 
     /// <summary>Hide the Esc menu while a board is over it; the returned action brings it back.</summary>
     private System.Action ReturnToMenu()

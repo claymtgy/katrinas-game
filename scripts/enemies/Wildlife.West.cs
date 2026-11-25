@@ -125,6 +125,7 @@ public partial class Wildlife
     {
         var d = new GDict { ["herds"] = SaveSites(_herds), ["nests"] = SaveSites(_nests) };
         SaveSpires(d); // the spire sites ride along (Wildlife.Spires.cs)
+        SaveFoothills(d); // and the Cinder Foothills' (Wildlife.Foothills.cs)
         return d;
     }
 
@@ -133,6 +134,7 @@ public partial class Wildlife
         LoadSites(_herds, d != null && d.TryGetValue("herds", out var h) ? h.AsGodotArray() : null);
         LoadSites(_nests, d != null && d.TryGetValue("nests", out var n) ? n.AsGodotArray() : null);
         LoadSpires(d);
+        LoadFoothills(d);
     }
 
     private static GArray SaveSites(Camp[] sites)
